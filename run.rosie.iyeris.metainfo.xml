@@ -44,6 +44,14 @@
     </screenshot>
   </screenshots>
   <releases>
+    <release version="3.0.0" date="2026-06-29"/>
+    <release version="3.0.0-beta.7" date="2026-06-25"/>
+    <release version="3.0.0-beta.6" date="2026-06-24"/>
+    <release version="3.0.0-beta.5" date="2026-06-21"/>
+    <release version="3.0.0-beta.4" date="2026-06-19"/>
+    <release version="3.0.0-beta.3" date="2026-06-14"/>
+    <release version="3.0.0-beta.2" date="2026-06-12"/>
+    <release version="3.0.0-beta.1" date="2026-06-10"/>
     <release version="2.1.2" date="2026-04-29"/>
     <release version="2.1.1" date="2026-04-24"/>
     <release version="2.1.1-beta.2" date="2026-04-23"/>

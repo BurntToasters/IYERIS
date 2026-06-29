@@ -28,6 +28,7 @@ interface RenamePreviewItem {
 export function createBatchRenameController(deps: BatchRenameDeps) {
   let currentMode: RenameMode = 'find-replace';
   let selectedFiles: Array<{ name: string; path: string }> = [];
+  let applyInProgress = false;
 
   function isSafeRegex(pattern: string): boolean {
     if (pattern.length > 500) return false;
@@ -66,12 +67,16 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
     resetFields();
     updateFieldVisibility();
     updatePreview();
+    modal.style.display = 'flex';
     deps.activateModal(modal);
   }
 
   function hideBatchRenameModal() {
     const modal = document.getElementById('batch-rename-modal');
-    if (modal) deps.deactivateModal(modal);
+    if (modal) {
+      modal.style.display = 'none';
+      deps.deactivateModal(modal);
+    }
   }
 
   function resetFields() {
@@ -216,6 +221,7 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
   }
 
   async function applyBatchRename() {
+    if (applyInProgress) return;
     const items = computePreview();
     const toRename = items.filter((i) => i.changed && !i.error);
 
@@ -225,8 +231,13 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
     }
 
     const newNames = new Set<string>();
+    const isCaseInsensitiveFS =
+      typeof navigator !== 'undefined' &&
+      (navigator.platform.toLowerCase().includes('mac') ||
+        navigator.platform.toLowerCase().includes('win'));
+    const dedupKey = (n: string) => (isCaseInsensitiveFS ? n.toLowerCase() : n);
     for (const item of toRename) {
-      if (newNames.has(item.newName.toLowerCase())) {
+      if (newNames.has(dedupKey(item.newName))) {
         deps.showToast(
           `Duplicate name "${item.newName}" would be created`,
           'Batch Rename Error',
@@ -234,10 +245,11 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
         );
         return;
       }
-      newNames.add(item.newName.toLowerCase());
+      newNames.add(dedupKey(item.newName));
     }
 
     try {
+      applyInProgress = true;
       const result = await window.tauriAPI.batchRename(
         toRename.map((i) => ({ oldPath: i.oldPath, newName: i.newName }))
       );
@@ -253,6 +265,8 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
       await deps.updateUndoRedoState();
     } catch (error) {
       deps.showToast('Batch rename failed: ' + getErrorMessage(error), 'Error', 'error');
+    } finally {
+      applyInProgress = false;
     }
   }
 

@@ -1,6 +1,6 @@
 use serde::Serialize;
-use std::fs;
 use std::collections::HashSet;
+use std::fs;
 use std::sync::Mutex;
 use std::time::{Instant, UNIX_EPOCH};
 use tauri::Emitter;
@@ -298,7 +298,9 @@ pub async fn get_directory_contents(
     let op_id = operation_id.unwrap_or_default();
 
     if !op_id.is_empty() {
-        let mut listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
+        let mut listings = ACTIVE_DIRECTORY_LISTINGS
+            .lock()
+            .map_err(|e| e.to_string())?;
         listings.insert(op_id.clone());
     }
 
@@ -306,13 +308,19 @@ pub async fn get_directory_contents(
     let progress_path = dir_path.clone();
 
     let result = tokio::task::spawn_blocking(move || {
-        let entries = fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
+        let entries =
+            fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
         let mut items = Vec::new();
         let mut loaded: usize = 0;
 
-        for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Directory] read_dir entry error: {}", err)).ok()) {
+        for entry in entries.filter_map(|e| {
+            e.map_err(|err| log::warn!("[Directory] read_dir entry error: {}", err))
+                .ok()
+        }) {
             if !listing_op_id.is_empty() {
-                let listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
+                let listings = ACTIVE_DIRECTORY_LISTINGS
+                    .lock()
+                    .map_err(|e| e.to_string())?;
                 if !listings.contains(&listing_op_id) {
                     log::debug!(
                         "[Directory] get_directory_contents cancelled mid-scan: op={} loaded={}",
@@ -324,10 +332,7 @@ pub async fn get_directory_contents(
             }
 
             let entry_path = entry.path();
-            let name = entry
-                .file_name()
-                .to_string_lossy()
-                .to_string();
+            let name = entry.file_name().to_string_lossy().to_string();
 
             if !show_hidden && is_hidden(&name, &entry_path) {
                 continue;
@@ -346,10 +351,14 @@ pub async fn get_directory_contents(
                     "[Directory] directory listing capped at 100,000 entries: {}",
                     progress_path
                 );
+                let _ = webview.emit(
+                    "directory-truncated",
+                    serde_json::json!({ "dirPath": progress_path, "count": loaded }),
+                );
                 break;
             }
 
-            if loaded % 200 == 0 {
+            if loaded.is_multiple_of(200) {
                 let _ = webview.emit(
                     "directory-contents-progress",
                     serde_json::json!({
@@ -415,7 +424,9 @@ pub async fn cancel_directory_contents(operation_id: String) -> Result<(), Strin
         "[Directory] cancel_directory_contents request: op={}",
         operation_id
     );
-    let mut listings = ACTIVE_DIRECTORY_LISTINGS.lock().map_err(|e| e.to_string())?;
+    let mut listings = ACTIVE_DIRECTORY_LISTINGS
+        .lock()
+        .map_err(|e| e.to_string())?;
     listings.remove(&operation_id);
     Ok(())
 }
@@ -465,7 +476,10 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
                 false,
             ));
             if let Ok(entries) = fs::read_dir("/Volumes") {
-                for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Directory] /Volumes entry error: {}", err)).ok()) {
+                for entry in entries.filter_map(|e| {
+                    e.map_err(|err| log::warn!("[Directory] /Volumes entry error: {}", err))
+                        .ok()
+                }) {
                     let mount = entry.path().to_string_lossy().to_string();
                     let name = entry.file_name().to_string_lossy().to_string();
                     if name != "Macintosh HD" {
@@ -478,32 +492,44 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
         #[cfg(target_os = "linux")]
         {
             drives.push(build_drive("Root".into(), "/".into(), "ext4".into(), false));
-            let home = std::env::var("HOME").unwrap_or_default();
+            let home = directories::BaseDirs::new()
+                .map(|b| b.home_dir().to_string_lossy().to_string())
+                .unwrap_or_else(|| std::env::var("HOME").unwrap_or_default());
             if !home.is_empty() && home != "/" {
                 drives.push(build_drive("Home".into(), home, String::new(), false));
             }
             for mount_dir in &["/media", "/mnt", "/run/media"] {
                 if let Ok(entries) = fs::read_dir(mount_dir) {
-                    for entry in entries.filter_map(|e| e.map_err(|err| log::warn!("[Directory] {} entry error: {}", mount_dir, err)).ok()) {
+                    for entry in entries.filter_map(|e| {
+                        e.map_err(|err| {
+                            log::warn!("[Directory] {} entry error: {}", mount_dir, err)
+                        })
+                        .ok()
+                    }) {
                         let entry_path = entry.path();
                         let mount = entry_path.to_string_lossy().to_string();
                         let name = entry.file_name().to_string_lossy().to_string();
-                        if !drives.iter().any(|d| d.mount_point == mount) {
-                            if entry_path.is_dir() {
-                                if *mount_dir == "/run/media" {
-                                    // /run/media/<user>/<device> — enumerate subdirectories
-                                    if let Ok(sub_entries) = fs::read_dir(&entry_path) {
-                                        for sub_entry in sub_entries.filter_map(|e| e.ok()) {
-                                            let sub_mount = sub_entry.path().to_string_lossy().to_string();
-                                            let sub_name = sub_entry.file_name().to_string_lossy().to_string();
-                                            if !drives.iter().any(|d| d.mount_point == sub_mount) {
-                                                drives.push(build_drive(sub_name, sub_mount, String::new(), true));
-                                            }
+                        if !drives.iter().any(|d| d.mount_point == mount) && entry_path.is_dir() {
+                            if *mount_dir == "/run/media" {
+                                // /run/media/<user>/<device> — enumerate subdirectories
+                                if let Ok(sub_entries) = fs::read_dir(&entry_path) {
+                                    for sub_entry in sub_entries.filter_map(|e| e.ok()) {
+                                        let sub_mount =
+                                            sub_entry.path().to_string_lossy().to_string();
+                                        let sub_name =
+                                            sub_entry.file_name().to_string_lossy().to_string();
+                                        if !drives.iter().any(|d| d.mount_point == sub_mount) {
+                                            drives.push(build_drive(
+                                                sub_name,
+                                                sub_mount,
+                                                String::new(),
+                                                true,
+                                            ));
                                         }
                                     }
-                                } else {
-                                    drives.push(build_drive(name, mount, String::new(), true));
                                 }
+                            } else {
+                                drives.push(build_drive(name, mount, String::new(), true));
                             }
                         }
                     }
@@ -515,22 +541,24 @@ pub async fn get_drives() -> Result<Vec<DriveInfo>, String> {
     })
     .await
     .map_err(|e| e.to_string())
-    .map(|result| {
-        if let Ok(drives) = &result {
+    .inspect(|result| {
+        if let Ok(drives) = result {
             log::debug!(
                 "[Directory] get_drives completed: count={} elapsed={}ms",
                 drives.len(),
                 started_at.elapsed().as_millis()
             );
         }
-        result
     })?
 }
 
 #[tauri::command]
 pub async fn get_drive_info() -> Result<Vec<DriveInfo>, String> {
     let drives = get_drives().await?;
-    log::debug!("[Directory] get_drive_info returning {} drives", drives.len());
+    log::debug!(
+        "[Directory] get_drive_info returning {} drives",
+        drives.len()
+    );
     Ok(drives)
 }
 
@@ -584,7 +612,7 @@ pub async fn get_disk_space(drive_path: String) -> Result<serde_json::Value, Str
     })
     .await
     .map_err(|e| e.to_string())
-    .map(|result| {
+    .inspect(|result| {
         if result.is_ok() {
             log::debug!(
                 "[Directory] get_disk_space completed in {}ms for {}",
@@ -592,7 +620,6 @@ pub async fn get_disk_space(drive_path: String) -> Result<serde_json::Value, Str
                 drive_path
             );
         }
-        result
     })?
 }
 
@@ -615,7 +642,10 @@ pub async fn calculate_folder_size(
         let mut file_count: u64 = 0;
         let mut folder_count: u64 = 0;
 
-        for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.map_err(|err| log::warn!("[Directory] folder size walk error: {}", err)).ok()) {
+        for entry in WalkDir::new(&path).into_iter().filter_map(|e| {
+            e.map_err(|err| log::warn!("[Directory] folder size walk error: {}", err))
+                .ok()
+        }) {
             {
                 let calcs = ACTIVE_FOLDER_CALCS.lock().map_err(|e| e.to_string())?;
                 if !calcs.contains(&op_id) {
@@ -627,12 +657,15 @@ pub async fn calculate_folder_size(
                 if meta.is_file() {
                     total = total.saturating_add(meta.len());
                     file_count += 1;
-                    if file_count % 500 == 0 {
-                        let _ = webview.emit("folder-size-progress", serde_json::json!({
-                            "operationId": op_id,
-                            "size": total,
-                            "files": file_count,
-                        }));
+                    if file_count.is_multiple_of(500) {
+                        let _ = webview.emit(
+                            "folder-size-progress",
+                            serde_json::json!({
+                                "operationId": op_id,
+                                "size": total,
+                                "files": file_count,
+                            }),
+                        );
                     }
                 } else if meta.is_dir() {
                     folder_count += 1;
@@ -662,4 +695,24 @@ pub async fn cancel_folder_size_calculation(operation_id: String) -> Result<(), 
     let mut calcs = ACTIVE_FOLDER_CALCS.lock().map_err(|e| e.to_string())?;
     calcs.remove(&operation_id);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn dotfiles_are_hidden() {
+        assert!(is_hidden(".bashrc", Path::new("/home/u/.bashrc")));
+        assert!(is_hidden(".git", Path::new("/repo/.git")));
+    }
+
+    #[test]
+    fn regular_files_are_not_hidden() {
+        let tmp = tempfile::tempdir().unwrap();
+        let p = tmp.path().join("visible.txt");
+        std::fs::write(&p, "x").unwrap();
+        assert!(!is_hidden("visible.txt", &p));
+    }
 }

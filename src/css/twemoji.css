@@ -1,4 +1,5 @@
-.twemoji {
+.twemoji,
+.lucide-icon {
   display: inline-block;
   width: 1em;
   height: 1em;
@@ -8,28 +9,33 @@
   -webkit-user-drag: none;
 }
 
-.twemoji-small {
+.twemoji-small,
+.lucide-icon-small {
   width: 1em;
   height: 1em;
 }
 
-.twemoji-large {
+.twemoji-large,
+.lucide-icon-large {
   width: 2em;
   height: 2em;
 }
 
-.twemoji-xlarge {
+.twemoji-xlarge,
+.lucide-icon-xlarge {
   width: 3em;
   height: 3em;
 }
 
-.nav-icon .twemoji {
+.nav-icon .twemoji,
+.nav-icon .lucide-icon {
   width: 1em;
   height: 1em;
   margin: 0;
 }
 
 .tree-icon .twemoji,
+.tree-icon .lucide-icon,
 .tree-icon .file-icon {
   width: 14px;
   height: 14px;
@@ -37,112 +43,173 @@
   margin: 0;
 }
 
-.empty-icon .twemoji {
+.empty-icon .twemoji,
+.empty-icon .lucide-icon {
   width: 4em;
   height: 4em;
   margin-bottom: 1rem;
 }
 
-.preview-empty-icon .twemoji {
+.preview-empty-icon .twemoji,
+.preview-empty-icon .lucide-icon {
   width: 3em;
   height: 3em;
   margin-bottom: 0.5rem;
 }
 
-.context-menu-item .twemoji {
+.context-menu-item .twemoji,
+.context-menu-item .lucide-icon {
   width: 1em;
   height: 1em;
   flex-shrink: 0;
 }
 
-.bookmark-icon .twemoji {
+.bookmark-icon .twemoji,
+.bookmark-icon .lucide-icon {
   width: 1em;
   height: 1em;
   margin-right: 0.4em;
 }
 
-.file-icon .twemoji {
+.file-icon .twemoji,
+.file-icon .lucide-icon {
   width: var(--icon-size-grid);
   height: var(--icon-size-grid);
   margin-bottom: 0;
 }
 
-.list-view .file-icon .twemoji {
+.list-view .file-icon .twemoji,
+.list-view .file-icon .lucide-icon {
   width: max(var(--icon-size-list), 16px);
   height: max(var(--icon-size-list), 16px);
   margin-right: 0.45rem;
   margin-bottom: 0;
 }
 
-.dialog-icon .twemoji {
+.dialog-icon .twemoji,
+.dialog-icon .lucide-icon {
   width: 2em;
   height: 2em;
   margin-right: 0.5rem;
 }
 
-.toolbar-button .twemoji {
+.toolbar-button .twemoji,
+.toolbar-button .lucide-icon {
   width: 0.95em;
   height: 0.95em;
 }
 
 .address-icon .twemoji,
-.search-icon .twemoji {
+.address-icon .lucide-icon,
+.search-icon .twemoji,
+.search-icon .lucide-icon {
   width: 1em;
   height: 1em;
 }
 
-.status-bar .twemoji {
+.status-bar .twemoji,
+.status-bar .lucide-icon {
   width: var(--icon-size-status);
   height: var(--icon-size-status);
 }
 
 .settings-modal h3 .twemoji,
-.settings-tab .twemoji {
+.settings-modal h3 .lucide-icon,
+.settings-tab .twemoji,
+.settings-tab .lucide-icon {
   width: var(--icon-size-settings-tab);
   height: var(--icon-size-settings-tab);
 }
 
-.history-item .twemoji {
+.history-item .twemoji,
+.history-item .lucide-icon {
   width: 1em;
   height: 1em;
   margin-right: 0.5em;
 }
 
-.history-clear .twemoji {
+.history-clear .twemoji,
+.history-clear .lucide-icon {
   width: 1em;
   height: 1em;
   margin-right: 0.5em;
 }
 
-.sort-menu .twemoji {
+.sort-menu .twemoji,
+.sort-menu .lucide-icon {
   width: 1em;
   height: 1em;
   margin-right: 0.5em;
 }
 
-.bookmark-add-btn .twemoji {
+.bookmark-add-btn .twemoji,
+.bookmark-add-btn .lucide-icon {
   width: 1em;
   height: 1em;
 }
 
 .preview-close .twemoji,
+.preview-close .lucide-icon,
 .search-close .twemoji,
-.modal-close .twemoji {
+.search-close .lucide-icon,
+.modal-close .twemoji,
+.modal-close .lucide-icon {
   width: 1em;
   height: 1em;
 }
 
-button .twemoji {
+button .twemoji,
+button .lucide-icon {
   vertical-align: middle;
   margin: 0;
 }
 
-body.themed-icons .twemoji {
+body.themed-icons .twemoji,
+body.themed-icons .lucide-icon {
   filter: grayscale(1) brightness(0.9) sepia(1) saturate(3)
     hue-rotate(var(--themed-icon-hue, 200deg));
   opacity: 0.85;
 }
 
-body.themed-icons .twemoji:hover {
+body.themed-icons .twemoji:hover,
+body.themed-icons .lucide-icon:hover {
   opacity: 1;
+}
+
+/* Folder Icon Style Customizations */
+
+/* Outline (default): stroke-only, no fill */
+body.folder-style-outline .file-item[data-is-directory='true'] .file-icon svg,
+body.folder-style-outline .folder-tree-icon svg,
+body.folder-style-outline .nav-icon svg,
+body.folder-style-outline .bookmark-icon svg {
+  fill: none !important;
+}
+
+/* Filled: fill folder SVG with a light tint of its color (currentColor) */
+body.folder-style-filled .file-item[data-is-directory='true'] .file-icon svg,
+body.folder-style-filled .folder-tree-icon svg,
+body.folder-style-filled .nav-icon svg,
+body.folder-style-filled .bookmark-icon svg {
+  fill: currentColor !important;
+  fill-opacity: 0.16 !important;
+}
+
+/* Colored: apply a folder-blue or accent-color tint with fill */
+body.folder-style-colored .file-item[data-is-directory='true'] .file-icon svg,
+body.folder-style-colored .folder-tree-icon svg,
+body.folder-style-colored .nav-icon svg,
+body.folder-style-colored .bookmark-icon svg {
+  color: var(--accent-color, #007aff) !important;
+  fill: var(--accent-color, #007aff) !important;
+  fill-opacity: 0.16 !important;
+}
+
+/* Monochrome: neutral grey stroke and no fill */
+body.folder-style-monochrome .file-item[data-is-directory='true'] .file-icon svg,
+body.folder-style-monochrome .folder-tree-icon svg,
+body.folder-style-monochrome .nav-icon svg,
+body.folder-style-monochrome .bookmark-icon svg {
+  color: var(--text-secondary, #8e8e93) !important;
+  fill: none !important;
 }

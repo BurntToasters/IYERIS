@@ -3,10 +3,15 @@
   padding: var(--sidebar-padding-v) var(--sidebar-padding-h);
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior-y: none;
+  overscroll-behavior-x: none;
+  -webkit-overflow-scrolling: auto;
   display: flex;
   flex-direction: column;
   gap: calc(var(--sidebar-section-gap) - 2px);
-  background: var(--surface-1);
+  background: var(--chrome-surface);
+  border: 1px solid var(--native-divider);
+  box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   isolation: isolate;
@@ -66,7 +71,7 @@
   padding-top: 2px;
 }
 
-.sidebar.collapsed .sidebar-resize-handle {
+body.sidebar-collapsed .sidebar-resize-handle {
   display: none;
 }
 
@@ -120,17 +125,27 @@
 .sidebar-resize-handle {
   position: absolute;
   top: 0;
-  right: -3px;
-  width: 6px;
-  height: 100%;
+  bottom: 0;
+  left: calc(var(--sidebar-width-current, var(--sidebar-width)) - 2px);
+  width: 10px;
+  height: auto;
   cursor: col-resize;
   background: transparent;
-  z-index: var(--z-sidebar);
+  border-radius: 999px;
+  z-index: var(--z-sidebar-header);
 }
 
 .sidebar-resize-handle:hover,
 .sidebar-resize-handle.resizing {
-  background: color-mix(in srgb, var(--interactive-selected) 80%, transparent);
+  background: linear-gradient(
+    90deg,
+    transparent 0,
+    transparent 2px,
+    color-mix(in srgb, var(--interactive-selected) 80%, transparent) 2px,
+    color-mix(in srgb, var(--interactive-selected) 80%, transparent) 5px,
+    transparent 5px,
+    transparent 100%
+  );
 }
 
 .sidebar::-webkit-scrollbar {
@@ -153,15 +168,19 @@
   background-clip: padding-box;
 }
 
+body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
 .sidebar-section {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 
 .sidebar-section + .sidebar-section {
   padding-top: 0;
-  margin-top: 4px;
+  margin-top: 2px;
   border-top: none;
 }
 
@@ -175,9 +194,9 @@
 .section-header {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 4px;
-  margin-bottom: 2px;
+  gap: 4px;
+  padding: 1px 3px;
+  margin-bottom: 1px;
 }
 
 .section-header .sidebar-toggle {
@@ -188,13 +207,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 6px;
+  gap: 4px;
   width: 100%;
   background: transparent;
   border: none;
   border-radius: var(--radius-small);
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 1px 3px;
   min-height: var(--control-height-sm);
   color: var(--text-secondary);
   font-size: var(--font-size-section-title);
@@ -355,7 +374,6 @@
 .nav-item.active {
   background: var(--interactive-selected);
   color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px var(--interactive-selected-border);
 }
 
 .nav-item.active::before {
@@ -394,7 +412,6 @@
 .tree-item.active {
   background: var(--interactive-selected);
   color: var(--text-primary);
-  box-shadow: inset 0 0 0 1px var(--interactive-selected-border);
 }
 
 .tree-item.drag-over {
@@ -575,7 +592,7 @@
   cursor: pointer;
   font-size: 12px;
   padding: 2px 6px;
-  border-radius: 3px;
+  border-radius: var(--radius-small);
   transition:
     background-color 0.2s ease,
     border-color 0.2s ease,

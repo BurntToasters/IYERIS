@@ -58,8 +58,6 @@ copyIfExists(
   path.join(root, 'public', 'vendor', 'pdfjs', 'pdf.worker.min.mjs')
 );
 
-copyDirIfExists(path.join(root, 'assets', 'twemoji'), path.join(root, 'public', 'twemoji'));
-
 for (const img of ['folder.png', 'folder-beta.png', 'icon.png']) {
   copyIfExists(path.join(root, 'assets', img), path.join(root, 'public', img));
 }

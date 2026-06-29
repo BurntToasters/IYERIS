@@ -105,10 +105,10 @@ describe('createUpdateActionsController', () => {
 
   function setup(options: SetupOptions = {}) {
     const checkUpdatesBtn = createMockElement(
-      '<img src="/twemoji/1f503.svg" class="twemoji" alt="🔃" draggable="false" /> Check for Updates'
+      '<span class="twemoji" data-icon="1f503" alt="🔃"></span> Check for Updates'
     );
     const toggleStatusBtn = createMockElement(
-      '<img src="/twemoji/1f50d.svg" class="twemoji" alt="🔍" draggable="false" /> Show Download Status'
+      '<span class="twemoji" data-icon="1f50d" alt="🔍"></span> Show Download Status'
     );
     toggleStatusBtn.hidden = true;
     toggleStatusBtn.setAttribute('aria-expanded', 'false');
@@ -285,6 +285,19 @@ describe('createUpdateActionsController', () => {
     );
     expect(ctx.installUpdate).toHaveBeenCalledTimes(1);
     expect(ctx.toggleStatusBtn.hidden).toBe(false);
+  });
+
+  it('re-prompts install from the button after the user defers restart', async () => {
+    const ctx = setup();
+    ctx.showDialog.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+
+    await ctx.controller.handleUpdateDownloaded({ version: '1.2.3' });
+    await ctx.controller.checkForUpdates();
+
+    expect(ctx.checkForUpdates).not.toHaveBeenCalled();
+    expect(ctx.installUpdate).toHaveBeenCalledTimes(1);
+    expect(ctx.showDialog).toHaveBeenCalledTimes(2);
+    expect(ctx.checkUpdatesBtn.innerHTML).toContain('Update Ready');
   });
 
   it('clears terminal download status when settings modal closes', async () => {
@@ -572,7 +585,8 @@ describe('createUpdateActionsController', () => {
       'Update Install Failed',
       'error'
     );
-    expect(ctx.checkUpdatesBtn.innerHTML).toContain('Check for Updates');
+    expect(ctx.checkUpdatesBtn.innerHTML).toContain('Update Ready');
+    expect(ctx.checkUpdatesBtn.classList.contains('primary')).toBe(true);
   });
 
   it('silent check respects guards and starts background download only when eligible', async () => {

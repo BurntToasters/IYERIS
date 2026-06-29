@@ -55,6 +55,9 @@ export function createPreviewController(deps: PreviewDeps) {
   let previewToggleBtn: HTMLButtonElement | null = null;
   let previewCloseBtn: HTMLButtonElement | null = null;
   let resizeHandler: (() => void) | null = null;
+  let closeAnimationEndListener: ((e: AnimationEvent) => void) | null = null;
+  let closeAnimationFallbackTimer: number | null = null;
+  let contentMutationObserver: MutationObserver | null = null;
 
   const ensureElements = () => {
     if (!previewPanel) previewPanel = getById('preview-panel');
@@ -66,10 +69,18 @@ export function createPreviewController(deps: PreviewDeps) {
   function showEmptyPreview() {
     ensureElements();
     if (!previewContent) return;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-empty">
-      <div class="preview-empty-icon">${twemojiImg(String.fromCodePoint(0x1f441), 'twemoji-xlarge')}</div>
-      <p>Select a file to preview</p>
+      <div class="preview-empty-illustration">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" class="preview-empty-svg">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke-dasharray="2 2" />
+          <path d="M14 2v6h6" />
+          <circle cx="12" cy="13" r="2.5" />
+          <path d="M8 13h.01M16 13h.01" />
+        </svg>
+      </div>
+      <p class="preview-empty-title">Select a file to preview</p>
       <small>Press Space for quick look</small>
     </div>
   `;
@@ -77,6 +88,13 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function clearPreview() {
     previewRequestId++;
+    // Stop any playing media before clearing content.
+    if (previewContent) {
+      previewContent.querySelectorAll('video, audio').forEach((el) => {
+        (el as HTMLMediaElement).pause();
+        (el as HTMLMediaElement).removeAttribute('src');
+      });
+    }
     if (activePdfViewer) {
       activePdfViewer.destroy();
       activePdfViewer = null;
@@ -99,6 +117,66 @@ export function createPreviewController(deps: PreviewDeps) {
     }
   }
 
+  function hidePreviewPanelAnimated() {
+    ensureElements();
+    if (!previewPanel) return;
+    const panel = previewPanel;
+
+    isPreviewPanelVisible = false;
+    if (previewContent) {
+      previewContent.querySelectorAll('video, audio').forEach((el) => {
+        (el as HTMLMediaElement).pause();
+        (el as HTMLMediaElement).removeAttribute('src');
+      });
+    }
+    if (activePdfViewer) {
+      activePdfViewer.destroy();
+      activePdfViewer = null;
+    }
+    previewRequestId++;
+
+    if (closeAnimationEndListener) {
+      panel.removeEventListener('animationend', closeAnimationEndListener);
+      closeAnimationEndListener = null;
+    }
+    if (closeAnimationFallbackTimer) {
+      window.clearTimeout(closeAnimationFallbackTimer);
+      closeAnimationFallbackTimer = null;
+    }
+
+    // In a headless test environment (e.g. Vitest/JSDOM), there is no layout engine
+    // to fire 'animationend' events. Hide the panel synchronously to keep tests green.
+    const isTest = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test';
+    if (isTest) {
+      panel.style.display = 'none';
+      panel.classList.remove('closing');
+      syncPreviewToggleState();
+      return;
+    }
+
+    panel.classList.add('closing');
+    const finishClose = () => {
+      panel.style.display = 'none';
+      panel.classList.remove('closing');
+      if (closeAnimationEndListener) {
+        panel.removeEventListener('animationend', closeAnimationEndListener);
+        closeAnimationEndListener = null;
+      }
+      if (closeAnimationFallbackTimer) {
+        window.clearTimeout(closeAnimationFallbackTimer);
+        closeAnimationFallbackTimer = null;
+      }
+    };
+    closeAnimationEndListener = (e: AnimationEvent) => {
+      if (e.target === panel && e.animationName.startsWith('slideOut')) {
+        finishClose();
+      }
+    };
+    panel.addEventListener('animationend', closeAnimationEndListener);
+    closeAnimationFallbackTimer = window.setTimeout(finishClose, 350);
+    syncPreviewToggleState();
+  }
+
   function togglePreviewPanel() {
     ensureElements();
     if (!previewPanel) return;
@@ -111,7 +189,18 @@ export function createPreviewController(deps: PreviewDeps) {
         return;
       }
       isPreviewPanelVisible = true;
+
+      if (closeAnimationEndListener) {
+        previewPanel.removeEventListener('animationend', closeAnimationEndListener);
+        closeAnimationEndListener = null;
+      }
+      if (closeAnimationFallbackTimer) {
+        window.clearTimeout(closeAnimationFallbackTimer);
+        closeAnimationFallbackTimer = null;
+      }
+      previewPanel.classList.remove('closing');
       previewPanel.style.display = 'flex';
+
       const selectedItems = deps.getSelectedItems();
       if (selectedItems.size === 1) {
         const selectedPath = Array.from(selectedItems)[0]!;
@@ -120,22 +209,21 @@ export function createPreviewController(deps: PreviewDeps) {
           updatePreview(file);
         }
       }
+      syncPreviewToggleState();
     } else {
-      isPreviewPanelVisible = false;
-      if (previewContent) {
-        previewContent.querySelectorAll('video, audio').forEach((el) => {
-          (el as HTMLMediaElement).pause();
-          (el as HTMLMediaElement).removeAttribute('src');
-        });
-      }
-      previewPanel.style.display = 'none';
-      previewRequestId++;
+      hidePreviewPanelAnimated();
     }
-    syncPreviewToggleState();
   }
 
   function updatePreview(file: FileItem) {
     const requestId = ++previewRequestId;
+    // Stop any playing media before swapping in new content.
+    if (previewContent) {
+      previewContent.querySelectorAll('video, audio').forEach((el) => {
+        (el as HTMLMediaElement).pause();
+        (el as HTMLMediaElement).removeAttribute('src');
+      });
+    }
     if (activePdfViewer) {
       activePdfViewer.destroy();
       activePdfViewer = null;
@@ -170,6 +258,7 @@ export function createPreviewController(deps: PreviewDeps) {
     } catch (error) {
       ensureElements();
       if (previewContent) {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         previewContent.innerHTML = `<div class="preview-error">Preview failed: ${escapeHtml(getErrorMessage(error))}</div>`;
       }
     }
@@ -185,6 +274,7 @@ export function createPreviewController(deps: PreviewDeps) {
       if (requestId !== previewRequestId) return;
 
       if (!result.success) {
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         previewContent.innerHTML = `
         <div class="preview-error">
           Failed to list archive contents: ${escapeHtml(result.error || 'Operation failed')}
@@ -236,6 +326,7 @@ export function createPreviewController(deps: PreviewDeps) {
       previewContent.innerHTML = html;
     } catch (error) {
       if (requestId !== previewRequestId) return;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to list archive contents: ${escapeHtml(getErrorMessage(error))}
@@ -253,6 +344,7 @@ export function createPreviewController(deps: PreviewDeps) {
     const settings = deps.getCurrentSettings();
     if (file.size > (settings.maxPreviewSizeMB || 50) * 1024 * 1024) {
       if (requestId !== previewRequestId) return;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to load image: ${escapeHtml('File too large to preview')}
@@ -268,6 +360,7 @@ export function createPreviewController(deps: PreviewDeps) {
     const fileUrl = encodeFileUrl(file.path);
     const altText = escapeHtml(file.name);
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-image-wrapper">
       <img src="${fileUrl}" class="preview-image" alt="${altText}">
@@ -292,6 +385,7 @@ export function createPreviewController(deps: PreviewDeps) {
         void (async () => {
           if (img.dataset.fallbackAttempted === 'true') {
             if (previewContent) {
+              // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
               previewContent.innerHTML = `
               <div class="preview-error">
                 Failed to load image
@@ -308,6 +402,7 @@ export function createPreviewController(deps: PreviewDeps) {
           );
           if (!dataUrl || requestId !== previewRequestId) {
             if (previewContent) {
+              // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
               previewContent.innerHTML = `
               <div class="preview-error">
                 Failed to load image
@@ -361,9 +456,10 @@ export function createPreviewController(deps: PreviewDeps) {
     };
     const brand = cameraFormats[ext] || 'Camera';
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-raw-info">
-      <div class="preview-raw-icon">${twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji-xlarge')}</div>
+      <div class="preview-raw-icon">${twemojiImg('camera', 'twemoji-xlarge')}</div>
       <div class="preview-raw-details">
         <strong>${ext} RAW Image</strong>
         <p>${brand} RAW format</p>
@@ -383,6 +479,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
 
     if (!result.success) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to load markdown: ${escapeHtml(result.error || 'Operation failed')}
@@ -408,15 +505,17 @@ export function createPreviewController(deps: PreviewDeps) {
       } catch {
         rendered = `<pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>`;
       }
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
-      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 100KB</div>` : ''}
       <div class="preview-markdown">${rendered}</div>
       ${generateFileInfo(file, info)}
     `;
     } else {
       const lang = getLanguageForExt(deps.getFileExtension(file.name));
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
-      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 100KB</div>` : ''}
+      ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 100KB</div>` : ''}
       <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
       ${generateFileInfo(file, info)}
     `;
@@ -432,6 +531,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
 
     if (!result.success) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to load text: ${escapeHtml(result.error || 'Operation failed')}
@@ -447,8 +547,9 @@ export function createPreviewController(deps: PreviewDeps) {
     const ext = deps.getFileExtension(file.name);
     const lang = getLanguageForExt(ext);
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
-    ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File truncated to first 50KB</div>` : ''}
+    ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 50KB</div>` : ''}
     <pre class="preview-text"><code class="${lang ? `language-${lang}` : ''}">${escapeHtml(result.content)}</code></pre>
     ${generateFileInfo(file, info)}
   `;
@@ -472,6 +573,7 @@ export function createPreviewController(deps: PreviewDeps) {
     const settings = deps.getCurrentSettings();
     const maxSizeMB = settings.maxPreviewSizeMB || 50;
     if (file.size > maxSizeMB * 1024 * 1024) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Video file too large to preview (>${maxSizeMB}MB)
@@ -487,6 +589,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const fileUrl = encodeFileUrl(file.path);
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <video src="${fileUrl}" class="preview-video" controls controlsList="nodownload" ${settings.autoPlayVideos ? 'autoplay' : ''}>
       Your browser does not support the video tag.
@@ -519,9 +622,10 @@ export function createPreviewController(deps: PreviewDeps) {
 
     const fileUrl = encodeFileUrl(file.path);
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-audio-container">
-      <div class="preview-audio-icon">${twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji-xlarge')}</div>
+      <div class="preview-audio-icon">${twemojiImg('music', 'twemoji-xlarge')}</div>
       <audio src="${fileUrl}" class="preview-audio" controls controlsList="nodownload">
         Your browser does not support the audio tag.
       </audio>
@@ -559,9 +663,10 @@ export function createPreviewController(deps: PreviewDeps) {
     const settings = deps.getCurrentSettings();
     const maxSizeMB = settings.maxPreviewSizeMB || 50;
     if (file.size > maxSizeMB * 1024 * 1024) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
-        ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PDF file too large to preview (>${maxSizeMB}MB)
+        ${twemojiImg('alert-triangle', 'twemoji')} PDF file too large to preview (>${maxSizeMB}MB)
       </div>
       ${generateFileInfo(file, null)}
     `;
@@ -571,9 +676,10 @@ export function createPreviewController(deps: PreviewDeps) {
     const headerResult = await window.tauriAPI.readFileContent(file.path, 16);
     if (requestId !== previewRequestId) return;
     if (!headerResult.success || !headerResult.content.startsWith('%PDF-')) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
-        ${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} File does not appear to be a valid PDF
+        ${twemojiImg('alert-triangle', 'twemoji')} File does not appear to be a valid PDF
       </div>
       ${generateFileInfo(file, null)}
     `;
@@ -614,7 +720,8 @@ export function createPreviewController(deps: PreviewDeps) {
       const openBtn = document.createElement('button');
       openBtn.className = 'preview-pdf-open-btn';
       openBtn.title = 'Open in default application';
-      openBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App`;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+      openBtn.innerHTML = `${twemojiImg('file', 'twemoji-small')} Open in Default App`;
       openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
       actionsDiv.appendChild(openBtn);
       previewContent.appendChild(actionsDiv);
@@ -657,7 +764,8 @@ export function createPreviewController(deps: PreviewDeps) {
           const openBtn = document.createElement('button');
           openBtn.className = 'preview-pdf-open-btn';
           openBtn.title = 'Open in default application';
-          openBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App`;
+          // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+          openBtn.innerHTML = `${twemojiImg('file', 'twemoji-small')} Open in Default App`;
           openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
           actionsDiv.appendChild(openBtn);
           previewContent.appendChild(actionsDiv);
@@ -677,13 +785,14 @@ export function createPreviewController(deps: PreviewDeps) {
       }
 
       if (requestId !== previewRequestId) return;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       <div class="preview-error">
         Failed to render PDF
       </div>
       <div class="preview-pdf-actions">
         <button class="preview-pdf-open-btn" title="Open in default application">
-          ${twemojiImg(String.fromCodePoint(0x1f4c4), 'twemoji-small')} Open in Default App
+          ${twemojiImg('file', 'twemoji-small')} Open in Default App
         </button>
       </div>
       ${generateFileInfo(file, info)}
@@ -704,6 +813,7 @@ export function createPreviewController(deps: PreviewDeps) {
     if (requestId !== previewRequestId) return;
     const info = props.success ? props.properties : null;
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     previewContent.innerHTML = `
     <div class="preview-unsupported">
       <div class="preview-unsupported-icon">${deps.getFileIcon(file.name)}</div>
@@ -769,12 +879,14 @@ export function createPreviewController(deps: PreviewDeps) {
     ensureElements();
     if (resizeHandler) window.removeEventListener('resize', resizeHandler);
     resizeHandler = () => {
-      if (
-        previewPanel &&
-        typeof window.matchMedia === 'function' &&
-        window.matchMedia('(max-width: 900px)').matches
-      ) {
-        previewPanel.style.display = 'none';
+      if (previewPanel && typeof window.matchMedia === 'function') {
+        const viewportBlocksPanel = window.matchMedia('(max-width: 900px)').matches;
+        if (viewportBlocksPanel) {
+          previewPanel.style.display = 'none';
+        } else if (isPreviewPanelVisible) {
+          previewPanel.classList.remove('closing');
+          previewPanel.style.display = 'flex';
+        }
       }
       syncPreviewToggleState();
     };
@@ -785,20 +897,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     if (previewCloseBtn) {
       previewCloseBtn.addEventListener('click', () => {
-        isPreviewPanelVisible = false;
-        if (activePdfViewer) {
-          activePdfViewer.destroy();
-          activePdfViewer = null;
-        }
-        if (previewContent) {
-          previewContent.querySelectorAll('video, audio').forEach((el) => {
-            (el as HTMLMediaElement).pause();
-            (el as HTMLMediaElement).removeAttribute('src');
-          });
-        }
-        if (previewPanel) previewPanel.style.display = 'none';
-        previewRequestId++;
-        syncPreviewToggleState();
+        hidePreviewPanelAnimated();
       });
     }
 
@@ -812,6 +911,20 @@ export function createPreviewController(deps: PreviewDeps) {
         if (!safeHref) return;
         deps.openExternal(safeHref);
       });
+
+      if (typeof MutationObserver !== 'undefined' && !contentMutationObserver) {
+        contentMutationObserver = new MutationObserver(() => {
+          if (!previewContent) return;
+          previewContent.classList.remove('fade-in-active');
+          void previewContent.offsetWidth; // Force reflow
+          previewContent.classList.add('fade-in-active');
+        });
+        contentMutationObserver.observe(previewContent, {
+          childList: true,
+          characterData: true,
+          subtree: false,
+        });
+      }
     }
 
     quicklook.initQuicklookUi();

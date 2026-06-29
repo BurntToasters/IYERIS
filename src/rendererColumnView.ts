@@ -1,11 +1,14 @@
 import type { Settings, FileItem, DriveInfo, DirectoryResponse } from './types';
 import { devLog, escapeHtml, ignoreError } from './shared.js';
-import { isWindowsPath, rendererPath as path } from './rendererUtils.js';
+import { isWindowsPath, rendererPath as path, twemojiImg } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
+import { t } from './i18n.js';
 import {
   COLUMN_VIEW_RENDER_TIMEOUT_MS,
   COLUMN_VIEW_SCROLL_DELAY_MS,
 } from './rendererLocalConstants.js';
+
+const EMPTY_FOLDER_LABEL = 'Empty folder';
 
 type ColumnViewDeps = {
   columnView: HTMLElement;
@@ -118,7 +121,8 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       const isWindows = isWindowsPath(deps.getCurrentPath());
 
       if (isWindows) {
-        const parts = deps.getCurrentPath().split('\\').filter(Boolean);
+        // Normalize forward-slashes so Windows paths like C:/foo work too.
+        const parts = deps.getCurrentPath().replace(/\//g, '\\').split('\\').filter(Boolean);
         for (let i = 0; i < parts.length; i++) {
           if (i === 0) {
             columnPaths.push(parts[0] + '\\');
@@ -234,8 +238,9 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         item.setAttribute('aria-selected', 'false');
         item.dataset.path = drive.path;
         item.title = drive.path;
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         item.innerHTML = `
-        <span class="column-item-icon"><img src="/twemoji/1f4bf.svg" class="twemoji" alt="💿" draggable="false" /></span>
+        <span class="column-item-icon">${twemojiImg('1f4bf', 'twemoji')}</span>
         <span class="column-item-name">${escapeHtml(drive.label || drive.path)}</span>
         <span class="column-item-arrow">▸</span>
       `;
@@ -310,7 +315,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       });
 
       if (alreadyInCurrentDir) {
-        deps.showToast('Items are already in this directory', 'Info', 'info');
+        deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
         deps.hideDropIndicator();
         return;
       }
@@ -449,13 +454,14 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     }
 
     const icon = fileItem.isDirectory
-      ? '<img src="/twemoji/1f4c1.svg" class="twemoji" alt="📁" draggable="false" />'
+      ? twemojiImg('1f4c1', 'twemoji')
       : deps.getFileIcon(fileItem.name);
 
     const symlinkBadge = fileItem.isSymlink
       ? '<span class="symlink-badge" aria-label="Symbolic link">⤳</span>'
       : '';
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     item.innerHTML = `
           <span class="column-item-icon">${icon}${symlinkBadge}</span>
           <span class="column-item-name">${escapeHtml(fileItem.name)}</span>
@@ -634,11 +640,16 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         : sortedItems.filter((item) => !item.isHidden);
 
       if (visibleItems.length === 0) {
-        pane.innerHTML = '<div class="column-item placeholder">Empty folder</div>';
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+        pane.innerHTML = `<div class="column-item placeholder">${EMPTY_FOLDER_LABEL}</div>`;
       } else {
-        visibleItems.forEach((fileItem) => {
-          pane.appendChild(createColumnItemElement(fileItem, columnIndex, pane));
-        });
+        // M25: build into a DocumentFragment first so the browser only does
+        // one layout pass for the whole list instead of one per row.
+        const fragment = document.createDocumentFragment();
+        for (const fileItem of visibleItems) {
+          fragment.appendChild(createColumnItemElement(fileItem, columnIndex, pane));
+        }
+        pane.appendChild(fragment);
       }
     } catch {
       pane.innerHTML = '<div class="column-item placeholder">Error loading folder</div>';

@@ -25,6 +25,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 }
 
 function setupDOM() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="folder-icon-modal" style="display:none">
       <span id="folder-icon-path"></span>
@@ -132,6 +133,7 @@ describe('createFolderIconPickerController', () => {
     });
 
     it('does nothing when grid element is missing', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="folder-icon-modal" style="display:none">
           <span id="folder-icon-path"></span>
@@ -146,6 +148,7 @@ describe('createFolderIconPickerController', () => {
     });
 
     it('does nothing when path display element is missing', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="folder-icon-modal" style="display:none">
           <div id="folder-icon-grid"></div>
@@ -253,7 +256,7 @@ describe('createFolderIconPickerController', () => {
 
       await ctrl.setFolderIcon('/my/folder', '⭐');
 
-      expect(settings.folderIcons!['/my/folder']).toBe('⭐');
+      expect(settings.folderIcons!['/my/folder']).toBe('star');
       expect(deps.saveSettings).toHaveBeenCalled();
       expect(deps.showToast).toHaveBeenCalledWith('Folder icon updated', 'Success', 'success');
     });
@@ -266,7 +269,7 @@ describe('createFolderIconPickerController', () => {
       await ctrl.setFolderIcon('/new/folder', '❤️');
 
       expect(settings.folderIcons).toBeDefined();
-      expect(settings.folderIcons!['/new/folder']).toBe('❤️');
+      expect(settings.folderIcons!['/new/folder']).toBe('heart');
       expect(deps.saveSettings).toHaveBeenCalled();
     });
 
@@ -296,7 +299,7 @@ describe('createFolderIconPickerController', () => {
 
       await ctrl.setFolderIcon('/folder', '❤️');
 
-      expect(settings.folderIcons!['/folder']).toBe('❤️');
+      expect(settings.folderIcons!['/folder']).toBe('heart');
     });
   });
 
@@ -390,13 +393,23 @@ describe('createFolderIconPickerController', () => {
 
   describe('getFolderIcon', () => {
     it('returns custom icon via twemojiImg when folder has a custom icon', () => {
-      const { deps } = createDeps({ folderIcons: { '/custom': '🌟' } });
+      const { deps } = createDeps({ folderIcons: { '/custom': 'sparkles' } });
       const ctrl = createFolderIconPickerController(deps as any);
 
       const result = ctrl.getFolderIcon('/custom');
 
-      expect(deps.twemojiImg).toHaveBeenCalledWith('🌟', 'twemoji file-icon');
+      expect(deps.twemojiImg).toHaveBeenCalledWith('sparkles', 'twemoji file-icon');
       expect(result).toContain('twemoji file-icon');
+    });
+
+    it('returns default folderIcon for unsafe custom icons', () => {
+      const { deps } = createDeps({ folderIcons: { '/custom': '"><img src=x onerror=alert(1)>' } });
+      const ctrl = createFolderIconPickerController(deps as any);
+
+      const result = ctrl.getFolderIcon('/custom');
+
+      expect(result).toBe(deps.folderIcon);
+      expect(deps.twemojiImg).not.toHaveBeenCalled();
     });
 
     it('returns default folderIcon when folder has no custom icon', () => {

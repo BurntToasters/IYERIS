@@ -3,12 +3,12 @@
   justify-content: space-between;
   align-items: center;
   height: var(--titlebar-height);
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--panel-border);
+  background: var(--chrome-surface);
+  border-bottom: 1px solid var(--native-divider);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
   padding: 0 0 0 12px;
   position: relative;
   z-index: var(--z-component);
-  will-change: transform;
 }
 
 .titlebar-drag-handle {
@@ -48,7 +48,7 @@
 
 .titlebar-title {
   font-size: 13px;
-  font-weight: 500;
+  font-weight: 600;
   letter-spacing: -0.01em;
   opacity: 0.85;
   pointer-events: none;
@@ -67,7 +67,7 @@
   border: none;
   background: transparent;
   color: var(--text-primary);
-  cursor: pointer;
+  cursor: default;
   transition: background-color var(--animation-duration) var(--animation-easing);
   display: flex;
   align-items: center;
@@ -79,13 +79,21 @@
   background: var(--interactive-hover);
 }
 
+/* Mirrors :hover for the maximize button: on Windows a native Snap Layouts
+   overlay sits on top of it, suppressing the CSS :hover, so the native side
+   emits hover and we reflect it via this class. */
+.titlebar-button.snap-hover {
+  background: var(--interactive-hover);
+}
+
 .titlebar-button:active {
   background: var(--interactive-active);
 }
 
-.titlebar-button.close:hover {
+.titlebar-button.close:hover,
+.titlebar-button.close:active {
   background: var(--danger-color);
-  color: var(--text-primary);
+  color: #fff; /* native white-on-red close, readable in both themes */
 }
 
 .titlebar-button.close:active {
@@ -143,14 +151,15 @@ body.platform-linux .titlebar-title {
 
 .titlebar-tabs {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   flex: 1;
   min-width: 0;
   padding: 0 4px;
-  gap: 2px;
+  gap: 4px;
   position: relative;
   z-index: 1;
+  height: 100%;
 }
 
 @supports (-webkit-app-region: drag) {
@@ -170,10 +179,11 @@ body.platform-linux .titlebar-title {
 
 .tab-list {
   display: flex;
-  align-items: center;
-  gap: 2px;
+  align-items: flex-end;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
+  height: 100%;
 }
 
 .tab-list::-webkit-scrollbar {
@@ -183,38 +193,84 @@ body.platform-linux .titlebar-title {
 .tab-item {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
+  gap: 8px;
+  padding: 4px 12px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-small);
-  cursor: pointer;
-  min-width: 80px;
+  border-bottom: none;
+  border-radius: var(--radius-medium) var(--radius-medium) 0 0;
+  cursor: default;
+  min-width: 90px;
   max-width: 180px;
-  height: calc(var(--titlebar-height) - 10px);
+  height: calc(var(--titlebar-height) - 6px);
   transition: var(--transition-standard);
   position: relative;
+  animation: tabOpenIn 0.18s cubic-bezier(0.22, 1, 0.36, 1);
+  transform-origin: center bottom;
+}
+
+@keyframes tabOpenIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.tab-item.closing {
+  animation: tabCloseOut 0.16s cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes tabCloseOut {
+  to {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+}
+
+body.reduce-motion .tab-item {
+  animation: none;
 }
 
 .tab-item:hover {
-  background: var(--interactive-hover);
+  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
 .tab-item.active {
-  background: var(--interactive-selected);
-  border-color: var(--interactive-selected-border);
+  background: var(--bg-secondary) !important;
+  border-color: var(--panel-border) var(--panel-border) transparent var(--panel-border);
+  box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.05);
+}
+
+.tab-item.active::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--accent-color);
+  border-radius: var(--radius-medium) var(--radius-medium) 0 0;
 }
 
 .tab-item .tab-icon {
   width: 16px;
   height: 16px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.tab-item .tab-icon img {
+.tab-item .tab-icon img,
+.tab-item .tab-icon svg {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  display: block;
 }
 
 .tab-item .tab-title {
@@ -227,13 +283,14 @@ body.platform-linux .titlebar-title {
 }
 
 .tab-item .tab-close {
+  position: relative;
   width: 16px;
   height: 16px;
   border: none;
   background: transparent;
   color: var(--text-secondary);
   border-radius: var(--radius-small);
-  cursor: pointer;
+  cursor: default;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -244,6 +301,17 @@ body.platform-linux .titlebar-title {
   flex-shrink: 0;
   font-size: 14px;
   line-height: 1;
+}
+
+/* WCAG 2.2 SC 2.5.8: 24px pointer target without enlarging the glyph. */
+.tab-item .tab-close::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  transform: translate(-50%, -50%);
 }
 
 .tab-item:hover .tab-close,
@@ -276,12 +344,13 @@ body.platform-linux .titlebar-title {
   background: transparent;
   color: var(--text-secondary);
   border-radius: var(--radius-small);
-  cursor: pointer;
+  cursor: default;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: var(--transition-standard);
   flex-shrink: 0;
+  margin-bottom: 5px;
 }
 
 .tab-new-btn:hover {
@@ -303,7 +372,7 @@ body.tabs-enabled .titlebar-drag-region {
 }
 
 .tab-item:focus-visible {
-  box-shadow: inset 0 0 0 2px rgba(var(--accent-rgb), 0.5);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.32);
   outline: none;
 }
 
@@ -330,7 +399,7 @@ body.reduce-transparency .titlebar-tabs {
   padding: 7px 14px;
   font-size: 12px;
   color: var(--text-primary);
-  cursor: pointer;
+  cursor: default;
   white-space: nowrap;
   transition: background-color 0.12s ease;
 }
@@ -354,4 +423,19 @@ body.liquid-glass .tab-context-menu {
 
 body.theme-light .tab-context-menu {
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+}
+
+/* Window Inactive dimming for tabs */
+body.window-inactive .tab-item.active {
+  background: color-mix(in srgb, var(--text-primary) 10%, transparent) !important;
+  box-shadow: none !important;
+}
+
+body.window-inactive .tab-item.active::before {
+  background: var(--text-tertiary) !important;
+  opacity: 0.5;
+}
+
+body.window-inactive .tab-item:not(.active) {
+  opacity: 0.6;
 }

@@ -310,6 +310,10 @@ export function createThemeEditorController(deps: ThemeEditorDeps) {
 
       const themeSnapshot = { ...tempCustomTheme };
       const settings = deps.getCurrentSettings();
+      // Snapshot current theme values BEFORE applying, so we can revert if
+      // the save fails and the user is left with an un-persisted theme switch.
+      const previousTheme = settings.theme;
+      const previousCustomTheme = settings.customTheme ? { ...settings.customTheme } : undefined;
       deps.setCurrentSettingsTheme('custom', themeSnapshot);
 
       deps.applySettings(settings);
@@ -321,7 +325,15 @@ export function createThemeEditorController(deps: ThemeEditorDeps) {
         updateCustomThemeUI();
         deps.showToast('Custom theme saved!', 'Theme', 'success');
       } else {
-        deps.showToast('Failed to save theme: ' + result.error, 'Error', 'error');
+        // Revert in-memory + visual state to what was on disk before this save.
+        settings.theme = previousTheme;
+        settings.customTheme = previousCustomTheme;
+        deps.applySettings(settings);
+        deps.showToast(
+          'Failed to save theme: ' + (result.error ?? 'Unknown error'),
+          'Error',
+          'error'
+        );
       }
     } finally {
       isSavingTheme = false;

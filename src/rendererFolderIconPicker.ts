@@ -1,4 +1,6 @@
 import type { Settings } from './types';
+import { normalizeIconName } from './rendererUtils.js';
+import { FOLDER_ICON_VALUES, isOneOf } from './constants.js';
 
 type FolderIconPickerDeps = {
   getCurrentSettings: () => Settings;
@@ -16,13 +18,7 @@ type FolderIconPickerDeps = {
   folderIcon: string;
 };
 
-const FOLDER_ICON_OPTIONS = [
-  0x1f4c1, 0x1f4c2, 0x1f4c3, 0x1f5c2, 0x1f5c3, 0x1f4bc, 0x2b50, 0x1f31f, 0x2764, 0x1f499, 0x1f49a,
-  0x1f49b, 0x1f4a1, 0x1f3ae, 0x1f3b5, 0x1f3ac, 0x1f4f7, 0x1f4f9, 0x1f4da, 0x1f4d6, 0x1f4dd, 0x270f,
-  0x1f4bb, 0x1f5a5, 0x1f3e0, 0x1f3e2, 0x1f6e0, 0x2699, 0x1f512, 0x1f513, 0x1f4e6, 0x1f4e5, 0x1f4e4,
-  0x1f5d1, 0x2601, 0x1f310, 0x1f680, 0x2708, 0x1f697, 0x1f6b2, 0x26bd, 0x1f3c0, 0x1f352, 0x1f34e,
-  0x1f33f, 0x1f333, 0x1f308, 0x2600,
-];
+const FOLDER_ICON_OPTIONS = FOLDER_ICON_VALUES;
 
 export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
   let folderIconPickerPath: string | null = null;
@@ -56,14 +52,16 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
     pathDisplay.textContent = folderName;
 
     const currentSettings = deps.getCurrentSettings();
-    const currentIcon = currentSettings.folderIcons?.[folderPath];
+    const rawIcon = currentSettings.folderIcons?.[folderPath];
+    const normalizedIcon = rawIcon ? normalizeIconName(rawIcon) : undefined;
+    const currentIcon =
+      normalizedIcon && isOneOf(normalizedIcon, FOLDER_ICON_OPTIONS) ? normalizedIcon : undefined;
 
-    grid.innerHTML = FOLDER_ICON_OPTIONS.map((code) => {
-      const emoji = String.fromCodePoint(code);
-      const isSelected = currentIcon === emoji;
+    grid.innerHTML = FOLDER_ICON_OPTIONS.map((iconName) => {
+      const isSelected = currentIcon === iconName;
       return `
-      <div class="folder-icon-option${isSelected ? ' selected' : ''}" data-icon="${emoji}">
-        ${deps.twemojiImg(emoji, 'twemoji')}
+      <div class="folder-icon-option${isSelected ? ' selected' : ''}" data-icon="${iconName}">
+        ${deps.twemojiImg(iconName, 'twemoji')}
       </div>
     `;
     }).join('');
@@ -82,11 +80,16 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
   }
 
   async function setFolderIcon(folderPath: string, icon: string) {
+    const normalizedIcon = normalizeIconName(icon);
+    if (!isOneOf(normalizedIcon, FOLDER_ICON_OPTIONS)) {
+      deps.showToast('Invalid folder icon', 'Error', 'error');
+      return;
+    }
     const currentSettings = deps.getCurrentSettings();
     if (!currentSettings.folderIcons) {
       currentSettings.folderIcons = {};
     }
-    currentSettings.folderIcons[folderPath] = icon;
+    currentSettings.folderIcons[folderPath] = normalizedIcon;
     try {
       await deps.saveSettings();
     } catch {
@@ -127,7 +130,10 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
     const currentSettings = deps.getCurrentSettings();
     const customIcon = currentSettings.folderIcons?.[folderPath];
     if (customIcon) {
-      return deps.twemojiImg(customIcon, 'twemoji file-icon');
+      const normalizedIcon = normalizeIconName(customIcon);
+      if (isOneOf(normalizedIcon, FOLDER_ICON_OPTIONS)) {
+        return deps.twemojiImg(normalizedIcon, 'twemoji file-icon');
+      }
     }
     return deps.folderIcon;
   }

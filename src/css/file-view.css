@@ -1,7 +1,7 @@
 .file-view {
   flex: 1;
   min-height: 0;
-  padding: var(--spacing-lg);
+  padding: var(--spacing-md);
   overflow-y: auto;
   position: relative;
 }
@@ -50,7 +50,7 @@ body.platform-darwin .file-view::-webkit-scrollbar-thumb {
   pointer-events: none;
   z-index: var(--z-toolbar);
   display: none;
-  border-radius: 2px;
+  border-radius: var(--radius-small);
 }
 
 .selection-rect.active {
@@ -67,7 +67,7 @@ body.platform-win32 .file-view::-webkit-scrollbar {
 
 body.platform-win32 .file-view::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb-bg);
-  border-radius: 0;
+  border-radius: var(--scrollbar-thumb-radius);
   border: 3px solid transparent;
   background-clip: padding-box;
 }
@@ -88,7 +88,7 @@ body.platform-linux .file-view {
     minmax(var(--grid-min-column), 1fr)
   );
   gap: var(--file-grid-gap-row) var(--file-grid-gap-col);
-  padding: var(--spacing-lg);
+  padding: var(--spacing-md);
 }
 
 .list-header {
@@ -103,13 +103,9 @@ body.platform-linux .file-view {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--surface-0) 96%, transparent),
-    color-mix(in srgb, var(--surface-0) 88%, transparent)
-  );
+  background: var(--surface-0);
   border-bottom: 1px solid var(--panel-border);
-  font-size: 11.5px;
+  font-size: 11px;
   text-transform: none;
   letter-spacing: 0.015em;
   color: var(--text-tertiary);
@@ -137,8 +133,28 @@ body.platform-linux .file-view {
 }
 
 .list-header-sort {
-  font-size: 10px;
-  opacity: 0.7;
+  font-size: 0 !important;
+  width: 10px;
+  height: 10px;
+  display: inline-block;
+  vertical-align: middle;
+  opacity: 0.75;
+  background-color: currentColor;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19V5M5 12l7-7 7 7'/%3E%3C/svg%3E");
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M12 19V5M5 12l7-7 7 7'/%3E%3C/svg%3E");
+  mask-size: contain;
+  -webkit-mask-size: contain;
+  mask-repeat: no-repeat;
+  -webkit-mask-repeat: no-repeat;
+  transition: transform 0.22s var(--animation-easing);
+}
+
+.list-header-cell[aria-sort='descending'] .list-header-sort {
+  transform: rotate(180deg);
+}
+
+.list-header-cell[aria-sort='none'] .list-header-sort {
+  display: none;
 }
 
 .list-header-resize {
@@ -194,4 +210,93 @@ body.platform-linux .file-view {
 .sort-indicator {
   margin-left: auto;
   font-size: 12px;
+}
+
+.file-view.nav-forward {
+  animation: slideLeft var(--nav-transition-duration, 200ms) ease-out;
+}
+
+.file-view.nav-back {
+  animation: slideRight var(--nav-transition-duration, 200ms) ease-out;
+}
+
+@keyframes slideLeft {
+  from {
+    opacity: 0.8;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideRight {
+  from {
+    opacity: 0.8;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Skeleton Loading Shimmer */
+.file-item.skeleton-loading {
+  pointer-events: none !important;
+  user-select: none !important;
+  background: transparent !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.file-item.skeleton-loading .file-checkbox {
+  display: none !important;
+}
+
+.skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--bg-secondary, #f5f5f7) 25%,
+    var(--bg-tertiary, #e8e8ed) 37%,
+    var(--bg-secondary, #f5f5f7) 63%
+  ) !important;
+  background-size: 400% 100% !important;
+  animation: shimmer 1.4s ease infinite !important;
+  border: none !important;
+  color: transparent !important;
+}
+
+body.dark-theme .skeleton-shimmer {
+  background: linear-gradient(90deg, #1e1e1e 25%, #2a2a2a 37%, #1e1e1e 63%) !important;
+  background-size: 400% 100% !important;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -300% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-shimmer {
+    animation: none !important;
+    background: var(--bg-tertiary, #e8e8ed) !important;
+  }
+  body.dark-theme .skeleton-shimmer {
+    background: #2a2a2a !important;
+  }
+}
+
+body.reduce-motion .skeleton-shimmer {
+  animation: none !important;
+  background: var(--bg-tertiary, #e8e8ed) !important;
+}
+
+body.dark-theme.reduce-motion .skeleton-shimmer {
+  background: #2a2a2a !important;
 }

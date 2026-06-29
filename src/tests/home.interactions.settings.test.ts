@@ -56,6 +56,7 @@ vi.mock('../homeSettings.js', () => {
 import { createHomeController } from '../home';
 
 function createMinimalDom() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="home-view">
       <div id="home-section-quick-access" style="display:flex">

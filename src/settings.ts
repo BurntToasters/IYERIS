@@ -12,13 +12,17 @@ import {
   THUMBNAIL_QUALITY_VALUES as THUMBNAIL_QUALITY_ARRAY,
   PREVIEW_POSITION_VALUES as PREVIEW_PANEL_ARRAY,
   GRID_COLUMNS_VALUES as GRID_COLUMNS_ARRAY,
+  CHECKSUM_ALGORITHM_VALUES as CHECKSUM_ALGORITHM_ARRAY,
+  FOLDER_ICON_VALUES as FOLDER_ICON_ARRAY,
+  DASHBOARD_WIDGET_KEYS as DASHBOARD_WIDGET_ARRAY,
 } from './constants.js';
 
 export function createDefaultSettings(): Settings {
   return {
     shortcuts: getDefaultShortcuts(),
     theme: 'default',
-    useSystemTheme: false,
+    useSystemTheme: true,
+    language: 'auto',
     sortBy: 'name',
     sortOrder: 'asc',
     bookmarks: [],
@@ -30,6 +34,7 @@ export function createDefaultSettings(): Settings {
     searchHistory: [],
     savedSearches: [],
     directoryHistory: [],
+    recentTransferDestinations: [],
     enableIndexer: true,
     minimizeToTray: false,
     startOnLogin: false,
@@ -42,6 +47,17 @@ export function createDefaultSettings(): Settings {
     skipFullDiskAccessPrompt: false,
     recentFiles: [],
     folderIcons: {},
+    statusBarItems: {
+      items: true,
+      selected: true,
+      hidden: true,
+      search: true,
+      pane: true,
+      viewMode: true,
+      gitBranch: true,
+      clipboard: true,
+    },
+    dashboardWidgets: ['quick-info', 'recent-operations', 'storage-overview', 'favorites'],
     showRecentFiles: true,
     showFolderTree: true,
     useLegacyTreeSpacing: false,
@@ -63,7 +79,7 @@ export function createDefaultSettings(): Settings {
     liquidGlassMode: false,
     uiDensity: 'default',
     updateChannel: 'auto',
-    themedIcons: false,
+    themedIcons: true,
     disableHardwareAcceleration: false,
     useSystemFontSize: false,
 
@@ -80,6 +96,16 @@ export function createDefaultSettings(): Settings {
     showFileExtensions: true,
     maxSearchHistoryItems: 5,
     maxDirectoryHistoryItems: 5,
+    dualPaneEnabled: false,
+    activePane: 'left',
+    nativeMenuEnabled: true,
+    operationPanelCollapsed: false,
+    utilityDrawerCollapsed: true,
+    enableAutoChecksum: true,
+    defaultChecksumAlgorithm: 'sha256',
+    navTransitionDuration: 200,
+    operationAnimationDuration: 100,
+    folderIconStyle: 'outline',
   };
 }
 
@@ -93,6 +119,16 @@ const FILE_CONFLICT_VALUES = new Set<Settings['fileConflictBehavior']>(FILE_CONF
 const THUMBNAIL_QUALITY_VALUES = new Set<Settings['thumbnailQuality']>(THUMBNAIL_QUALITY_ARRAY);
 const PREVIEW_PANEL_VALUES = new Set<Settings['previewPanelPosition']>(PREVIEW_PANEL_ARRAY);
 const GRID_COLUMNS_VALUES = new Set<Settings['gridColumns']>(GRID_COLUMNS_ARRAY);
+const CHECKSUM_ALGORITHM_VALUES = new Set<Settings['defaultChecksumAlgorithm']>(
+  CHECKSUM_ALGORITHM_ARRAY
+);
+const DASHBOARD_WIDGET_VALUES = new Set<string>(DASHBOARD_WIDGET_ARRAY);
+const FOLDER_ICON_STYLE_VALUES = new Set<Settings['folderIconStyle']>([
+  'outline',
+  'filled',
+  'colored',
+  'monochrome',
+]);
 
 function sanitizeEnum<T extends string>(value: unknown, allowed: Set<T>): T | null {
   if (typeof value !== 'string') return null;
@@ -194,14 +230,38 @@ function sanitizeShortcuts(
   return result;
 }
 
-function sanitizeStringRecord(value: unknown): Record<string, string> {
+function sanitizeFolderIcons(value: unknown): Record<string, string> {
   const result: Record<string, string> = {};
   if (!isRecord(value)) return result;
+  const allowed = new Set<string>(FOLDER_ICON_ARRAY);
+  const legacyCodepoint = /^[0-9a-f]{2,6}(?:-[0-9a-f]{2,6})*$/i;
   for (const key of Object.keys(value)) {
     if (RESERVED_KEYS.has(key)) continue;
     const item = value[key];
-    if (typeof item === 'string') {
-      result[key] = item;
+    if (typeof item !== 'string') continue;
+    const normalized = item.toLowerCase().trim();
+    if (allowed.has(normalized) || legacyCodepoint.test(normalized)) {
+      result[key] = normalized;
+    }
+  }
+  return result;
+}
+
+function sanitizeStatusBarItems(value: unknown): Record<string, boolean> {
+  const result: Record<string, boolean> = {
+    items: true,
+    selected: true,
+    hidden: true,
+    search: true,
+    pane: true,
+    viewMode: true,
+    gitBranch: true,
+    clipboard: true,
+  };
+  if (!isRecord(value)) return result;
+  for (const key of Object.keys(result)) {
+    if (typeof value[key] === 'boolean') {
+      result[key] = value[key] as boolean;
     }
   }
   return result;
@@ -275,6 +335,9 @@ export function sanitizeSettings(
     bookmarks: [...defaults.bookmarks],
     searchHistory: [...defaults.searchHistory],
     directoryHistory: [...defaults.directoryHistory],
+    recentTransferDestinations: defaults.recentTransferDestinations
+      ? [...defaults.recentTransferDestinations]
+      : [],
     recentFiles: defaults.recentFiles ? [...defaults.recentFiles] : [],
     folderIcons: defaults.folderIcons ? { ...defaults.folderIcons } : {},
     tabState: defaults.tabState ? { ...defaults.tabState } : undefined,
@@ -323,6 +386,11 @@ export function sanitizeSettings(
     'tourPromptDismissed',
     'tourCompleted',
     'skipFullDiskAccessPrompt',
+    'dualPaneEnabled',
+    'nativeMenuEnabled',
+    'operationPanelCollapsed',
+    'utilityDrawerCollapsed',
+    'enableAutoChecksum',
   ];
   for (const key of BOOLEAN_KEYS) {
     if (typeof raw[key] === 'boolean') assignKey(clean, key, raw[key] as Settings[keyof Settings]);
@@ -340,6 +408,8 @@ export function sanitizeSettings(
     ['thumbnailQuality', THUMBNAIL_QUALITY_VALUES as Set<string>],
     ['previewPanelPosition', PREVIEW_PANEL_VALUES as Set<string>],
     ['gridColumns', GRID_COLUMNS_VALUES as Set<string>],
+    ['defaultChecksumAlgorithm', CHECKSUM_ALGORITHM_VALUES as Set<string>],
+    ['folderIconStyle', FOLDER_ICON_STYLE_VALUES as Set<string>],
   ];
   for (const [key, allowed] of ENUM_FIELDS) {
     const val = sanitizeEnum(raw[key], allowed);
@@ -351,6 +421,18 @@ export function sanitizeSettings(
     const sp = raw.startupPath.trim();
     if (sp === '' || /^[/~]/.test(sp) || /^[A-Za-z]:[\\/]/.test(sp)) {
       clean.startupPath = sp;
+    }
+  }
+
+  if (raw.activePane === 'left' || raw.activePane === 'right') {
+    clean.activePane = raw.activePane;
+  }
+
+  // language — 'auto' or a BCP-47-ish code (letters, optional region). Else keep default.
+  if (typeof raw.language === 'string') {
+    const lang = raw.language.trim().toLowerCase();
+    if (lang === 'auto' || /^[a-z]{2,3}(-[a-z0-9]{2,8})?$/.test(lang)) {
+      clean.language = lang;
     }
   }
 
@@ -369,6 +451,13 @@ export function sanitizeSettings(
   const iconSizeVal = sanitizeInt(raw.iconSize, 32, 128);
   if (iconSizeVal !== null) clean.iconSize = iconSizeVal;
 
+  const navTransitionDurationVal = sanitizeInt(raw.navTransitionDuration, 0, 400);
+  if (navTransitionDurationVal !== null) clean.navTransitionDuration = navTransitionDurationVal;
+
+  const operationAnimationDurationVal = sanitizeInt(raw.operationAnimationDuration, 0, 200);
+  if (operationAnimationDurationVal !== null)
+    clean.operationAnimationDuration = operationAnimationDurationVal;
+
   // Non-negative integer settings
   for (const key of ['maxSearchHistoryItems', 'maxDirectoryHistoryItems', 'launchCount'] as const) {
     const val = sanitizeInt(raw[key], 0, null);
@@ -379,17 +468,41 @@ export function sanitizeSettings(
   if (customTheme) clean.customTheme = customTheme;
 
   // String array settings
-  for (const key of ['bookmarks', 'searchHistory', 'directoryHistory', 'recentFiles'] as const) {
+  for (const key of [
+    'bookmarks',
+    'searchHistory',
+    'directoryHistory',
+    'recentTransferDestinations',
+    'recentFiles',
+  ] as const) {
     if (Array.isArray(raw[key])) {
       const sanitized = sanitizeStringArray(raw[key]);
-      const maxLen = key === 'bookmarks' ? 500 : key === 'recentFiles' ? 200 : 100;
+      const maxLen =
+        key === 'bookmarks'
+          ? 500
+          : key === 'recentFiles'
+            ? 200
+            : key === 'recentTransferDestinations'
+              ? 20
+              : 100;
       clean[key] = sanitized.slice(0, maxLen);
+    }
+  }
+
+  if (Array.isArray(raw.dashboardWidgets)) {
+    const sanitized = sanitizeStringArray(raw.dashboardWidgets)
+      .filter((item) => DASHBOARD_WIDGET_VALUES.has(item))
+      .filter((item, index, items) => items.indexOf(item) === index);
+    if (sanitized.length > 0) {
+      clean.dashboardWidgets = sanitized;
     }
   }
 
   clean.shortcuts = sanitizeShortcuts(raw.shortcuts, clean.shortcuts);
   if (raw.folderIcons && isRecord(raw.folderIcons))
-    clean.folderIcons = sanitizeStringRecord(raw.folderIcons);
+    clean.folderIcons = sanitizeFolderIcons(raw.folderIcons);
+
+  clean.statusBarItems = sanitizeStatusBarItems(raw.statusBarItems);
 
   const listColumnWidths = sanitizeListColumnWidths(raw.listColumnWidths);
   if (listColumnWidths) clean.listColumnWidths = listColumnWidths;

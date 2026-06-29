@@ -2,7 +2,7 @@ use crate::undo;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read;
+use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::Mutex;
@@ -11,14 +11,38 @@ use tauri::Emitter;
 
 static ACTIVE_CHECKSUMS: std::sync::LazyLock<Mutex<HashSet<String>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+static ACTIVE_FILE_OPERATIONS: std::sync::LazyLock<Mutex<HashSet<String>>> =
+    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
 
-static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> =
-    std::sync::LazyLock::new(|| Mutex::new(()));
+static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
 
 const DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
-const MAX_FILE_DATA_URL_LIMIT_BYTES: u64 = 100 * 1024 * 1024;
+const MAX_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
+const SENSITIVE_READ_DIR_NAMES: &[&str] = &[
+    ".ssh",
+    ".gnupg",
+    ".aws",
+    ".docker",
+    ".kube",
+    ".password-store",
+    "keychains",
+];
+const SENSITIVE_READ_FILE_NAMES: &[&str] = &[
+    ".netrc",
+    ".npmrc",
+    ".pypirc",
+    ".git-credentials",
+    "authorized_keys",
+    "known_hosts",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "login.keychain",
+];
+const SENSITIVE_READ_EXTENSIONS: &[&str] = &["pem", "key", "pfx", "p12"];
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -61,6 +85,29 @@ enum OpenTarget {
     External(String),
 }
 
+pub(crate) fn ensure_safe_preview_read_path(path: &Path) -> Result<(), String> {
+    for component in path.components() {
+        let std::path::Component::Normal(value) = component else {
+            continue;
+        };
+        let name = value.to_string_lossy().to_lowercase();
+        if SENSITIVE_READ_DIR_NAMES.contains(&name.as_str())
+            || SENSITIVE_READ_FILE_NAMES.contains(&name.as_str())
+        {
+            return Err(format!(
+                "Preview blocked for sensitive path component: {}",
+                value.to_string_lossy()
+            ));
+        }
+    }
+    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+        if SENSITIVE_READ_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+            return Err("Preview blocked for sensitive file type".to_string());
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_child_name(raw_name: &str, label: &str) -> Result<String, String> {
     let name = raw_name.trim();
     if name.is_empty() {
@@ -95,8 +142,7 @@ pub(crate) fn validate_child_name(raw_name: &str, label: &str) -> Result<String,
             .to_ascii_uppercase();
         let reserved = [
             "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7",
-            "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8",
-            "LPT9",
+            "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
         ];
         if reserved.contains(&base_upper.as_str()) {
             return Err(format!("{} uses a reserved Windows filename", label));
@@ -146,6 +192,68 @@ fn parse_open_target(file_path: &str) -> Result<OpenTarget, String> {
     Ok(OpenTarget::FilePath(crate::validate_existing_path(
         value, "File",
     )?))
+}
+
+fn resolve_item_is_directory(path: &Path, meta: &fs::Metadata) -> bool {
+    if meta.file_type().is_symlink() {
+        fs::metadata(path)
+            .map(|target| target.is_dir())
+            .unwrap_or(false)
+    } else {
+        meta.is_dir()
+    }
+}
+
+fn checksum_operation_is_active(operation_id: &str) -> Result<bool, String> {
+    let active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
+    Ok(active.contains(operation_id))
+}
+
+fn read_file_chunks<FChunk, FActive, FProgress>(
+    file: &mut fs::File,
+    file_size: u64,
+    mut on_chunk: FChunk,
+    mut is_active: FActive,
+    mut emit_progress: FProgress,
+) -> Result<(), String>
+where
+    FChunk: FnMut(&[u8]),
+    FActive: FnMut() -> Result<bool, String>,
+    FProgress: FnMut(f64),
+{
+    let mut buf = [0u8; 8192];
+    let mut read_total = 0u64;
+    let mut next_progress_emit = 1024_u64 * 1024;
+    file.seek(std::io::SeekFrom::Start(0))
+        .map_err(|e| e.to_string())?;
+
+    loop {
+        if !is_active()? {
+            return Err("Checksum cancelled".to_string());
+        }
+
+        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+
+        on_chunk(&buf[..n]);
+        read_total += n as u64;
+
+        if read_total >= next_progress_emit || read_total == file_size {
+            let percent = if file_size > 0 {
+                (read_total as f64 / file_size as f64) * 100.0
+            } else {
+                100.0
+            };
+            emit_progress(percent);
+            while next_progress_emit <= read_total {
+                next_progress_emit += 1024_u64 * 1024;
+            }
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -245,10 +353,27 @@ pub async fn rename_item(old_path: String, new_name: String) -> Result<String, S
     log::debug!("[FileOps] rename_item: {} -> {}", old_path, new_name);
     let path = crate::validate_existing_path(&old_path, "Item")?;
     let new_name = validate_child_name(&new_name, "New name")?;
-    let parent = path
+    let parent = path.parent().ok_or("Cannot determine parent directory")?;
+    let canonical_parent = parent
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve parent directory: {}", e))?;
+    // H6: canonicalize the source as well and verify that its canonical
+    // parent matches the canonical parent we just computed. Otherwise
+    // a path like `/tmp/userdir/link -> /etc` would have parent=link, and
+    // canonicalize(parent) would resolve to /etc, letting a rename land
+    // in a privileged directory the user merely happens to have a symlink to.
+    let canonical_source = path
+        .canonicalize()
+        .map_err(|e| format!("Cannot resolve source path: {}", e))?;
+    let canonical_source_parent = canonical_source
         .parent()
-        .ok_or("Cannot determine parent directory")?;
-    let canonical_parent = parent.canonicalize().map_err(|e| format!("Cannot resolve parent directory: {}", e))?;
+        .ok_or("Cannot determine canonical source parent")?;
+    if canonical_source_parent != canonical_parent {
+        return Err(
+            "Refusing to rename: source resolves outside its apparent parent (symlink trick)"
+                .to_string(),
+        );
+    }
     let new_path = canonical_parent.join(&new_name);
     fs::rename(&path, &new_path).map_err(|e| {
         if e.kind() == std::io::ErrorKind::AlreadyExists {
@@ -267,38 +392,75 @@ pub async fn copy_items(
     dest_path: String,
     conflict_behavior: Option<String>,
     conflict_resolutions: Option<HashMap<String, String>>,
+    operation_id: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    log::debug!("[FileOps] copy_items: {} items -> {}", source_paths.len(), dest_path);
-    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
-    let dest = crate::validate_existing_path(&dest_path, "Destination")?;
-    let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
-    let resolutions = conflict_resolutions.unwrap_or_default();
-    let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
-    let total = planned.len();
-    let mut copied_paths: Vec<PathBuf> = Vec::new();
-    let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
+    log::debug!(
+        "[FileOps] copy_items: {} items -> {}",
+        source_paths.len(),
+        dest_path
+    );
+    // Run blocking filesystem work off the async runtime so concurrent copies
+    // can't starve tokio workers or park them on the std mutex.
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        // Register the operation ID BEFORE waiting on the lock so that
+        // cancel_file_operation can mark it cancelled while we queue. We then
+        // re-check active status immediately after acquiring the lock.
+        let progress_operation_id = operation_id.unwrap_or_else(|| {
+            format!(
+                "copy-{}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            )
+        });
+        register_file_operation(&progress_operation_id)?;
+        // Guard ensures the id is unregistered on every exit path below.
+        let _active_guard = ActiveOpGuard(progress_operation_id.clone());
+        let _lock = FILE_OP_LOCK
+            .lock()
+            .map_err(|e| format!("File operation lock error: {}", e))?;
+        // Re-check: the user may have cancelled while we waited for the lock.
+        ensure_file_operation_active(&progress_operation_id)?;
+        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
+        let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
+        let resolutions = conflict_resolutions.unwrap_or_default();
+        let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
+        let total = planned.len();
+        let mut copied_paths: Vec<PathBuf> = Vec::new();
+        let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
-    let operation = (|| -> Result<(), String> {
-        for (index, item) in planned.iter().enumerate() {
-            ensure_overwrite_backup(&mut backups, item)?;
+        let operation = (|| -> Result<(), String> {
+            for (index, item) in planned.iter().enumerate() {
+                ensure_file_operation_active(&progress_operation_id)?;
+                ensure_overwrite_backup(&mut backups, item)?;
+                ensure_file_operation_active(&progress_operation_id)?;
 
-            let source_meta = fs::symlink_metadata(&item.source_path).map_err(|e| e.to_string())?;
-            if source_meta.file_type().is_symlink() {
-                copy_symlink_path(&item.source_path, &item.dest_path)?;
-            } else if source_meta.is_dir() {
-                copy_dir_recursive(&item.source_path, &item.dest_path)?;
-            } else {
-                fs::copy(&item.source_path, &item.dest_path).map_err(|e| {
-                    format!("Failed to copy {}: {}", item.item_name, e)
-                })?;
-            }
-            copied_paths.push(item.dest_path.clone());
+                // Track the destination BEFORE writing so a partially-written
+                // file/folder (e.g. a cancelled mid-folder copy) is cleaned up
+                // by remove_paths_reversed on error.
+                copied_paths.push(item.dest_path.clone());
 
-            if total > 1 {
+                let source_meta =
+                    fs::symlink_metadata(&item.source_path).map_err(|e| e.to_string())?;
+                if source_meta.file_type().is_symlink() {
+                    copy_symlink_path(&item.source_path, &item.dest_path)?;
+                } else if source_meta.is_dir() {
+                    crate::fs_utils::copy_dir_recursive_cancellable(
+                        &item.source_path,
+                        &item.dest_path,
+                        &|| !is_file_operation_active_bool(&progress_operation_id),
+                    )?;
+                } else {
+                    fs::copy(&item.source_path, &item.dest_path)
+                        .map_err(|e| format!("Failed to copy {}: {}", item.item_name, e))?;
+                }
+
                 let _ = app.emit(
                     "file-operation-progress",
                     serde_json::json!({
+                        "operationId": progress_operation_id,
                         "operation": "copy",
                         "current": index + 1,
                         "total": total,
@@ -306,24 +468,26 @@ pub async fn copy_items(
                     }),
                 );
             }
+            Ok(())
+        })();
+
+        if let Err(error) = operation {
+            remove_paths_reversed(&copied_paths);
+            restore_overwrite_backups(&backups, false);
+            cleanup_backups(&backups);
+            return Err(error);
         }
-        Ok(())
-    })();
 
-    if let Err(error) = operation {
-        remove_paths_reversed(&copied_paths);
-        restore_overwrite_backups(&backups, false);
         cleanup_backups(&backups);
-        return Err(error);
-    }
 
-    cleanup_backups(&backups);
+        for item in &planned {
+            let _ = undo::push_create_action(&item.dest_path, item.is_directory);
+        }
 
-    for item in &planned {
-        let _ = undo::push_create_action(&item.dest_path, item.is_directory);
-    }
-
-    Ok(())
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Copy operation failed: {}", e))?
 }
 
 fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
@@ -343,9 +507,7 @@ fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
     {
         let is_dir_link = fs::metadata(source)
             .map(|m| m.is_dir())
-            .unwrap_or_else(|_| {
-                link_target.is_dir()
-            });
+            .unwrap_or_else(|_| link_target.is_dir());
         if is_dir_link {
             std::os::windows::fs::symlink_dir(&link_target, target)
                 .map_err(|e| format!("Failed to create symlink: {}", e))
@@ -385,36 +547,63 @@ pub async fn move_items(
     dest_path: String,
     conflict_behavior: Option<String>,
     conflict_resolutions: Option<HashMap<String, String>>,
+    operation_id: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    log::debug!("[FileOps] move_items: {} items -> {}", source_paths.len(), dest_path);
-    let _lock = FILE_OP_LOCK.lock().map_err(|e| format!("File operation lock error: {}", e))?;
-    let dest = crate::validate_existing_path(&dest_path, "Destination")?;
-    let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
-    let resolutions = conflict_resolutions.unwrap_or_default();
-    let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
-    let total = planned.len();
-    let mut moved_paths: Vec<String> = Vec::new();
-    let mut original_paths: Vec<String> = Vec::new();
-    let mut completed_moves: Vec<CompletedMove> = Vec::new();
-    let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
+    log::debug!(
+        "[FileOps] move_items: {} items -> {}",
+        source_paths.len(),
+        dest_path
+    );
+    // Run blocking filesystem work off the async runtime (see copy_items).
+    tokio::task::spawn_blocking(move || -> Result<(), String> {
+        // Register the operation ID BEFORE waiting on the lock so that
+        // cancel_file_operation can mark it cancelled while we queue.
+        let progress_operation_id = operation_id.unwrap_or_else(|| {
+            format!(
+                "move-{}",
+                SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            )
+        });
+        register_file_operation(&progress_operation_id)?;
+        // Guard ensures the id is unregistered on every exit path below.
+        let _active_guard = ActiveOpGuard(progress_operation_id.clone());
+        let _lock = FILE_OP_LOCK
+            .lock()
+            .map_err(|e| format!("File operation lock error: {}", e))?;
+        // Re-check: the user may have cancelled while we waited for the lock.
+        ensure_file_operation_active(&progress_operation_id)?;
+        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
+        let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
+        let resolutions = conflict_resolutions.unwrap_or_default();
+        let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
+        let total = planned.len();
+        let mut moved_paths: Vec<String> = Vec::new();
+        let mut original_paths: Vec<String> = Vec::new();
+        let mut completed_moves: Vec<CompletedMove> = Vec::new();
+        let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
-    let operation = (|| -> Result<(), String> {
-        for (index, item) in planned.iter().enumerate() {
-            ensure_overwrite_backup(&mut backups, item)?;
-            move_path_with_fallback(&item.source_path, &item.dest_path)?;
+        let operation = (|| -> Result<(), String> {
+            for (index, item) in planned.iter().enumerate() {
+                ensure_file_operation_active(&progress_operation_id)?;
+                ensure_overwrite_backup(&mut backups, item)?;
+                ensure_file_operation_active(&progress_operation_id)?;
+                move_path_with_fallback(&item.source_path, &item.dest_path)?;
 
-            moved_paths.push(item.dest_path.to_string_lossy().to_string());
-            original_paths.push(item.source_path.to_string_lossy().to_string());
-            completed_moves.push(CompletedMove {
-                source_path: item.source_path.clone(),
-                dest_path: item.dest_path.clone(),
-            });
+                moved_paths.push(item.dest_path.to_string_lossy().to_string());
+                original_paths.push(item.source_path.to_string_lossy().to_string());
+                completed_moves.push(CompletedMove {
+                    source_path: item.source_path.clone(),
+                    dest_path: item.dest_path.clone(),
+                });
 
-            if total > 1 {
                 let _ = app.emit(
                     "file-operation-progress",
                     serde_json::json!({
+                        "operationId": progress_operation_id,
                         "operation": "move",
                         "current": index + 1,
                         "total": total,
@@ -422,19 +611,72 @@ pub async fn move_items(
                     }),
                 );
             }
+            Ok(())
+        })();
+
+        if let Err(error) = operation {
+            rollback_moves(&completed_moves);
+            restore_overwrite_backups(&backups, true);
+            cleanup_backups(&backups);
+            return Err(error);
         }
-        Ok(())
-    })();
 
-    if let Err(error) = operation {
-        rollback_moves(&completed_moves);
-        restore_overwrite_backups(&backups, true);
         cleanup_backups(&backups);
-        return Err(error);
-    }
+        undo::push_move_action(moved_paths, original_paths, dest_path)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| format!("Move operation failed: {}", e))?
+}
 
-    cleanup_backups(&backups);
-    undo::push_move_action(moved_paths, original_paths, dest_path)?;
+fn register_file_operation(operation_id: &str) -> Result<(), String> {
+    let mut active = ACTIVE_FILE_OPERATIONS
+        .lock()
+        .map_err(|e| format!("File operation state lock error: {}", e))?;
+    active.insert(operation_id.to_string());
+    Ok(())
+}
+
+fn unregister_file_operation(operation_id: &str) {
+    if let Ok(mut active) = ACTIVE_FILE_OPERATIONS.lock() {
+        active.remove(operation_id);
+    }
+}
+
+fn ensure_file_operation_active(operation_id: &str) -> Result<(), String> {
+    let active = ACTIVE_FILE_OPERATIONS
+        .lock()
+        .map_err(|e| format!("File operation state lock error: {}", e))?;
+    if active.contains(operation_id) {
+        Ok(())
+    } else {
+        Err("Operation cancelled".to_string())
+    }
+}
+
+/// Boolean variant — used by the cancellable dir-copy callback where an
+/// `Err` return is not available (closure returns `bool`, not `Result`).
+fn is_file_operation_active_bool(operation_id: &str) -> bool {
+    ACTIVE_FILE_OPERATIONS
+        .lock()
+        .map(|set| set.contains(operation_id))
+        .unwrap_or(true) // on lock poisoning assume still active
+}
+
+/// RAII guard that unregisters an operation id on drop, so the id is removed
+/// from ACTIVE_FILE_OPERATIONS on every exit path (early `?`, cancel, panic),
+/// not just the happy path. Registered before the FILE_OP_LOCK wait so a
+/// cancel issued while queued is observed once we acquire the lock.
+struct ActiveOpGuard(String);
+impl Drop for ActiveOpGuard {
+    fn drop(&mut self) {
+        unregister_file_operation(&self.0);
+    }
+}
+
+#[tauri::command]
+pub async fn cancel_file_operation(operation_id: String) -> Result<(), String> {
+    unregister_file_operation(&operation_id);
     Ok(())
 }
 
@@ -568,7 +810,10 @@ fn plan_file_operations(
         let base_target = dest.join(&item_name);
         let base_key = normalize_case_key(&base_target);
         if reserved.contains(&base_key) {
-            return Err(format!("Multiple items share the same name: \"{}\"", item_name));
+            return Err(format!(
+                "Multiple items share the same name: \"{}\"",
+                item_name
+            ));
         }
 
         if metadata.is_dir() {
@@ -595,7 +840,9 @@ fn plan_file_operations(
                             .as_deref()
                         {
                             Some("overwrite") => (target, true),
-                            Some("rename") => (create_renamed_target(dest, &item_name, &reserved), false),
+                            Some("rename") => {
+                                (create_renamed_target(dest, &item_name, &reserved), false)
+                            }
                             Some("skip") => continue,
                             Some("cancel") => return Err("Operation cancelled".to_string()),
                             Some(_) => {
@@ -618,7 +865,10 @@ fn plan_file_operations(
         let source_key = normalize_case_key(&src);
         let destination_key = normalize_case_key(&resolved.0);
         if source_key == destination_key {
-            return Err(format!("Cannot {} \"{}\" onto itself", operation, item_name));
+            return Err(format!(
+                "Cannot {} \"{}\" onto itself",
+                operation, item_name
+            ));
         }
         if reserved.contains(&destination_key) {
             return Err(format!(
@@ -684,19 +934,28 @@ fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
         copy_symlink_path(source, target)?;
         if let Err(e) = remove_symlink_path(source) {
             let _ = remove_existing_path(target);
-            return Err(format!("Failed to remove source symlink after cross-device move: {}", e));
+            return Err(format!(
+                "Failed to remove source symlink after cross-device move: {}",
+                e
+            ));
         }
     } else if is_directory {
         copy_dir_recursive(source, target)?;
         if let Err(e) = fs::remove_dir_all(source) {
             let _ = fs::remove_dir_all(target);
-            return Err(format!("Failed to remove source after cross-device move: {}", e));
+            return Err(format!(
+                "Failed to remove source after cross-device move: {}",
+                e
+            ));
         }
     } else {
         fs::copy(source, target).map_err(|e| e.to_string())?;
         if let Err(e) = fs::remove_file(source) {
             let _ = fs::remove_file(target);
-            return Err(format!("Failed to remove source after cross-device move: {}", e));
+            return Err(format!(
+                "Failed to remove source after cross-device move: {}",
+                e
+            ));
         }
     }
     Ok(())
@@ -833,6 +1092,7 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
     } else {
         None
     };
+    let is_directory = resolve_item_is_directory(&path, &meta);
 
     #[cfg(unix)]
     let (owner, group) = {
@@ -863,16 +1123,18 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
                     use std::os::windows::process::CommandExt;
                     cmd.creation_flags(0x08000000);
                 }
-                cmd.output()
-                    .ok()
-                    .and_then(|o| {
-                        if o.status.success() {
-                            let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                            if t.is_empty() { None } else { Some(t) }
-                        } else {
+                cmd.output().ok().and_then(|o| {
+                    if o.status.success() {
+                        let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
+                        if t.is_empty() {
                             None
+                        } else {
+                            Some(t)
                         }
-                    })
+                    } else {
+                        None
+                    }
+                })
             }
         } else {
             None
@@ -895,7 +1157,7 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
         name: name.clone(),
         path: path.to_string_lossy().to_string(),
         size: meta.len(),
-        is_directory: meta.is_dir(),
+        is_directory,
         is_symlink,
         symlink_target,
         is_shortcut,
@@ -922,6 +1184,15 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
 pub async fn set_permissions(item_path: String, mode: u32) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
 
+    // M3: refuse to operate on symlinks. `fs::set_permissions` follows symlinks,
+    // which would let a user chmod the target of a symlink they don't own.
+    // The standard library doesn't expose AT_SYMLINK_NOFOLLOW for chmod, so
+    // the simplest correct behavior is to refuse.
+    let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if meta.file_type().is_symlink() {
+        return Err("Refusing to change permissions on a symlink".to_string());
+    }
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -931,7 +1202,6 @@ pub async fn set_permissions(item_path: String, mode: u32) -> Result<(), String>
 
     #[cfg(not(unix))]
     {
-        let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
         let mut perms = meta.permissions();
         perms.set_readonly(mode & 0o200 == 0);
         fs::set_permissions(&path, perms).map_err(|e| e.to_string())?;
@@ -943,10 +1213,16 @@ pub async fn set_permissions(item_path: String, mode: u32) -> Result<(), String>
 #[tauri::command]
 pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
-    let read_only = attrs
-        .get("readOnly")
-        .and_then(|value| value.as_bool());
+    let read_only = attrs.get("readOnly").and_then(|value| value.as_bool());
     let hidden = attrs.get("hidden").and_then(|value| value.as_bool());
+    let system = attrs.get("system").and_then(|value| value.as_bool());
+
+    // M3: same as set_permissions — refuse symlinks so an attribute change
+    // doesn't silently apply to the target.
+    let meta_for_check = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
+    if meta_for_check.file_type().is_symlink() {
+        return Err("Refusing to change attributes on a symlink".to_string());
+    }
 
     if let Some(is_read_only) = read_only {
         let mut perms = fs::metadata(&path)
@@ -968,26 +1244,43 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
             cmd.creation_flags(0x08000000);
             cmd.output()
         }
-            .map_err(|e| format!("Failed to update hidden attribute: {}", e))?;
+        .map_err(|e| format!("Failed to update hidden attribute: {}", e))?;
+        if !output.status.success() {
+            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Some(is_system) = system {
+        let system_flag = if is_system { "+s" } else { "-s" };
+        let path_str = path.to_string_lossy().to_string();
+        let output = {
+            let mut cmd = Command::new("attrib");
+            cmd.args([system_flag, &path_str]);
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+            cmd.output()
+        }
+        .map_err(|e| format!("Failed to update system attribute: {}", e))?;
         if !output.status.success() {
             return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
         }
     }
 
     #[cfg(not(target_os = "windows"))]
-    if hidden.is_some() {
-        return Err("Hidden attribute updates are only supported on Windows.".to_string());
+    if hidden.is_some() || system.is_some() {
+        return Err(
+            "Hidden and System attribute updates are only supported on Windows.".to_string(),
+        );
     }
 
     Ok(())
 }
 
 #[tauri::command]
-pub async fn read_file_content(
-    file_path: String,
-    max_size: Option<u64>,
-) -> Result<String, String> {
+pub async fn read_file_content(file_path: String, max_size: Option<u64>) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
+    ensure_safe_preview_read_path(&path)?;
     let limit = max_size
         .unwrap_or(DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES)
         .min(MAX_READ_FILE_CONTENT_LIMIT_BYTES);
@@ -1012,11 +1305,9 @@ pub async fn read_file_content(
 }
 
 #[tauri::command]
-pub async fn get_file_data_url(
-    file_path: String,
-    max_size: Option<u64>,
-) -> Result<String, String> {
+pub async fn get_file_data_url(file_path: String, max_size: Option<u64>) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
+    ensure_safe_preview_read_path(&path)?;
     let limit = max_size
         .unwrap_or(DEFAULT_FILE_DATA_URL_LIMIT_BYTES)
         .min(MAX_FILE_DATA_URL_LIMIT_BYTES);
@@ -1063,7 +1354,7 @@ pub async fn get_file_data_url(
 
 fn base64_encode(data: &[u8]) -> String {
     const CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::with_capacity((data.len() + 2) / 3 * 4);
+    let mut result = String::with_capacity(data.len().div_ceil(3) * 4);
     for chunk in data.chunks(3) {
         let b0 = chunk[0] as u32;
         let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
@@ -1108,6 +1399,14 @@ fn full_blake3(path: &Path) -> Result<String, String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+// M4: cap individual files we will hash during duplicate detection.
+// Hashing a 50 GB file end-to-end blocks a worker thread for a long time
+// and can OOM when many large candidates exist. Files larger than this
+// are still listed as same-size matches but are NOT compared by content.
+const DUPLICATE_HASH_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024; // 4 GiB
+                                                                   // Cap on total bytes hashed in a single duplicate-finder run as a safety net.
+const DUPLICATE_HASH_TOTAL_BYTES_LIMIT: u64 = 64 * 1024 * 1024 * 1024; // 64 GiB
+
 #[tauri::command]
 pub async fn find_duplicate_files(
     dir_path: String,
@@ -1149,9 +1448,20 @@ pub async fn find_duplicate_files(
             if size < threshold {
                 continue;
             }
+            // M4: skip files that exceed the per-file hash cap. They're
+            // unlikely to be true duplicates by happy accident.
+            if size > DUPLICATE_HASH_MAX_FILE_BYTES {
+                log::debug!(
+                    "[FileOps] find_duplicate_files: skipping {} ({} bytes > cap)",
+                    path.display(),
+                    size
+                );
+                continue;
+            }
 
             by_size.entry(size).or_default().push(path.to_path_buf());
         }
+        let mut total_hashed_bytes: u64 = 0;
 
         let mut groups: Vec<DuplicateGroup> = Vec::new();
 
@@ -1173,7 +1483,18 @@ pub async fn find_duplicate_files(
 
                 let mut by_full_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
                 for candidate in fast_candidates {
+                    // M4: bail if we've already hashed more than the total cap.
+                    // Returns the partial groups computed so far rather than
+                    // failing the whole command — the user still gets results.
+                    if total_hashed_bytes > DUPLICATE_HASH_TOTAL_BYTES_LIMIT {
+                        log::warn!(
+                            "[FileOps] find_duplicate_files: total hash budget exceeded ({} bytes), returning partial results",
+                            total_hashed_bytes
+                        );
+                        return Ok(groups);
+                    }
                     let full_hash = full_blake3(&candidate)?;
+                    total_hashed_bytes = total_hashed_bytes.saturating_add(size);
                     by_full_hash.entry(full_hash).or_default().push(candidate);
                 }
 
@@ -1203,9 +1524,7 @@ pub async fn find_duplicate_files(
 }
 
 #[tauri::command]
-pub async fn batch_rename(
-    items: Vec<serde_json::Value>,
-) -> Result<Vec<serde_json::Value>, String> {
+pub async fn batch_rename(items: Vec<serde_json::Value>) -> Result<Vec<serde_json::Value>, String> {
     struct RenameOp {
         old_path_str: String,
         old_path: PathBuf,
@@ -1256,7 +1575,11 @@ pub async fn batch_rename(
             }
         };
         old_path_set.insert(old_path.clone());
-        plan.push(Ok(RenameOp { old_path_str, old_path, new_path }));
+        plan.push(Ok(RenameOp {
+            old_path_str,
+            old_path,
+            new_path,
+        }));
     }
 
     // Phase 1: pre-move any source files whose destination is also a source being renamed
@@ -1270,7 +1593,10 @@ pub async fn batch_rename(
         {
             let temp_path = op.new_path.with_file_name(format!(
                 ".iyeris-rename-tmp-{}",
-                op.new_path.file_name().unwrap_or_default().to_string_lossy()
+                op.new_path
+                    .file_name()
+                    .unwrap_or_default()
+                    .to_string_lossy()
             ));
             if let Err(e) = fs::rename(&op.new_path, &temp_path) {
                 // Roll back any temp renames already completed
@@ -1338,7 +1664,9 @@ pub async fn batch_rename(
             if let Err(e) = fs::rename(temp_path, original_path) {
                 log::warn!(
                     "[FileOps] batch_rename: failed to restore staged temp {:?} to {:?}: {}",
-                    temp_path, original_path, e
+                    temp_path,
+                    original_path,
+                    e
                 );
                 let _ = fs::remove_file(temp_path);
             }
@@ -1409,7 +1737,7 @@ pub async fn resolve_shortcut(shortcut_path: String) -> Result<String, String> {
         if target.is_empty() {
             return Err("Shortcut target path is empty.".to_string());
         }
-        return Ok(target);
+        Ok(target)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -1531,9 +1859,7 @@ fn decode_file_uri_path(raw: &str) -> Option<String> {
         }
 
         let mut local_path = path_part;
-        if local_path.starts_with('/')
-            && local_path.len() >= 3
-            && local_path.as_bytes()[2] == b':'
+        if local_path.starts_with('/') && local_path.len() >= 3 && local_path.as_bytes()[2] == b':'
         {
             local_path = local_path[1..].to_string();
         } else if local_path.is_empty() && !authority.is_empty() {
@@ -1587,7 +1913,11 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
     let mut seen: HashSet<String> = HashSet::new();
     let mut paths: Vec<String> = Vec::new();
 
-    for line in text.lines().map(|line| line.trim()).filter(|line| !line.is_empty()) {
+    for line in text
+        .lines()
+        .map(|line| line.trim())
+        .filter(|line| !line.is_empty())
+    {
         let candidate = if let Some(path) = decode_file_uri_path(line) {
             Some(path)
         } else if is_absolute_path_like(line) {
@@ -1611,6 +1941,7 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
 mod tests {
     use super::*;
     use std::fs;
+    use std::io::Write;
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn make_test_temp_dir(prefix: &str) -> PathBuf {
@@ -1619,7 +1950,12 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_nanos();
-        dir.push(format!("iyeris-{}-{}-{}", prefix, std::process::id(), nonce));
+        dir.push(format!(
+            "iyeris-{}-{}-{}",
+            prefix,
+            std::process::id(),
+            nonce
+        ));
         fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -1628,6 +1964,19 @@ mod tests {
     fn percent_decode_lossy_decodes_hex_sequences() {
         assert_eq!(percent_decode_lossy("Alpha%20Beta"), "Alpha Beta");
         assert_eq!(percent_decode_lossy("%2fpath%2Ffile"), "/path/file");
+    }
+
+    #[test]
+    fn preview_read_guard_rejects_sensitive_paths() {
+        assert!(ensure_safe_preview_read_path(Path::new("/home/me/.ssh/id_rsa")).is_err());
+        assert!(ensure_safe_preview_read_path(Path::new("/home/me/.aws/config")).is_err());
+        assert!(ensure_safe_preview_read_path(Path::new("/home/me/cert.pem")).is_err());
+    }
+
+    #[test]
+    fn preview_read_guard_allows_normal_paths() {
+        assert!(ensure_safe_preview_read_path(Path::new("/home/me/Documents/readme.txt")).is_ok());
+        assert!(ensure_safe_preview_read_path(Path::new("/tmp/photo.png")).is_ok());
     }
 
     #[cfg(target_os = "windows")]
@@ -1680,13 +2029,11 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
         assert!(planned.is_err());
-        assert!(
-            planned
-                .err()
-                .unwrap()
-                .to_ascii_lowercase()
-                .contains("onto itself")
-        );
+        assert!(planned
+            .err()
+            .unwrap()
+            .to_ascii_lowercase()
+            .contains("onto itself"));
     }
 
     #[test]
@@ -1705,13 +2052,63 @@ mod tests {
 
         let _ = fs::remove_dir_all(&dir);
         assert!(planned.is_err());
-        assert!(
-            planned
-                .err()
-                .unwrap()
-                .to_ascii_lowercase()
-                .contains("onto itself")
+        assert!(planned
+            .err()
+            .unwrap()
+            .to_ascii_lowercase()
+            .contains("onto itself"));
+    }
+
+    #[test]
+    fn read_file_chunks_stops_when_cancelled_mid_stream() {
+        let dir = make_test_temp_dir("checksum-cancel");
+        let file_path = dir.join("sample.bin");
+        let mut file = fs::File::create(&file_path).unwrap();
+        file.write_all(&vec![b'x'; 32 * 1024]).unwrap();
+        drop(file);
+
+        let mut file = fs::File::open(&file_path).unwrap();
+        let mut saw_chunks = 0usize;
+        let mut should_continue_calls = 0usize;
+        let result = read_file_chunks(
+            &mut file,
+            32 * 1024,
+            |_| {
+                saw_chunks += 1;
+            },
+            || {
+                should_continue_calls += 1;
+                Ok(should_continue_calls < 3)
+            },
+            |_| {},
         );
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "Checksum cancelled");
+        assert!(saw_chunks > 0);
+        assert!(saw_chunks < 4);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn get_item_properties_treats_symlinked_directory_as_directory() {
+        use std::os::unix::fs::symlink;
+
+        let dir = make_test_temp_dir("symlink-dir-props");
+        let target_dir = dir.join("target");
+        let link_dir = dir.join("target-link");
+        fs::create_dir(&target_dir).unwrap();
+        symlink(&target_dir, &link_dir).unwrap();
+
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let props = runtime
+            .block_on(get_item_properties(link_dir.to_string_lossy().to_string()))
+            .unwrap();
+
+        let _ = fs::remove_dir_all(&dir);
+        assert!(props.is_symlink);
+        assert!(props.is_directory);
     }
 }
 
@@ -1793,7 +2190,7 @@ fn get_windows_system_clipboard_text_paths() -> Vec<String> {
                 Err(_) => return Vec::new(),
             };
 
-            let hglobal = std::mem::transmute::<_, HGLOBAL>(handle.0);
+            let hglobal = HGLOBAL(handle.0);
             let ptr = GlobalLock(hglobal);
             if ptr.is_null() {
                 return Vec::new();
@@ -1882,14 +2279,14 @@ fn get_system_clipboard_files_internal() -> Vec<String> {
         if !files.is_empty() {
             return files;
         }
-        return get_windows_system_clipboard_text_paths();
+        get_windows_system_clipboard_text_paths()
     }
 
     #[cfg(target_os = "macos")]
     {
-        return run_command_capture("pbpaste", &[])
+        run_command_capture("pbpaste", &[])
             .map(|output| parse_clipboard_paths(&output))
-            .unwrap_or_default();
+            .unwrap_or_default()
     }
 
     #[cfg(target_os = "linux")]
@@ -1898,7 +2295,7 @@ fn get_system_clipboard_files_internal() -> Vec<String> {
             .or_else(|| run_command_capture("xclip", &["-selection", "clipboard", "-o"]))
             .or_else(|| run_command_capture("xsel", &["--clipboard", "--output"]))
             .unwrap_or_default();
-        return parse_clipboard_paths(&text);
+        parse_clipboard_paths(&text)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
@@ -1962,10 +2359,13 @@ pub fn get_system_clipboard_files(
 
 #[tauri::command]
 pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
-    log::debug!("[Clipboard] write_to_system_clipboard ({} chars)", text.len());
+    log::debug!(
+        "[Clipboard] write_to_system_clipboard ({} chars)",
+        text.len()
+    );
     #[cfg(target_os = "windows")]
     {
-        return write_windows_system_clipboard_text(&text);
+        write_windows_system_clipboard_text(&text)
     }
 
     #[cfg(target_os = "macos")]
@@ -1975,10 +2375,12 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
         let mut child = cmd.spawn().map_err(|e| e.to_string())?;
         if let Some(mut stdin) = child.stdin.take() {
             use std::io::Write;
-            stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+            stdin
+                .write_all(text.as_bytes())
+                .map_err(|e| e.to_string())?;
         }
         child.wait().map_err(|e| e.to_string())?;
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
@@ -1989,7 +2391,9 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
             let mut child = cmd.spawn().map_err(|e| e.to_string())?;
             if let Some(mut stdin) = child.stdin.take() {
                 use std::io::Write;
-                stdin.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+                stdin
+                    .write_all(text.as_bytes())
+                    .map_err(|e| e.to_string())?;
             }
             child.wait().map_err(|e| e.to_string())?;
             Ok(())
@@ -2004,7 +2408,7 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
         if try_copy("xsel", &["--clipboard", "--input"]).is_ok() {
             return Ok(());
         }
-        return Err("No clipboard tool found".into());
+        Err("No clipboard tool found".into())
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
@@ -2019,23 +2423,22 @@ pub fn set_drag_data(
     state: tauri::State<'_, crate::AppState>,
     paths: Vec<String>,
 ) -> Result<(), String> {
+    for path in &paths {
+        crate::validate_existing_path(path, "Drag item")?;
+    }
     let mut drag = state.drag.lock().map_err(|e| e.to_string())?;
     drag.paths = paths;
     Ok(())
 }
 
 #[tauri::command]
-pub fn get_drag_data(
-    state: tauri::State<'_, crate::AppState>,
-) -> Result<Vec<String>, String> {
+pub fn get_drag_data(state: tauri::State<'_, crate::AppState>) -> Result<Vec<String>, String> {
     let drag = state.drag.lock().map_err(|e| e.to_string())?;
     Ok(drag.paths.clone())
 }
 
 #[tauri::command]
-pub fn clear_drag_data(
-    state: tauri::State<'_, crate::AppState>,
-) -> Result<(), String> {
+pub fn clear_drag_data(state: tauri::State<'_, crate::AppState>) -> Result<(), String> {
     let mut drag = state.drag.lock().map_err(|e| e.to_string())?;
     drag.paths.clear();
     Ok(())
@@ -2049,6 +2452,7 @@ pub async fn calculate_checksum(
     webview: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
+    ensure_safe_preview_read_path(&path)?; // don't hash secrets (ssh keys, .pem, etc.)
 
     {
         let mut active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
@@ -2057,8 +2461,8 @@ pub async fn calculate_checksum(
 
     let op_id = operation_id.clone();
     let result = tokio::task::spawn_blocking(move || {
-        use sha2::{Sha256, Sha512, Digest};
         use md5::Md5;
+        use sha2::{Digest, Sha256, Sha512};
 
         const MAX_CHECKSUM_SIZE: u64 = 4 * 1024 * 1024 * 1024; // 4 GB
         let file_size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
@@ -2073,114 +2477,111 @@ pub async fn calculate_checksum(
         let mut results = serde_json::Map::new();
 
         for algo in &algorithms {
-            {
-                let active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
-                if !active.contains(&op_id) {
-                    return Err("Checksum cancelled".to_string());
-                }
+            if !checksum_operation_is_active(&op_id)? {
+                return Err("Checksum cancelled".to_string());
             }
 
             let hash = match algo.to_lowercase().as_str() {
                 "sha256" => {
                     let mut hasher = Sha256::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
                     hex::encode(hasher.finalize())
-                },
+                }
                 "sha512" => {
                     let mut hasher = Sha512::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
                     hex::encode(hasher.finalize())
-                },
+                }
                 "md5" => {
                     let mut hasher = Md5::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
                     hex::encode(hasher.finalize())
-                },
+                }
                 "crc32" => {
                     let mut hasher = crc32fast::Hasher::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
                     format!("{:08x}", hasher.finalize())
-                },
+                }
                 "blake3" => {
                     let mut hasher = blake3::Hasher::new();
-                    let mut buf = [0u8; 8192];
-                    let mut read_total = 0u64;
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(0)).map_err(|e| e.to_string())?;
-                    loop {
-                        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
-                        if n == 0 { break; }
-                        hasher.update(&buf[..n]);
-                        read_total += n as u64;
-                        if read_total % (1024 * 1024) == 0 {
-                            let percent = if file_size > 0 { (read_total as f64 / file_size as f64) * 100.0 } else { 100.0 };
-                            let _ = webview.emit("checksum-progress", serde_json::json!({
-                                "operationId": op_id, "percent": percent, "algorithm": algo
-                            }));
-                        }
-                    }
+                    read_file_chunks(
+                        &mut file,
+                        file_size,
+                        |chunk| {
+                            hasher.update(chunk);
+                        },
+                        || checksum_operation_is_active(&op_id),
+                        |percent| {
+                            let _ = webview.emit(
+                                "checksum-progress",
+                                serde_json::json!({
+                                    "operationId": op_id, "percent": percent, "algorithm": algo
+                                }),
+                            );
+                        },
+                    )?;
                     hasher.finalize().to_hex().to_string()
-                },
+                }
                 _ => return Err(format!("Unknown algorithm: {}", algo)),
             };
             results.insert(algo.clone(), serde_json::Value::String(hash));

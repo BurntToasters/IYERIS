@@ -57,14 +57,15 @@ export function createToastManager(options: ToastOptions) {
     toast.setAttribute('role', type === 'error' || type === 'warning' ? 'alert' : 'status');
 
     const icons: Record<string, string> = {
-      success: '2705',
-      error: '274c',
-      info: '2139',
-      warning: '26a0',
+      success: 'check-circle',
+      error: 'x-circle',
+      info: 'info',
+      warning: 'alert-triangle',
     };
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     toast.innerHTML = `
-    <span class="toast-icon" aria-hidden="true">${options.twemojiImg(String.fromCodePoint(parseInt(icons[type] ?? '2139', 16)), 'twemoji')}</span>
+    <span class="toast-icon" aria-hidden="true">${options.twemojiImg(icons[type] ?? 'info', 'twemoji')}</span>
     <div class="toast-content">
       ${title ? `<div class="toast-title">${escapeHtml(title)}</div>` : ''}
       <div class="toast-message">${escapeHtml(message)}</div>

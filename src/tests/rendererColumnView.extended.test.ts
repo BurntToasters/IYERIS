@@ -28,6 +28,8 @@ vi.mock('../rendererUtils.js', () => ({
       return idx <= 0 ? '/' : filePath.slice(0, idx);
     },
   },
+  twemojiImg: (emoji: string, className?: string) =>
+    `<span class="${className || 'twemoji'}" data-emoji="${emoji}"></span>`,
 }));
 
 vi.mock('../home.js', () => ({

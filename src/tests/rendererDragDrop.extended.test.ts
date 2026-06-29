@@ -65,11 +65,12 @@ function createConfig(overrides: Record<string, unknown> = {}) {
     updateUndoRedoState: vi.fn().mockResolvedValue(undefined),
     getPlatformOS: () => (overrides.platformOS as string) ?? 'darwin',
   };
-  return { config, showToast };
+  return { config: { ...config, ...overrides }, showToast };
 }
 
 describe('createDragDropController — extended', () => {
   beforeEach(() => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="file-view">
         <div class="column-view">
@@ -92,6 +93,7 @@ describe('createDragDropController — extended', () => {
         moveItems: vi.fn().mockResolvedValue({ success: true }),
         clearDragData: vi.fn().mockResolvedValue(undefined),
         getPathForFile: vi.fn().mockReturnValue(''),
+        onNativeDragDrop: vi.fn().mockReturnValue(vi.fn()),
       },
       configurable: true,
       writable: true,
@@ -116,6 +118,33 @@ describe('createDragDropController — extended', () => {
       expect(showToast).toHaveBeenCalledWith('Copied 1 item(s)', 'Success', 'success');
 
       expect(config.updateUndoRedoState).not.toHaveBeenCalled();
+    });
+
+    it('updates queued drag-drop operations without recursion', async () => {
+      const addOperation = vi.fn();
+      const updateOperation = vi.fn();
+      const completeOperation = vi.fn();
+      const { config } = createConfig({
+        generateOperationId: vi.fn().mockReturnValue('drop-op'),
+        addOperation,
+        updateOperation,
+        completeOperation,
+      });
+      const ctrl = createDragDropController(config as any);
+      const tauriAPI = (window as unknown as { tauriAPI: Record<string, ReturnType<typeof vi.fn>> })
+        .tauriAPI;
+
+      await ctrl.handleDrop(['/src.txt'], '/dest', 'move');
+
+      expect(addOperation).toHaveBeenCalledWith(
+        'drop-op',
+        'move',
+        '1 item(s) to dest',
+        expect.objectContaining({ cancellable: true, total: 1 })
+      );
+      expect(tauriAPI.moveItems).toHaveBeenCalledWith(['/src.txt'], '/dest', 'ask', 'drop-op');
+      expect(completeOperation).toHaveBeenCalledWith('drop-op', 'done', undefined);
+      expect(updateOperation).not.toHaveBeenCalled();
     });
 
     it('shows error toast on failure', async () => {
@@ -310,6 +339,29 @@ describe('createDragDropController — extended', () => {
       );
       expect(getPathForFile).toHaveBeenCalledTimes(1);
       expect(result).toEqual(['/tmp/from-web-utils.txt']);
+    });
+
+    it('uses cached native drag-drop paths when DataTransfer has no paths', async () => {
+      let nativeHandler: ((event: { type: string; paths?: string[] }) => void) | undefined;
+      const unlisten = vi.fn();
+      (
+        window as unknown as {
+          tauriAPI: { onNativeDragDrop: ReturnType<typeof vi.fn> };
+        }
+      ).tauriAPI.onNativeDragDrop = vi.fn((handler) => {
+        nativeHandler = handler;
+        return unlisten;
+      });
+      const { config } = createConfig();
+      const ctrl = createDragDropController(config);
+
+      ctrl.initDragAndDropListeners();
+      nativeHandler?.({ type: 'drop', paths: ['/native/from-finder.txt'] });
+      const result = await ctrl.getDraggedPaths(createDragEvent('drop'));
+
+      expect(result).toEqual(['/native/from-finder.txt']);
+      ctrl.destroyDragAndDropListeners();
+      expect(unlisten).toHaveBeenCalledTimes(1);
     });
 
     it('returns empty paths when shared drag-data lookup fails', async () => {

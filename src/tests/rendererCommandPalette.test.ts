@@ -48,6 +48,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 }
 
 function setupCommandPaletteDOM() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="command-palette-modal" style="display:none">
       <input id="command-palette-input" type="text" />

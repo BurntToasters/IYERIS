@@ -10,6 +10,7 @@ import { createIndexerController } from '../rendererIndexer';
 describe('createIndexerController', () => {
   beforeEach(() => {
     vi.useFakeTimers();
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="index-status"></div>
       <button id="rebuild-index-btn">Rebuild</button>

@@ -14,10 +14,13 @@ import {
   DATA_EXTENSIONS,
   PDF_EXTENSIONS,
 } from './fileTypes.js';
-import { twemojiImg } from './rendererUtils.js';
+import { renderIcon } from './rendererUtils.js';
 
 export function getFileExtension(filename: string): string {
-  const ext = filename.split('.').pop()!.toLowerCase();
+  if (!filename) return '';
+  const parts = filename.split('.');
+  const last = parts[parts.length - 1] ?? '';
+  const ext = last.toLowerCase();
   return ext.length > 20 ? ext.slice(0, 20) : ext;
 }
 
@@ -54,14 +57,14 @@ export function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-const IMAGE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f5bc', 16)), 'twemoji');
-const RAW_ICON = twemojiImg(String.fromCodePoint(0x1f4f7), 'twemoji');
-const VIDEO_ICON = twemojiImg(String.fromCodePoint(0x1f3ac), 'twemoji');
-const AUDIO_ICON = twemojiImg(String.fromCodePoint(0x1f3b5), 'twemoji');
-const WORD_ICON = twemojiImg(String.fromCodePoint(0x1f4dd), 'twemoji');
-const SPREADSHEET_ICON = twemojiImg(String.fromCodePoint(0x1f4ca), 'twemoji');
-const ARCHIVE_ICON = twemojiImg(String.fromCodePoint(0x1f5dc), 'twemoji');
-const DEFAULT_FILE_ICON = twemojiImg(String.fromCodePoint(parseInt('1f4c4', 16)), 'twemoji');
+const IMAGE_ICON = renderIcon('image', 'twemoji');
+const RAW_ICON = renderIcon('camera', 'twemoji');
+const VIDEO_ICON = renderIcon('file-video', 'twemoji');
+const AUDIO_ICON = renderIcon('file-audio', 'twemoji');
+const WORD_ICON = renderIcon('file-text', 'twemoji');
+const SPREADSHEET_ICON = renderIcon('file-spreadsheet', 'twemoji');
+const ARCHIVE_ICON = renderIcon('file-archive', 'twemoji');
+const DEFAULT_FILE_ICON = renderIcon('file', 'twemoji');
 
 export { IMAGE_ICON };
 
@@ -74,10 +77,10 @@ export function getFileIcon(filename: string): string {
   const cached = fileIconCache.get(ext);
   if (cached) return cached;
 
-  const codepoint = FILE_ICON_MAP[ext];
+  const iconName = FILE_ICON_MAP[ext];
   let icon: string;
 
-  if (!codepoint) {
+  if (!iconName) {
     if (RAW_EXTENSIONS.has(ext)) {
       icon = RAW_ICON;
     } else if (IMAGE_EXTENSIONS.has(ext)) {
@@ -95,10 +98,10 @@ export function getFileIcon(filename: string): string {
     } else {
       icon = DEFAULT_FILE_ICON;
     }
-  } else if (codepoint === '1f5bc') {
+  } else if (iconName === 'image') {
     icon = IMAGE_ICON;
   } else {
-    icon = twemojiImg(String.fromCodePoint(parseInt(codepoint, 16)), 'twemoji');
+    icon = renderIcon(iconName, 'twemoji');
   }
 
   if (fileIconCache.size >= FILE_ICON_CACHE_MAX) {

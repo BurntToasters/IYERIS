@@ -97,7 +97,24 @@ export function createBootstrapController(config: BootstrapConfig) {
     }
   }
 
+  function initializeStaticIcons(): void {
+    document.querySelectorAll('[data-icon]').forEach((el) => {
+      const iconName = el.getAttribute('data-icon');
+      if (iconName) {
+        el.outerHTML = twemojiImg(iconName, el.className || 'twemoji');
+      }
+    });
+  }
+
   async function init() {
+    initializeStaticIcons();
+
+    window.addEventListener('focus', () => {
+      document.body.classList.remove('window-inactive');
+    });
+    window.addEventListener('blur', () => {
+      document.body.classList.add('window-inactive');
+    });
     const [platform, mas, flatpak, msStore, appVersion, devMode] = await Promise.all([
       window.tauriAPI.getPlatform().catch(() => 'unknown'),
       window.tauriAPI.isMas().catch(() => false),
@@ -182,44 +199,47 @@ export function createBootstrapController(config: BootstrapConfig) {
     const isStoreVersion = mas || flatpak || msStore;
 
     if (typeof requestIdleCallback !== 'undefined') {
-      requestIdleCallback(() => {
-        if (isStoreVersion) {
-          const updateBtn = document.getElementById('check-updates-btn');
-          if (updateBtn) {
-            updateBtn.style.display = 'none';
-          }
-
-          const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
-          if (autoCheckToggle) {
-            const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
-            if (settingItem) {
-              settingItem.style.display = 'none';
+      requestIdleCallback(
+        () => {
+          if (isStoreVersion) {
+            const updateBtn = document.getElementById('check-updates-btn');
+            if (updateBtn) {
+              updateBtn.style.display = 'none';
             }
-          }
 
-          const updatesCards = document.querySelectorAll('.settings-card-header');
-          updatesCards.forEach((header) => {
-            if (header.textContent === 'Updates') {
-              const card = header.closest('.settings-card') as HTMLElement;
-              if (card) {
-                card.style.display = 'none';
+            const autoCheckToggle = document.getElementById('auto-check-updates-toggle');
+            if (autoCheckToggle) {
+              const settingItem = autoCheckToggle.closest('.setting-item') as HTMLElement;
+              if (settingItem) {
+                settingItem.style.display = 'none';
               }
             }
-          });
-        }
 
-        if (mas || msStore) {
-          const settingsCards = document.querySelectorAll('.settings-card-header');
-          settingsCards.forEach((header) => {
-            if (header.textContent === 'Developer Options') {
-              const card = header.closest('.settings-card') as HTMLElement;
-              if (card) {
-                card.style.display = 'none';
+            const updatesCards = document.querySelectorAll('.settings-card-header');
+            updatesCards.forEach((header) => {
+              if (header.textContent === 'Updates') {
+                const card = header.closest('.settings-card') as HTMLElement;
+                if (card) {
+                  card.style.display = 'none';
+                }
               }
-            }
-          });
-        }
-      });
+            });
+          }
+
+          if (mas || msStore) {
+            const settingsCards = document.querySelectorAll('.settings-card-header');
+            settingsCards.forEach((header) => {
+              if (header.textContent === 'Developer Options') {
+                const card = header.closest('.settings-card') as HTMLElement;
+                if (card) {
+                  card.style.display = 'none';
+                }
+              }
+            });
+          }
+        },
+        { timeout: 5000 }
+      );
     }
 
     setTimeout(() => {
@@ -248,7 +268,8 @@ export function createBootstrapController(config: BootstrapConfig) {
 
         const checkUpdatesBtn = document.getElementById('check-updates-btn');
         if (checkUpdatesBtn) {
-          checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f389), 'twemoji')} Update Available!`;
+          // eslint-disable-next-line no-restricted-syntax -- static HTML template
+          checkUpdatesBtn.innerHTML = `${twemojiImg('sparkles', 'twemoji')} Update Available!`;
           checkUpdatesBtn.classList.add('primary');
         }
       });

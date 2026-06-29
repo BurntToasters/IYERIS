@@ -191,52 +191,92 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       'r' | 'f' | undefined,
       string[] | undefined,
     ][] = [
-      ['new-folder', 'New Folder', 'Create a new folder', '📁', createNewFolder, 'r', ['mkdir']],
-      ['new-file', 'New File', 'Create a new file', '📄', createNewFile, 'r', ['touch']],
+      [
+        'new-folder',
+        'New Folder',
+        'Create a new folder',
+        'folder',
+        createNewFolder,
+        'r',
+        ['mkdir'],
+      ],
+      ['new-file', 'New File', 'Create a new file', 'file-text', createNewFile, 'r', ['touch']],
       [
         'search',
         'Search',
         'Search files in current folder',
-        '🔍',
+        'search',
         clickBtn('search-btn'),
         'r',
         ['find', 'lookup'],
       ],
-      ['refresh', 'Refresh', 'Reload current folder', '🔄', refresh, 'f', ['reload', 'rescan']],
-      ['go-back', 'Go Back', 'Navigate to previous folder', '⬅️', goBack, 'r', ['back']],
-      ['go-forward', 'Go Forward', 'Navigate to next folder', '➡️', goForward, 'r', ['forward']],
-      ['go-up', 'Go Up', 'Navigate to parent folder', '⬆️', goUp, 'r', ['parent']],
-      ['go-home', 'Go Home', 'Navigate to home view', '🏠', goHome, 'r', ['start']],
+      [
+        'refresh',
+        'Refresh',
+        'Reload current folder',
+        'refresh-cw',
+        refresh,
+        'f',
+        ['reload', 'rescan'],
+      ],
+      ['go-back', 'Go Back', 'Navigate to previous folder', 'arrow-left', goBack, 'r', ['back']],
+      [
+        'go-forward',
+        'Go Forward',
+        'Navigate to next folder',
+        'arrow-right',
+        goForward,
+        'r',
+        ['forward'],
+      ],
+      ['go-up', 'Go Up', 'Navigate to parent folder', 'arrow-up', goUp, 'r', ['parent']],
+      ['go-home', 'Go Home', 'Navigate to home view', 'home', goHome, 'r', ['start']],
       [
         'find-duplicates',
         'Find Duplicates',
         'Scan current folder for duplicate files',
-        '🧬',
+        'files',
         findDuplicates,
         undefined,
         ['dupes', 'dedupe', 'integrity'],
       ],
-      ['settings', 'Settings', 'Open settings', '⚙️', showSettingsModal, 'r', ['preferences']],
+      [
+        'settings',
+        'Settings',
+        'Open settings',
+        'settings',
+        showSettingsModal,
+        'r',
+        ['preferences'],
+      ],
       [
         'shortcuts',
         'Keyboard Shortcuts',
         'View all keyboard shortcuts',
-        '⌨️',
+        'keyboard',
         showShortcutsModal,
         'r',
         ['hotkeys', 'keys'],
       ],
-      ['select-all', 'Select All', 'Select all items', '☑️', selectAll, 'r', ['highlight']],
-      ['copy', 'Copy', 'Copy selected items', '📋', copyToClipboard, 'r', ['duplicate']],
-      ['cut', 'Cut', 'Cut selected items', '✂️', cutToClipboard, 'r', ['move']],
-      ['paste', 'Paste', 'Paste items', '📎', pasteFromClipboard, 'r', ['insert']],
-      ['delete', 'Delete', 'Delete selected items', '🗑️', deleteSelected, 'f', ['remove']],
-      ['rename', 'Rename', 'Rename selected item', '✍️', renameSelected, 'f', ['edit name']],
+      [
+        'select-all',
+        'Select All',
+        'Select all items',
+        'check-square',
+        selectAll,
+        'r',
+        ['highlight'],
+      ],
+      ['copy', 'Copy', 'Copy selected items', 'copy', copyToClipboard, 'r', ['duplicate']],
+      ['cut', 'Cut', 'Cut selected items', 'scissors', cutToClipboard, 'r', ['move']],
+      ['paste', 'Paste', 'Paste items', 'clipboard', pasteFromClipboard, 'r', ['insert']],
+      ['delete', 'Delete', 'Delete selected items', 'trash-2', deleteSelected, 'f', ['remove']],
+      ['rename', 'Rename', 'Rename selected item', 'pencil', renameSelected, 'f', ['edit name']],
       [
         'grid-view',
         'Grid View',
         'Switch to grid view',
-        '▦',
+        'layout-grid',
         () => setViewMode('grid'),
         undefined,
         ['tiles'],
@@ -245,7 +285,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         'list-view',
         'List View',
         'Switch to list view',
-        '☰',
+        'layout-list',
         () => setViewMode('list'),
         undefined,
         ['rows', 'details'],
@@ -254,7 +294,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         'column-view',
         'Column View',
         'Switch to column view',
-        '|||',
+        'columns-3',
         () => setViewMode('column'),
         undefined,
         ['finder', 'columns'],
@@ -263,7 +303,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         'toggle-preview',
         'Toggle Preview Panel',
         'Show or hide preview panel',
-        '👁️',
+        'eye',
         clickBtn('preview-toggle-btn'),
         undefined,
         ['preview', 'inspector'],
@@ -272,7 +312,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         'toggle-sidebar',
         'Toggle Sidebar',
         'Show or hide sidebar',
-        '📂',
+        'sidebar',
         clickBtn('sidebar-toggle'),
         'r',
         ['navigation'],
@@ -281,7 +321,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         'new-tab',
         'New Tab',
         'Open new tab',
-        '➕',
+        'plus',
         () => {
           if (deps.getTabsEnabled()) addNewTab();
         },
@@ -371,6 +411,9 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
 
     clearHtml(resultsContainer);
     commandPaletteFocusedIndex = -1;
+    // Clear any stale aria-activedescendant so assistive technology doesn't
+    // announce a removed option id after the results list is rebuilt.
+    commandPaletteInput?.removeAttribute('aria-activedescendant');
 
     if (cmds.length === 0) {
       resultsContainer.style.display = 'none';
@@ -383,6 +426,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
 
     resultsContainer.setAttribute('role', 'listbox');
 
+    const fragment = document.createDocumentFragment();
     cmds.forEach((cmd, index) => {
       const item = document.createElement('div');
       item.className = 'command-palette-item';
@@ -404,6 +448,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       `;
       }
 
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       item.innerHTML = `
       <div class="command-palette-item-left">
         ${cmd.icon ? `<span class="command-palette-item-icon">${deps.twemojiImg(cmd.icon, 'twemoji command-palette-emoji')}</span>` : ''}
@@ -428,8 +473,9 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
         setCommandPaletteFocus(index);
       });
 
-      resultsContainer.appendChild(item);
+      fragment.appendChild(item);
     });
+    resultsContainer.appendChild(fragment);
   }
 
   function setCommandPaletteFocus(index: number): void {

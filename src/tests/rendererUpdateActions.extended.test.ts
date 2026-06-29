@@ -576,6 +576,20 @@ describe('rendererUpdateActions extended coverage', () => {
       expect(checkUpdatesBtn.innerHTML).toContain('Update Ready');
       expect(checkUpdatesBtn.classList.contains('primary')).toBe(true);
     });
+
+    it('treats a later button press as install-ready instead of running another update check', async () => {
+      const controller = setup({ showDialogReturn: false });
+
+      await controller.handleUpdateDownloaded({ version: '2.0.0' });
+
+      showDialog.mockResolvedValueOnce(true);
+      mockInstallUpdate.mockResolvedValueOnce({ success: true });
+      await controller.checkForUpdates();
+
+      expect(mockCheckForUpdates).not.toHaveBeenCalled();
+      expect(mockInstallUpdate).toHaveBeenCalledTimes(1);
+      expect(showDialog).toHaveBeenCalledTimes(2);
+    });
   });
 
   describe('setCheckUpdatesButtonDefault', () => {

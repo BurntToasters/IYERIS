@@ -16,9 +16,10 @@ import { createPreviewController } from './rendererPreviews.js';
 import { createSearchController } from './rendererSearch.js';
 import { createSelectionController } from './rendererSelection.js';
 import { createToastManager } from './rendererToasts.js';
+import { t } from './i18n.js';
 import { createHoverCardController } from './rendererHoverCard.js';
 import { createTypeaheadController } from './rendererTypeahead.js';
-import { createArchiveOperationsController } from './rendererArchiveOperations.js';
+import { createOperationQueueController } from './rendererOperationQueue.js';
 import { createTabsController } from './rendererTabs.js';
 import { createCommandPaletteController } from './rendererCommandPalette.js';
 import { createShortcutsUiController } from './rendererShortcutsUi.js';
@@ -42,6 +43,7 @@ import { createFolderIconPickerController } from './rendererFolderIconPicker.js'
 import { createInlineRenameController } from './rendererInlineRename.js';
 import { createGitStatusController } from './rendererGitStatus.js';
 import { createSortController } from './rendererSort.js';
+import { setShortcutFormatter } from './rendererTooltips.js';
 import { createZoomController } from './rendererZoom.js';
 import { createIndexerController } from './rendererIndexer.js';
 import { createLayoutController } from './rendererLayout.js';
@@ -127,10 +129,14 @@ export interface LateBound {
   updateNavigationButtons(): void;
   getFileByPath(path: string): FileItem | undefined;
   getFileItemData(el: HTMLElement): FileItem | null;
+  registerRecentlyPastedPaths(paths: string[]): void;
+  setRecentlyRenamedPath(path: string | null): void;
 }
 
 export interface WiringDeps {
   getCurrentPath(): string;
+  getSearchScopePath?(): string;
+  getSearchScopeLabel?(): string;
   setCurrentPath(value: string): void;
   getCurrentSettings(): Settings;
   setCurrentSettings(settings: Settings): void;
@@ -174,6 +180,15 @@ export interface WiringDeps {
 }
 
 function getFileItemsArray(): HTMLElement[] {
+  const isRightPaneActive =
+    document.body.classList.contains('dual-pane-enabled') &&
+    document.body.classList.contains('active-pane-right');
+  const scope = isRightPaneActive
+    ? document.getElementById('dual-pane-secondary-list')
+    : document.getElementById('file-grid');
+  if (scope) {
+    return Array.from(scope.querySelectorAll('.file-item')) as HTMLElement[];
+  }
   return Array.from(document.querySelectorAll('.file-item')) as HTMLElement[];
 }
 
@@ -196,18 +211,28 @@ export function wireControllers(deps: WiringDeps) {
   let hideSettingsModal!: () => void | Promise<void>;
   /* eslint-enable prefer-const */
 
-  const archiveOperationsController = createArchiveOperationsController({
+  const operationQueueController = createOperationQueueController({
     cancelArchiveOperation: (operationId) => window.tauriAPI.cancelArchiveOperation(operationId),
+    cancelChecksumCalculation: (operationId) =>
+      window.tauriAPI.cancelChecksumCalculation(operationId),
+    cancelFileOperation: (operationId) => window.tauriAPI.cancelFileOperation(operationId),
+    getOperationPanelCollapsed: () => deps.getCurrentSettings().operationPanelCollapsed === true,
+    setOperationPanelCollapsed: (collapsed) => {
+      deps.getCurrentSettings().operationPanelCollapsed = collapsed;
+      deps.debouncedSaveSettings(100);
+    },
   });
 
   const {
     generateOperationId,
     addOperation,
     updateOperation,
+    completeOperation,
     removeOperation,
     getOperation,
-    cleanup: cleanupArchiveOperations,
-  } = archiveOperationsController;
+    isOperationCancelling,
+    cleanup: cleanupOperationQueue,
+  } = operationQueueController;
 
   const sortController = createSortController({
     getSortBtn: () => sortBtn,
@@ -265,6 +290,10 @@ export function wireControllers(deps: WiringDeps) {
     navigateTo: (p) => deps.late.navigateTo(p),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
     getPlatformOS: () => deps.getPlatformOS(),
+    generateOperationId,
+    addOperation,
+    updateOperation,
+    completeOperation,
   });
   const {
     getDragOperation,
@@ -292,35 +321,7 @@ export function wireControllers(deps: WiringDeps) {
   );
   deps.getIpcCleanupFunctions().push(cleanupDirectoryContentsProgress);
 
-  let fileOperationProgressToastId: string | null = null;
-  const cleanupFileOperationProgress = window.tauriAPI.onFileOperationProgress((progress) => {
-    const label = progress.operation === 'copy' ? 'Copying' : 'Moving';
-    const message = `${label} ${progress.current} of ${progress.total}`;
-    if (fileOperationProgressToastId) {
-      const existing = document.getElementById(fileOperationProgressToastId);
-      const msgEl = existing?.querySelector('.toast-message');
-      if (msgEl) {
-        msgEl.textContent = message;
-        return;
-      }
-    }
-    fileOperationProgressToastId = `file-op-progress-${Date.now()}`;
-    const container = document.getElementById('toast-container');
-    if (container) {
-      const toast = document.createElement('div');
-      toast.id = fileOperationProgressToastId;
-      toast.className = 'toast toast-info';
-      const msgDiv = document.createElement('div');
-      msgDiv.className = 'toast-message';
-      msgDiv.textContent = message;
-      toast.appendChild(msgDiv);
-      container.appendChild(toast);
-      setTimeout(() => {
-        toast.remove();
-        fileOperationProgressToastId = null;
-      }, 3000);
-    }
-  });
+  const cleanupFileOperationProgress = operationQueueController.bindFileOperationProgress();
   deps.getIpcCleanupFunctions().push(cleanupFileOperationProgress);
 
   const createDirectoryOperationId = directoryLoader.createOperationId;
@@ -394,6 +395,15 @@ export function wireControllers(deps: WiringDeps) {
   });
   showToast = toastManager.showToast;
 
+  const cleanupDirectoryTruncated = window.tauriAPI.onDirectoryTruncated((payload) => {
+    showToast(
+      t('toast.largeFolder.message', { count: payload.count.toLocaleString() }),
+      t('toast.largeFolder.title'),
+      'warning'
+    );
+  });
+  deps.getIpcCleanupFunctions().push(cleanupDirectoryTruncated);
+
   folderIconPickerController = createFolderIconPickerController({
     getCurrentSettings: () => deps.getCurrentSettings(),
     getCurrentPath: () => deps.getCurrentPath(),
@@ -403,7 +413,7 @@ export function wireControllers(deps: WiringDeps) {
     activateModal,
     deactivateModal,
     twemojiImg,
-    folderIcon: twemojiImg(String.fromCodePoint(0x1f4c1), 'twemoji file-icon'),
+    folderIcon: twemojiImg('folder', 'twemoji file-icon'),
   });
 
   const inlineRenameController = createInlineRenameController({
@@ -415,6 +425,7 @@ export function wireControllers(deps: WiringDeps) {
     showConfirm,
     isHomeViewPath,
     announceToScreenReader,
+    setRecentlyRenamedPath: (p) => deps.late.setRecentlyRenamedPath(p),
   });
 
   function isWindowsPlatform(): boolean {
@@ -443,9 +454,14 @@ export function wireControllers(deps: WiringDeps) {
     deactivateModal,
     addToRecentFiles: (p) => deps.late.addToRecentFiles(p),
     generateOperationId,
-    addOperation,
-    getOperation,
-    updateOperation,
+    addOperation: (id, type, name) => addOperation(id, type, name, { cancellable: true }),
+    getOperation: (id) => {
+      const operation = getOperation(id);
+      return operation ? { aborted: operation.status === 'cancelling' } : undefined;
+    },
+    updateOperation: (id, current, total, currentFile) =>
+      updateOperation(id, { current, total, currentFile, status: 'active' }),
+    completeOperation,
     removeOperation,
     isWindowsPlatform,
   });
@@ -497,6 +513,8 @@ export function wireControllers(deps: WiringDeps) {
 
   const searchController = createSearchController({
     getCurrentPath: () => deps.getCurrentPath(),
+    getSearchScopePath: deps.getSearchScopePath ? () => deps.getSearchScopePath!() : undefined,
+    getSearchScopeLabel: deps.getSearchScopeLabel ? () => deps.getSearchScopeLabel!() : undefined,
     getCurrentSettings: () => deps.getCurrentSettings(),
     setAllFiles: (files) => {
       deps.setAllFiles(files);
@@ -507,9 +525,7 @@ export function wireControllers(deps: WiringDeps) {
     updateStatusBar: () => deps.late.updateStatusBar(),
     showToast,
     createDirectoryOperationId,
-    navigateTo: (pathValue) => {
-      void deps.late.navigateTo(pathValue);
-    },
+    navigateTo: (pathValue) => deps.late.navigateTo(pathValue),
     debouncedSaveSettings: deps.debouncedSaveSettings,
     saveSettingsWithTimestamp: deps.saveSettingsWithTimestamp,
     getFileGrid: () => fileGrid,
@@ -546,8 +562,31 @@ export function wireControllers(deps: WiringDeps) {
     clearPreview: () => previewController.clearPreview(),
     getFileByPath: (p) => deps.late.getFileByPath(p),
     getViewMode: () => deps.getViewMode(),
-    getFileGrid: () => fileGrid,
-    openFileEntry,
+    getFileGrid: () => {
+      const isRightPaneActive =
+        deps.getCurrentSettings().dualPaneEnabled === true &&
+        deps.getCurrentSettings().activePane === 'right';
+      if (isRightPaneActive) {
+        return document.getElementById('dual-pane-secondary-list') as HTMLElement | null;
+      }
+      return fileGrid;
+    },
+    openFileEntry: (file) => {
+      const isRightPaneActive =
+        deps.getCurrentSettings().dualPaneEnabled === true &&
+        deps.getCurrentSettings().activePane === 'right';
+      if (isRightPaneActive && file.isDirectory) {
+        window.dispatchEvent(
+          new CustomEvent('dual-pane-open-directory', {
+            detail: { path: file.path },
+          })
+        );
+      } else if (isRightPaneActive && file.isFile) {
+        void window.tauriAPI.openFile(file.path);
+      } else {
+        void openFileEntry(file);
+      }
+    },
     announceToScreenReader,
   });
 
@@ -578,6 +617,8 @@ export function wireControllers(deps: WiringDeps) {
     getSearchInputElement,
     setQuery: setSearchQuery,
     focusInput: focusSearchInput,
+    updateContentSearchToggle,
+    updateSearchPlaceholder,
   } = searchController;
 
   const {
@@ -626,6 +667,7 @@ export function wireControllers(deps: WiringDeps) {
     clearSelection,
     getSelectedItems: () => deps.getSelectedItems(),
     updateStatusBar: () => deps.late.updateStatusBar(),
+    selectSingleItem: (fileItem) => selectionController.selectSingleItem(fileItem),
   });
 
   const { handleInput: handleTypeaheadInput, reset: resetTypeahead } = typeaheadController;
@@ -663,8 +705,13 @@ export function wireControllers(deps: WiringDeps) {
     showToast,
     showConfirm,
     handleDrop,
+    generateOperationId,
+    addOperation,
+    updateOperation,
+    completeOperation,
     refresh: () => deps.late.refresh('clipboard-operation'),
     updateUndoRedoState: () => deps.late.updateUndoRedoState(),
+    registerRecentlyPastedPaths: (paths) => deps.late.registerRecentlyPastedPaths(paths),
   });
 
   const batchRenameController = createBatchRenameController({
@@ -716,6 +763,16 @@ export function wireControllers(deps: WiringDeps) {
     duplicateItems: (paths) => clipboardController.duplicateItems(paths),
     moveSelectedToFolder: () => clipboardController.moveSelectedToFolder(),
     copySelectedToFolder: () => clipboardController.copySelectedToFolder(),
+    moveSelectedToDestination: (destinationPath) =>
+      clipboardController.moveSelectedToDestination(destinationPath),
+    copySelectedToDestination: (destinationPath) =>
+      clipboardController.copySelectedToDestination(destinationPath),
+    getRecentTransferDestinations: () => deps.getCurrentSettings().recentTransferDestinations ?? [],
+    setRecentTransferDestinations: (destinations) => {
+      const settings = deps.getCurrentSettings();
+      settings.recentTransferDestinations = destinations;
+      deps.debouncedSaveSettings(100);
+    },
     shareItems: async (filePaths) => {
       const result = await window.tauriAPI.shareItems(filePaths);
       if (!result.success) {
@@ -819,7 +876,7 @@ export function wireControllers(deps: WiringDeps) {
     updateNavigationButtons: () => deps.late.updateNavigationButtons(),
     setHomeViewActive: (active) => deps.late.setHomeViewActive(active),
     navigateTo: (pathValue, force) => {
-      void deps.late.navigateTo(pathValue, force);
+      void deps.late.navigateTo(pathValue, force, 'tab');
     },
     watchDirectory: (pathValue) => {
       window.tauriAPI.watchDirectory(pathValue).catch(ignoreError);
@@ -881,6 +938,44 @@ export function wireControllers(deps: WiringDeps) {
     shortcutDefinitionById,
   } = shortcutEngine;
 
+  setShortcutFormatter((actionId: string) => {
+    let binding: ShortcutBinding | undefined;
+    if (actionId === 'refresh') {
+      binding = isMacPlatform() ? ['Meta', 'R'] : ['Ctrl', 'R'];
+    } else {
+      binding = getShortcutBinding(actionId);
+    }
+    if (!binding || binding.length === 0) return null;
+
+    const isMac = isMacPlatform();
+    if (isMac) {
+      return binding
+        .map((key) => {
+          if (key === 'Meta') return '⌘';
+          if (key === 'Shift') return '⇧';
+          if (key === 'Alt') return '⌥';
+          if (key === 'Ctrl') return '⌃';
+          if (key === 'ArrowLeft') return '←';
+          if (key === 'ArrowRight') return '→';
+          if (key === 'ArrowUp') return '↑';
+          if (key === 'ArrowDown') return '↓';
+          return key.toUpperCase();
+        })
+        .join('');
+    } else {
+      return binding
+        .map((key) => {
+          if (key === 'Meta') return 'Win';
+          if (key === 'ArrowLeft') return 'Left';
+          if (key === 'ArrowRight') return 'Right';
+          if (key === 'ArrowUp') return 'Up';
+          if (key === 'ArrowDown') return 'Down';
+          return key;
+        })
+        .join('+');
+    }
+  });
+
   function navigateHistory(delta: -1 | 1): void {
     const hi = deps.getHistoryIndex();
     const h = deps.getHistory();
@@ -930,6 +1025,11 @@ export function wireControllers(deps: WiringDeps) {
     onModalClose: deactivateModal,
     refresh: (reason?: string) => deps.late.refresh(reason),
     navigateTo: (pathValue) => deps.late.navigateTo(pathValue),
+    generateOperationId,
+    addOperation,
+    updateOperation,
+    completeOperation,
+    isOperationCancelling,
   });
 
   const commandPaletteController = createCommandPaletteController({
@@ -1004,6 +1104,52 @@ export function wireControllers(deps: WiringDeps) {
   showCommandPalette = commandPaletteController.showCommandPalette;
   hideCommandPalette = commandPaletteController.hideCommandPalette;
   syncCommandShortcuts = commandPaletteController.syncCommandShortcuts;
+
+  const cleanupNativeMenuCommand =
+    window.tauriAPI.onNativeMenuCommand?.((command) => {
+      const run: Record<string, () => void> = {
+        'new-window': () => void window.tauriAPI.openNewWindow(),
+        'new-tab': () => void addNewTab(),
+        'new-file': () => void inlineRenameController.createNewFile(),
+        'new-folder': () => void inlineRenameController.createNewFolder(),
+        copy: () => clipboardController.copyToClipboard(),
+        cut: () => clipboardController.cutToClipboard(),
+        paste: () => void clipboardController.pasteFromClipboard(),
+        rename: () => void deps.late.renameSelected(),
+        delete: () => void deps.late.deleteSelected(),
+        refresh: () => deps.late.refresh('native-menu'),
+        back: () => goBack(),
+        forward: () => goForward(),
+        up: () => goUp(),
+        home: () => void deps.late.navigateTo(HOME_VIEW_PATH),
+        'view-grid': () => void deps.late.setViewMode('grid'),
+        'view-list': () => void deps.late.setViewMode('list'),
+        'view-column': () => void deps.late.setViewMode('column'),
+        'dual-pane': () => {
+          const settings = deps.getCurrentSettings();
+          settings.dualPaneEnabled = !settings.dualPaneEnabled;
+          deps.late.applySettings(settings);
+          deps.debouncedSaveSettings(100);
+          showToast(
+            settings.dualPaneEnabled ? 'Dual pane enabled' : 'Dual pane disabled',
+            'View',
+            'info'
+          );
+        },
+        'command-palette': () => showCommandPalette(),
+        'find-duplicates': () => void duplicateFinderController.openDuplicateFinderModal(),
+        settings: () => showSettingsModal(),
+        shortcuts: () => showShortcutsModal(),
+      };
+      run[command]?.();
+    }) ?? (() => {});
+  deps.getIpcCleanupFunctions().push(cleanupNativeMenuCommand);
+
+  const cleanupNativeOpenPath =
+    window.tauriAPI.onNativeOpenPath?.((openPath) => {
+      void openPathWithArchivePrompt(openPath, undefined, true);
+    }) ?? (() => {});
+  deps.getIpcCleanupFunctions().push(cleanupNativeOpenPath);
 
   const shortcutsUi = createShortcutsUiController({
     isMacPlatform,
@@ -1202,13 +1348,15 @@ export function wireControllers(deps: WiringDeps) {
   onSettingsModalHide = handleSettingsModalClosed;
 
   return {
-    archiveOperationsController,
+    operationQueueController,
     generateOperationId,
     addOperation,
     updateOperation,
+    completeOperation,
     removeOperation,
     getOperation,
-    cleanupArchiveOperations,
+    isOperationCancelling,
+    cleanupOperationQueue,
 
     sortController,
     showSortMenu,
@@ -1315,6 +1463,8 @@ export function wireControllers(deps: WiringDeps) {
     getSearchInputElement,
     setSearchQuery,
     focusSearchInput,
+    updateContentSearchToggle,
+    updateSearchPlaceholder,
 
     previewController,
     initPreviewUi,

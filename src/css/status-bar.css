@@ -15,11 +15,15 @@
   border-bottom: none;
   border-left: none;
   border-right: none;
-  border-top: 1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--surface-1) 95%, transparent);
+  border-top: 1px solid var(--native-divider);
+  background: var(--chrome-surface);
   backdrop-filter: none;
-  box-shadow: none;
-  will-change: transform;
+  box-shadow: 0 -1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.status-bar span,
+.status-bar button {
+  flex: 0 1 auto;
 }
 
 body.platform-win32 .status-bar,
@@ -31,8 +35,20 @@ body.platform-linux .status-bar {
 .status-left,
 .status-right {
   display: flex;
-  gap: 10px;
+  gap: 8px;
   align-items: center;
+  min-width: 0;
+}
+
+.status-left {
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+.status-right {
+  flex: 0 1 auto;
+  justify-content: flex-end;
+  overflow: hidden;
 }
 
 .status-left span,
@@ -62,6 +78,12 @@ body.platform-linux .status-bar {
     box-shadow 0.15s ease,
     transform 0.15s ease,
     opacity 0.15s ease;
+}
+
+.status-left .status-hidden {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .status-hidden:hover {
@@ -128,6 +150,10 @@ body.platform-linux .status-bar {
   color: var(--text-secondary);
   opacity: 0.8;
   padding: 2px 6px;
+  max-width: 112px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   background: color-mix(in srgb, var(--surface-2) 85%, transparent);
   border-radius: 4px;
   transition:
@@ -170,6 +196,7 @@ body.theme-light .status-version:hover {
   align-items: center;
   gap: 4px;
   max-width: 170px;
+  min-width: 0;
   padding: 2px 8px;
   border: 1px solid color-mix(in srgb, var(--accent-color) 28%, transparent);
   background: color-mix(in srgb, var(--accent-color) 14%, transparent);
@@ -219,14 +246,36 @@ body.theme-light .status-version:hover {
   align-items: center;
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-md);
-  background: color-mix(in srgb, var(--surface-2) 85%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 74%, transparent);
+  border: 1px solid var(--native-divider);
   border-radius: var(--radius-small);
   font-size: var(--font-size-status);
   font-family: var(--font-mono);
+  min-width: 0;
+  white-space: nowrap;
 }
 
 .status-view-mode:hover {
   background: var(--interactive-hover);
+}
+
+.status-pane {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: 2px var(--spacing-md);
+  background: color-mix(in srgb, var(--accent-color) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-color) 28%, transparent);
+  border-radius: var(--radius-small);
+  font-size: var(--font-size-status);
+  color: var(--text-primary);
+  min-width: 0;
+  white-space: nowrap;
+}
+
+.status-pane strong {
+  font-weight: 650;
+  color: var(--accent-color);
 }
 
 body.theme-light .status-view-mode {
@@ -241,13 +290,14 @@ body.theme-light .status-view-mode:hover {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 2px 10px;
   background: rgba(var(--accent-rgb), 0.15);
   border: none;
-  border-radius: var(--radius-small);
+  border-radius: 999px;
   color: var(--accent-color);
   font-size: 10.5px;
   font-family: inherit;
+  white-space: nowrap;
   cursor: pointer;
   transition:
     background-color 0.2s ease,
@@ -259,8 +309,7 @@ body.theme-light .status-view-mode:hover {
 }
 
 .status-support-btn:hover {
-  background: rgba(var(--accent-rgb), 0.24);
-  transform: translateY(-1px);
+  background: rgba(var(--accent-rgb), 0.22);
 }
 
 .status-support-btn:active {
@@ -308,4 +357,35 @@ body.theme-light .status-view-mode:hover {
 
 body.reduce-transparency .status-bar {
   background: var(--bg-secondary) !important;
+}
+
+@media (max-width: 880px) {
+  .status-clipboard {
+    max-width: 120px;
+  }
+
+  .status-version {
+    max-width: 86px;
+  }
+}
+
+@media (max-width: 760px) {
+  .status-version,
+  .status-pane {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .status-support-btn,
+  .status-separator {
+    display: none;
+  }
+}
+
+@media (max-width: 540px) {
+  .status-view-mode,
+  .status-disk-space {
+    display: none;
+  }
 }

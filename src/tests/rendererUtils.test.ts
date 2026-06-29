@@ -209,37 +209,33 @@ describe('encodeFileUrl', () => {
 });
 
 describe('twemojiImg', () => {
-  it('returns img tag with correct codepoint', () => {
-    const result = twemojiImg('😀');
-    expect(result).toContain('1f600.svg');
+  it('returns svg tag with correct classes and aria-label', () => {
+    const result = twemojiImg('📁');
+    expect(result).toContain('<svg');
     expect(result).toContain('class="twemoji"');
-    expect(result).toContain('draggable="false"');
+    expect(result).toContain('aria-label="folder"');
   });
 
   it('uses custom className', () => {
-    const result = twemojiImg('😀', 'custom-class');
+    const result = twemojiImg('📁', 'custom-class');
     expect(result).toContain('class="custom-class"');
   });
 
-  it('uses custom alt text', () => {
-    const result = twemojiImg('😀', 'twemoji', 'grinning face');
-    expect(result).toContain('alt="grinning face"');
+  it('uses custom alt text as aria-label', () => {
+    const result = twemojiImg('📁', 'twemoji', 'my folder');
+    expect(result).toContain('aria-label="my folder"');
   });
 
-  it('escapes alt text for XSS safety', () => {
-    const result = twemojiImg('😀', 'twemoji', '<script>alert(1)</script>');
-    expect(result).not.toContain('<script>');
-    expect(result).toContain('&lt;script&gt;');
+  it('escapes custom alt text in svg attributes', () => {
+    const result = twemojiImg('📁', 'twemoji', 'folder" onload="alert(1)');
+    expect(result).toContain('aria-label="folder&quot; onload=&quot;alert(1)"');
+    expect(result).not.toContain('onload="alert(1)');
   });
 
-  it('uses emoji as default alt text', () => {
+  it('handles emoji directly and resolves it to Lucide icon', () => {
     const result = twemojiImg('📁');
-    expect(result).toContain('alt="📁"');
-  });
-
-  it('generates correct src path', () => {
-    const result = twemojiImg('⚠');
-    expect(result).toContain('src="/twemoji/');
+    expect(result).toContain('aria-label="folder"');
+    expect(result).toContain('<svg');
   });
 });
 

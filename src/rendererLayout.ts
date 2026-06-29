@@ -4,7 +4,7 @@ type ListColumnKey = 'name' | 'type' | 'size' | 'modified';
 
 const SIDEBAR_MIN_WIDTH = 140;
 const SIDEBAR_MAX_WIDTH = 360;
-const PREVIEW_MIN_WIDTH = 200;
+const PREVIEW_MIN_WIDTH = 180;
 const PREVIEW_MAX_WIDTH = 520;
 
 const LIST_COLUMN_MIN_WIDTHS: Record<string, number> = {
@@ -105,6 +105,7 @@ export function createLayoutController(config: LayoutConfig) {
     const shouldCollapse =
       typeof collapsed === 'boolean' ? collapsed : !sidebar.classList.contains('collapsed');
     sidebar.classList.toggle('collapsed', shouldCollapse);
+    document.body.classList.toggle('sidebar-collapsed', shouldCollapse);
     if (toggle) {
       toggle.setAttribute('aria-expanded', String(!shouldCollapse));
     }
@@ -114,7 +115,9 @@ export function createLayoutController(config: LayoutConfig) {
     const sidebar = document.querySelector('.sidebar') as HTMLElement | null;
     const toggle = document.getElementById('sidebar-toggle');
     if (!sidebar || !toggle) return;
-    toggle.setAttribute('aria-expanded', String(!sidebar.classList.contains('collapsed')));
+    const isCollapsed = sidebar.classList.contains('collapsed');
+    toggle.setAttribute('aria-expanded', String(!isCollapsed));
+    document.body.classList.toggle('sidebar-collapsed', isCollapsed);
   }
 
   function setupSidebarResize(): void {
@@ -210,6 +213,11 @@ export function createLayoutController(config: LayoutConfig) {
       document.body.style.userSelect = 'none';
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
+    });
+
+    previewResizeHandle.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      setPreviewPanelWidth(260, true);
     });
   }
 

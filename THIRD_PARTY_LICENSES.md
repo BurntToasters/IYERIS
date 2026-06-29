@@ -1,45 +1,42 @@
 # Third-Party Licenses
 
-## Twemoji
+## Lucide Icons
 
-IYERIS uses Twemoji graphics created by Twitter and other contributors. The graphics are licensed under CC-BY 4.0.
+IYERIS uses Lucide Icons created by the Lucide Contributors. The icons are licensed under the MIT License.
 
-**Project:** Twemoji  
-**Source:** https://github.com/jdecked/twemoji  
-**License:** CC-BY 4.0 (Creative Commons Attribution 4.0 International)  
-**Copyright:** Copyright 2020 Twitter, Inc and other contributors
+**Project:** Lucide Icons  
+**Source:** https://github.com/lucide-icons/lucide  
+**License:** MIT License  
+**Copyright:** Copyright (c) Lucide Contributors
 
 **License Text:**
-Creative Commons Attribution 4.0 International License (CC BY 4.0)
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-You are free to:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
 
-- Share — copy and redistribute the material in any medium or format
-- Adapt — remix, transform, and build upon the material for any purpose, even commercially
-
-Under the following terms:
-
-- Attribution — You must give appropriate credit, provide a link to the license, and indicate if changes were made.
-
-For the full license text, see: https://creativecommons.org/licenses/by/4.0/
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ---
 
-## 7-Zip
+## sevenz-rust
 
-IYERIS bundles the 7za command-line executable from 7-Zip for archive compression and extraction. The 7za binary is distributed via the `7zip-bin` npm package (MIT-licensed wrapper), but the binary itself is a separate work by Igor Pavlov.
+IYERIS uses the `sevenz-rust` Rust crate for reading 7z archives. The crate is a pure-Rust implementation; no 7-Zip executable or binary is bundled with IYERIS.
 
-**Project:** 7-Zip  
-**Source:** https://www.7-zip.org  
-**License:** LGPL-2.1-or-later (GNU Lesser General Public License v2.1 or later)  
-**Copyright:** Copyright (C) 1999-2024 Igor Pavlov
-
-**License Text (summary):**
-7-Zip is free software distributed under the GNU LGPL. You can use 7-Zip on any computer, including in commercial organizations. You don't need to register or pay for 7-Zip.
-
-The unRAR restriction applies: you may not use the unRAR source code to create a RAR archiver or to re-create the RAR compression algorithm.
-
-For the full license text, see: https://www.7-zip.org/license.txt
+**Project:** sevenz-rust  
+**Source:** https://github.com/dyz1990/sevenz-rust  
+**License:** Apache-2.0
 
 ---
 

@@ -15,9 +15,20 @@ updates:
           - 'minor'
           - 'patch'
 
+  # Audit finding M12: pin third-party GitHub Actions to commit SHAs so a
+  # compromised maintainer cannot retroactively swap a tagged release.
+  # Dependabot rewrites `uses: foo/bar@v3` to `uses: foo/bar@<sha> # v3`.
+  # Third-party actions (dtolnay/rust-toolchain, Swatinem/rust-cache) are
+  # exactly the class the audit flagged as needing SHA pins.
   - package-ecosystem: 'github-actions'
     directory: '/'
     schedule:
       interval: 'weekly'
+    open-pull-requests-limit: 5
     labels:
       - 'dependencies'
+      - 'github-actions'
+    groups:
+      github-actions:
+        patterns:
+          - '*'

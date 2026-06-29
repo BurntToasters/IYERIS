@@ -1,3 +1,5 @@
+import DOMPurify from 'dompurify';
+
 const ESCAPE_MAP: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -67,6 +69,89 @@ export function ignoreError(error: unknown): void {
   }
 }
 
+/**
+ * L13: shared debounce helper. Six modules were rolling their own variant of
+ * "timer + setTimeout + clearTimeout"; this factor eliminates that.
+ *
+ * Returns a callable wrapper plus a `cancel()` method for tear-down.
+ */
+export interface DebouncedFn<Args extends unknown[]> {
+  (...args: Args): void;
+  cancel(): void;
+}
+
+export function debounce<Args extends unknown[]>(
+  fn: (...args: Args) => void,
+  ms: number
+): DebouncedFn<Args> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const wrapper = ((...args: Args) => {
+    if (timer !== null) clearTimeout(timer);
+    timer = setTimeout(() => {
+      timer = null;
+      fn(...args);
+    }, ms);
+  }) as DebouncedFn<Args>;
+  wrapper.cancel = () => {
+    if (timer !== null) {
+      clearTimeout(timer);
+      timer = null;
+    }
+  };
+  return wrapper;
+}
+
+/**
+ * L14: standard pattern for reporting an IPC failure to the user. The previous
+ * code had ~26 sites that wrote `showToast(result.error || 'fallback', 'Title', 'error')`;
+ * this helper consolidates the fallback logic so callers don't keep
+ * re-implementing it. Pass any IpcResult-like object plus a sensible fallback.
+ *
+ * showToast is renderer-only; this helper accepts it as a parameter so shared.ts
+ * stays free of renderer imports.
+ */
+type ToastFn = (message: string, title?: string, kind?: 'error' | 'info' | 'warn') => void;
+
+export function notifyIpcFailure(
+  result: { error?: string | null } | unknown,
+  fallback: string,
+  toast: ToastFn,
+  title?: string
+): void {
+  let message = fallback;
+  if (
+    result &&
+    typeof result === 'object' &&
+    'error' in result &&
+    typeof (result as { error?: unknown }).error === 'string'
+  ) {
+    const err = (result as { error: string }).error;
+    if (err.length > 0) message = err;
+  }
+  toast(message, title, 'error');
+  if (devModeEnabled) {
+    globalThis.console.debug('[IpcFailure]', { title, message, result });
+  }
+}
+
+/**
+ * L15: drop-in replacement for the most common ignoreError pattern when the
+ * error IS user-visible. Use this instead of ignoreError when the user should
+ * see the failure as a toast.
+ */
+export function reportIpcError(
+  error: unknown,
+  context: string,
+  toast: ToastFn,
+  title?: string
+): void {
+  const msg = getErrorMessage(error);
+  toast(`${context}: ${msg}`, title, 'error');
+  if (devModeEnabled) {
+    globalThis.console.warn(`[${context}]`, error);
+  }
+}
+
 export function assignKey<T extends object>(obj: T, key: keyof T, value: T[keyof T]): void {
   obj[key] = value;
 }
@@ -99,50 +184,84 @@ const DANGEROUS_TAGS = new Set([
   'MATH',
   'TEMPLATE',
   'APPLET',
+  'FRAME',
+  'FRAMESET',
+  'PORTAL',
+  'AUDIO',
+  'VIDEO',
+  'SOURCE',
+  'TRACK',
 ]);
+
+// Attributes that can carry JS or load arbitrary resources. Stripped unconditionally.
+const DANGEROUS_ATTRS = new Set([
+  'formaction',
+  'background',
+  'poster',
+  'srcset',
+  'imagesrcset',
+  'ping',
+  'sandbox',
+  'allow',
+  'allowfullscreen',
+  'csp',
+  'dirname',
+  'http-equiv',
+  'manifest',
+  'xmlns',
+  'contextmenu',
+]);
+
+// URL-bearing attributes — value is checked against the URL allowlists below.
+const URL_ATTRS = new Set(['href', 'src', 'action', 'cite', 'longdesc', 'data', 'usemap']);
 
 const SAFE_URL_PATTERN = /^(?:https?|mailto|#):/i;
 const SAFE_RESOURCE_URL_PATTERN = /^(?:https?:\/\/asset\.localhost\/)/i;
 const HAS_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
 
-export function sanitizeMarkdownHtml(html: string): string {
-  const template = document.createElement('template');
-  template.innerHTML = html;
-  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_ELEMENT);
-  const toRemove: Element[] = [];
-  while (walker.nextNode()) {
-    const el = walker.currentNode as Element;
-    if (DANGEROUS_TAGS.has(el.tagName)) {
-      toRemove.push(el);
-      continue;
+const PURIFY_FORBID_TAGS = Array.from(DANGEROUS_TAGS, (t) => t.toLowerCase());
+
+// Layer IYERIS's strict URL allowlist onto DOMPurify (href: http/https/mailto/#;
+// resource URLs: relative or http(s)://asset.localhost only). Registered once.
+let purifyHookInstalled = false;
+function installPurifyHook(): void {
+  if (purifyHookInstalled) return;
+  purifyHookInstalled = true;
+  DOMPurify.addHook('uponSanitizeAttribute', (_node, data) => {
+    const name = data.attrName;
+    if (!name) return;
+    if (name.startsWith('on') || name === 'style' || DANGEROUS_ATTRS.has(name)) {
+      data.keepAttr = false;
+      return;
     }
-    for (const attr of Array.from(el.attributes)) {
-      if (attr.name.startsWith('on') || attr.name === 'style') {
-        el.removeAttribute(attr.name);
-      } else if (attr.name === 'href' || attr.name === 'src' || attr.name === 'action') {
-        const val = attr.value.trim();
-        if (/^\s*javascript\s*:/i.test(val) || /^\s*data\s*:/i.test(val)) {
-          el.removeAttribute(attr.name);
-        } else if (
-          attr.name === 'href' &&
-          val &&
-          !val.startsWith('#') &&
-          !SAFE_URL_PATTERN.test(val)
-        ) {
-          el.removeAttribute(attr.name);
-        } else if (
-          (attr.name === 'src' || attr.name === 'action') &&
-          val &&
-          (/^\s*\/\//.test(val) ||
-            (HAS_SCHEME_PATTERN.test(val) && !SAFE_RESOURCE_URL_PATTERN.test(val)))
-        ) {
-          el.removeAttribute(attr.name);
-        }
+    if (name.includes(':') && (name.endsWith(':href') || name.endsWith(':src'))) {
+      data.keepAttr = false;
+      return;
+    }
+    if (URL_ATTRS.has(name)) {
+      const val = (data.attrValue ?? '').trim();
+      if (/^\s*(?:javascript|data|vbscript)\s*:/i.test(val)) {
+        data.keepAttr = false;
+      } else if (name === 'href') {
+        if (val && !val.startsWith('#') && !SAFE_URL_PATTERN.test(val)) data.keepAttr = false;
+      } else if (
+        val &&
+        (/^\s*\/\//.test(val) ||
+          (HAS_SCHEME_PATTERN.test(val) && !SAFE_RESOURCE_URL_PATTERN.test(val)))
+      ) {
+        data.keepAttr = false;
       }
     }
-  }
-  for (const el of toRemove) el.remove();
-  const div = document.createElement('div');
-  div.appendChild(template.content.cloneNode(true));
-  return div.innerHTML;
+  });
+}
+
+export function sanitizeMarkdownHtml(html: string): string {
+  installPurifyHook();
+  // DOMPurify does the hardened parse/strip; the hook above layers IYERIS's
+  // stricter URL policy on top. Single sanitize pass (no parse→serialize→reparse).
+  return DOMPurify.sanitize(html, {
+    FORBID_TAGS: PURIFY_FORBID_TAGS,
+    FORBID_ATTR: Array.from(DANGEROUS_ATTRS),
+    ALLOW_DATA_ATTR: false,
+  });
 }

@@ -266,10 +266,38 @@ export function createTabsController(deps: TabsDeps) {
         ? deps.homeViewLabel
         : pathParts[pathParts.length - 1] || tab.path || 'New Tab';
       const tabTitle = isHomeTab ? deps.homeViewLabel : tab.path;
-      const tabIcon = isHomeTab
-        ? twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')
-        : '<img src="/twemoji/1f4c2.svg" class="twemoji" alt="📂" draggable="false" />';
 
+      const isTabRootPath = (p: string): boolean => {
+        if (!p) return false;
+        if (p === '/') return true;
+        return /^[a-zA-Z]:[/\\]?$/.test(p);
+      };
+
+      let tabIcon: string;
+      if (isHomeTab) {
+        tabIcon = twemojiImg('home', 'twemoji');
+      } else if (isTabRootPath(tab.path)) {
+        tabIcon = twemojiImg('save', 'twemoji');
+      } else {
+        const lowerName = folderName.toLowerCase();
+        if (lowerName === 'desktop') {
+          tabIcon = twemojiImg('monitor', 'twemoji');
+        } else if (lowerName === 'documents') {
+          tabIcon = twemojiImg('file', 'twemoji');
+        } else if (lowerName === 'downloads') {
+          tabIcon = twemojiImg('download', 'twemoji');
+        } else if (lowerName === 'music') {
+          tabIcon = twemojiImg('music', 'twemoji');
+        } else if (lowerName === 'videos' || lowerName === 'movies') {
+          tabIcon = twemojiImg('video', 'twemoji');
+        } else if (lowerName === 'trash' || lowerName === '.trash') {
+          tabIcon = twemojiImg('trash-2', 'twemoji');
+        } else {
+          tabIcon = twemojiImg('folder-open', 'twemoji');
+        }
+      }
+
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       tabElement.innerHTML = `
       <span class="tab-icon">
         ${tabIcon}
@@ -292,7 +320,8 @@ export function createTabsController(deps: TabsDeps) {
     if (history.length > MAX_HISTORY_PER_TAB) {
       const trimCount = history.length - MAX_HISTORY_PER_TAB;
       currentTab.history = history.slice(trimCount);
-      currentTab.historyIndex = Math.max(0, historyIndex - trimCount);
+      const adjusted = historyIndex - trimCount;
+      currentTab.historyIndex = Math.min(currentTab.history.length - 1, Math.max(0, adjusted));
     } else {
       currentTab.history = [...history];
       currentTab.historyIndex = historyIndex;
@@ -302,6 +331,10 @@ export function createTabsController(deps: TabsDeps) {
     if (deps.getAllFiles().length <= MAX_CACHED_FILES_PER_TAB) {
       currentTab.cachedFiles = [...deps.getAllFiles()];
       updateTabCacheAccess(currentTab.id);
+    } else {
+      // Discard any stale cache so a switch-back triggers a fresh load
+      // instead of restoring files from a previously-visited smaller dir.
+      delete currentTab.cachedFiles;
     }
   }
 
@@ -330,6 +363,8 @@ export function createTabsController(deps: TabsDeps) {
         window.tauriAPI
           .getItemProperties(newTab.path)
           .then((result) => {
+            // Bail if the user switched away while this awaited (stale restore race).
+            if (deps.getActiveTabId() !== tabId) return;
             if (result.success) {
               restoreTabView(newTab);
               updateTabCacheAccess(newTab.id);
@@ -341,6 +376,7 @@ export function createTabsController(deps: TabsDeps) {
             }
           })
           .catch(() => {
+            if (deps.getActiveTabId() !== tabId) return;
             delete newTab.cachedFiles;
             Promise.resolve(deps.navigateTo(newTab.path, true)).catch(ignoreError);
           });
@@ -676,7 +712,11 @@ export function createTabsController(deps: TabsDeps) {
     };
     dismissTimeoutId = setTimeout(() => {
       dismissTimeoutId = null;
-      document.addEventListener('mousedown', activeDismissHandler!, { once: true });
+      // Do NOT use { once: true }: a mousedown inside the menu (on a disabled
+      // item or chrome) would consume the listener without closing it, making
+      // the menu permanently undismissable. The listener removes itself via
+      // hideTabContextMenu when the target is actually outside the menu.
+      document.addEventListener('mousedown', activeDismissHandler!);
     }, 0);
   }
 

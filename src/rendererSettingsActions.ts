@@ -32,6 +32,68 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
   }
 
   function initSettingsActions(): void {
+    const nativeStatus = document.getElementById('native-integration-status-text');
+    const nativeInstallBtn = document.getElementById(
+      'native-integration-install-btn'
+    ) as HTMLButtonElement | null;
+    const nativeUninstallBtn = document.getElementById(
+      'native-integration-uninstall-btn'
+    ) as HTMLButtonElement | null;
+
+    const refreshNativeIntegrationStatus = async () => {
+      if (!nativeStatus || !nativeInstallBtn || !nativeUninstallBtn) return;
+      nativeInstallBtn.disabled = true;
+      nativeUninstallBtn.disabled = true;
+      nativeStatus.textContent = 'Checking integration status...';
+
+      try {
+        const status = await window.tauriAPI.getNativeIntegrationStatus();
+        if (!status.success) {
+          nativeStatus.textContent = status.error || 'Failed to load integration status';
+          nativeInstallBtn.disabled = false;
+          nativeUninstallBtn.disabled = false;
+          return;
+        }
+
+        nativeStatus.textContent = status.message;
+        if (!status.supported) {
+          nativeInstallBtn.disabled = true;
+          nativeUninstallBtn.disabled = true;
+          return;
+        }
+
+        nativeInstallBtn.disabled = status.installed;
+        nativeUninstallBtn.disabled = !status.installed;
+      } catch {
+        // Re-enable buttons so the user can retry rather than being stuck.
+        nativeStatus.textContent = 'Failed to check integration status';
+        nativeInstallBtn.disabled = false;
+        nativeUninstallBtn.disabled = false;
+      }
+    };
+
+    nativeInstallBtn?.addEventListener('click', async () => {
+      const result = await window.tauriAPI.installNativeIntegration();
+      if (!result.success) {
+        deps.showToast(result.error || 'Install failed', 'Native Integration', 'error');
+        return;
+      }
+      deps.showToast('Open in IYERIS integration installed', 'Native Integration', 'success');
+      await refreshNativeIntegrationStatus();
+    });
+
+    nativeUninstallBtn?.addEventListener('click', async () => {
+      const result = await window.tauriAPI.uninstallNativeIntegration();
+      if (!result.success) {
+        deps.showToast(result.error || 'Uninstall failed', 'Native Integration', 'error');
+        return;
+      }
+      deps.showToast('Open in IYERIS integration removed', 'Native Integration', 'success');
+      await refreshNativeIntegrationStatus();
+    });
+
+    void refreshNativeIntegrationStatus();
+
     document.getElementById('export-settings-btn')?.addEventListener('click', async () => {
       let url: string | null = null;
       try {
@@ -108,12 +170,12 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       );
       if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), searchHistory: [] };
-        deps.setCurrentSettings(nextSettings);
         const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
         if (!saveResult.success) {
           deps.showToast(saveResult.error || 'Failed to clear search history', 'Data', 'error');
           return;
         }
+        deps.setCurrentSettings(nextSettings);
         deps.showToast('Search history cleared', 'Data', 'success');
       }
     });
@@ -125,12 +187,12 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
       );
       if (confirmed) {
         const nextSettings = { ...deps.getCurrentSettings(), bookmarks: [] };
-        deps.setCurrentSettings(nextSettings);
         const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
         if (!saveResult.success) {
           deps.showToast(saveResult.error || 'Failed to clear bookmarks', 'Data', 'error');
           return;
         }
+        deps.setCurrentSettings(nextSettings);
         deps.loadBookmarks();
         deps.showToast('Bookmarks cleared', 'Data', 'success');
       }

@@ -104,14 +104,19 @@ body.platform-linux .file-item:active {
 }
 
 .file-item.selected {
-  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.18);
-  border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.35);
+  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.22);
+  border-color: transparent;
   box-shadow: none;
 }
 
 body.platform-darwin .file-item.selected {
-  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.2);
-  border-color: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.35);
+  background: rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.24);
+  border-color: transparent;
+}
+
+body.platform-darwin.window-inactive .file-item.selected,
+body.window-inactive .file-item.selected {
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
 }
 
 body.platform-win32 .file-item.selected {
@@ -130,7 +135,6 @@ body.platform-linux .file-item.selected {
 
 .file-item:focus {
   outline: none;
-  box-shadow: var(--focus-ring);
 }
 
 .file-item:focus-visible {
@@ -175,10 +179,16 @@ body.platform-linux .file-item.selected {
 
 .drop-indicator-path {
   max-width: 240px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-primary) 14%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 10px;
 }
 
 .file-item.dragging {
@@ -410,25 +420,21 @@ body:not(.show-file-checkboxes) .file-checkbox {
   font-weight: 400;
 }
 
-.file-item.selected .file-name {
-  font-weight: 500;
-}
-
 .file-item.renaming .file-name {
   display: none;
 }
 
 .file-name-input {
   width: 100%;
-  background: var(--bg-secondary);
-  border: 2px solid var(--accent-color);
-  border-radius: 4px;
-  padding: 4px 8px;
+  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+  border: 1.5px solid var(--accent-color);
+  border-radius: var(--radius-small);
+  padding: 3px 6px;
   color: var(--text-primary);
   text-align: center;
   font-size: 12px;
   outline: none;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.22);
 }
 
 .file-name-input.input-error {
@@ -442,10 +448,10 @@ body:not(.show-file-checkboxes) .file-checkbox {
   transform: translateX(-50%);
   margin-top: 4px;
   padding: 4px 8px;
-  background: var(--error-color);
-  color: var(--text-primary);
+  background: var(--danger-color);
+  color: #ffffff;
   font-size: 11px;
-  border-radius: 4px;
+  border-radius: var(--radius-small);
   white-space: nowrap;
   z-index: var(--z-toolbar);
   pointer-events: none;
@@ -468,8 +474,17 @@ body:not(.show-file-checkboxes) .file-checkbox {
   align-items: center;
   column-gap: 12px;
   padding: var(--list-item-padding-v) var(--list-item-padding-h);
-  border-radius: 3px;
+  border-radius: 0;
   min-height: var(--list-item-min-height);
+}
+
+.file-grid.list-view
+  .file-item:nth-child(even of :not(.file-item-hidden)):not(.selected):not(:hover) {
+  background: color-mix(in srgb, var(--text-primary) 2.5%, transparent);
+}
+
+.file-grid.list-view .file-item:hover:not(.selected) {
+  background: var(--interactive-hover);
 }
 
 .file-grid.list-view .file-main {
@@ -528,28 +543,28 @@ body:not(.show-file-checkboxes) .file-checkbox {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.2);
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--text-primary) 8%, transparent);
 }
 
 .file-thumbnail {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: var(--radius-small);
 }
 
 .file-grid.list-view .file-item.has-thumbnail .file-icon {
   width: 40px;
   height: 40px;
   min-width: 40px;
-  border-radius: 4px;
+  border-radius: calc(var(--radius-small) - 2px);
   overflow: hidden;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .file-grid.list-view .file-item.has-thumbnail .file-thumbnail {
-  border-radius: 4px;
+  border-radius: calc(var(--radius-small) - 2px);
 }
 
 .file-thumbnail[data-animated='true'] {
@@ -561,7 +576,7 @@ body:not(.show-file-checkboxes) .file-checkbox {
 }
 
 .file-item.has-thumbnail[data-thumbnail-type='audio'] .file-icon {
-  background: linear-gradient(135deg, rgba(30, 30, 40, 0.9) 0%, rgba(40, 40, 55, 0.9) 100%);
+  background: var(--surface-2);
 }
 
 .file-item.has-thumbnail[data-thumbnail-type='audio'] .file-thumbnail {
@@ -569,9 +584,55 @@ body:not(.show-file-checkboxes) .file-checkbox {
 }
 
 .file-item.has-thumbnail[data-thumbnail-type='pdf'] .file-icon {
-  background: rgba(255, 255, 255, 0.08);
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .file-item.has-thumbnail[data-thumbnail-type='pdf'] .file-thumbnail {
   object-fit: contain;
+}
+
+.file-item.animate-paste-in {
+  animation: pasteIn var(--operation-animate-duration, 80ms) ease-out forwards;
+}
+
+.file-item.animate-delete-out {
+  animation: deleteOut var(--operation-animate-duration, 60ms) ease-in forwards;
+}
+
+.file-item.animate-rename-flash {
+  animation: renameFlash var(--operation-animate-duration, 150ms) ease-in-out;
+}
+
+@keyframes pasteIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes deleteOut {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+}
+
+@keyframes renameFlash {
+  0%,
+  100% {
+    border-color: transparent;
+    box-shadow: none;
+  }
+  50% {
+    border-color: var(--accent-color);
+    box-shadow: 0 0 0 1px var(--accent-color);
+  }
 }

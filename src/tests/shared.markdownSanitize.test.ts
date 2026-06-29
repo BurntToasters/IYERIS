@@ -47,4 +47,45 @@ describe('sanitizeMarkdownHtml resource URLs', () => {
     expect(output).toContain('<a>bad</a>');
     expect(output).toContain('<a href="#ok">ok</a>');
   });
+
+  it('strips formaction (M10: attribute XSS vectors)', () => {
+    const output = sanitizeMarkdownHtml('<button formaction="javascript:alert(1)">x</button>');
+    expect(output).not.toContain('formaction');
+    expect(output).not.toContain('javascript:');
+  });
+
+  it('strips srcset/imagesrcset/background/poster/ping', () => {
+    const output = sanitizeMarkdownHtml(
+      '<img srcset="https://evil.example/x.png 1x"><body background="https://evil.example/b.png"><a ping="https://evil.example/p">x</a>'
+    );
+    expect(output).not.toContain('srcset');
+    expect(output).not.toContain('background=');
+    expect(output).not.toContain('ping=');
+  });
+
+  it('strips xlink:href (SVG-in-HTML XSS vector)', () => {
+    const output = sanitizeMarkdownHtml('<a xlink:href="javascript:alert(1)">x</a>');
+    expect(output).not.toContain('xlink:href');
+    expect(output).not.toContain('javascript:');
+  });
+
+  it('strips vbscript: URLs (legacy IE/Edge vector)', () => {
+    const output = sanitizeMarkdownHtml('<a href="vbscript:msgbox(1)">x</a>');
+    expect(output).not.toContain('vbscript:');
+  });
+
+  it('strips dangerous tags: AUDIO/VIDEO/SOURCE/PORTAL', () => {
+    const output = sanitizeMarkdownHtml(
+      '<audio src="x"></audio><video src="x"></video><source src="x"><portal src="x"></portal>'
+    );
+    expect(output).not.toMatch(/<audio/i);
+    expect(output).not.toMatch(/<video/i);
+    expect(output).not.toMatch(/<source/i);
+    expect(output).not.toMatch(/<portal/i);
+  });
+
+  it('strips ONCLICK (case-insensitive event handler match)', () => {
+    const output = sanitizeMarkdownHtml('<a href="#x" ONCLICK="alert(1)">x</a>');
+    expect(output).not.toMatch(/onclick/i);
+  });
 });

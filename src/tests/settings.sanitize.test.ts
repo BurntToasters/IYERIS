@@ -242,6 +242,34 @@ describe('sanitizeSettings', () => {
         defaults.maxSearchHistoryItems
       );
     });
+
+    it('sanitizes and clamps navTransitionDuration and operationAnimationDuration within bounds', () => {
+      expect(sanitizeSettings({ navTransitionDuration: 150 }).navTransitionDuration).toBe(150);
+      expect(sanitizeSettings({ navTransitionDuration: -10 }).navTransitionDuration).toBe(
+        defaults.navTransitionDuration
+      );
+      expect(sanitizeSettings({ navTransitionDuration: 500 }).navTransitionDuration).toBe(
+        defaults.navTransitionDuration
+      );
+
+      expect(sanitizeSettings({ operationAnimationDuration: 80 }).operationAnimationDuration).toBe(
+        80
+      );
+      expect(sanitizeSettings({ operationAnimationDuration: -20 }).operationAnimationDuration).toBe(
+        defaults.operationAnimationDuration
+      );
+      expect(sanitizeSettings({ operationAnimationDuration: 300 }).operationAnimationDuration).toBe(
+        defaults.operationAnimationDuration
+      );
+    });
+
+    it('sanitizes folderIconStyle, rejecting invalid enums', () => {
+      expect(sanitizeSettings({ folderIconStyle: 'filled' }).folderIconStyle).toBe('filled');
+      expect(sanitizeSettings({ folderIconStyle: 'colored' }).folderIconStyle).toBe('colored');
+      expect(sanitizeSettings({ folderIconStyle: 'invalidStyle' }).folderIconStyle).toBe(
+        defaults.folderIconStyle
+      );
+    });
   });
 
   describe('string fields', () => {
@@ -271,6 +299,17 @@ describe('sanitizeSettings', () => {
 
     it('uses defaults when field is not an array', () => {
       expect(sanitizeSettings({ bookmarks: 'not-an-array' }).bookmarks).toEqual(defaults.bookmarks);
+    });
+
+    it('filters dashboard widgets to known non-empty unique ids', () => {
+      expect(
+        sanitizeSettings({
+          dashboardWidgets: ['quick-info', 'unknown-widget', 'favorites', 'quick-info'],
+        }).dashboardWidgets
+      ).toEqual(['quick-info', 'favorites']);
+      expect(sanitizeSettings({ dashboardWidgets: ['unknown-widget'] }).dashboardWidgets).toEqual(
+        defaults.dashboardWidgets
+      );
     });
   });
 
@@ -323,8 +362,18 @@ describe('sanitizeSettings', () => {
     });
 
     it('filters non-string values from record', () => {
-      const result = sanitizeSettings({ folderIcons: { '/a': 'icon', '/b': 42 } });
-      expect(result.folderIcons).toEqual({ '/a': 'icon' });
+      const result = sanitizeSettings({ folderIcons: { '/a': 'folder', '/b': 42 } });
+      expect(result.folderIcons).toEqual({ '/a': 'folder' });
+    });
+
+    it('filters unsafe icon values from record', () => {
+      const result = sanitizeSettings({
+        folderIcons: {
+          '/a': 'star',
+          '/b': '"><img src=x onerror=alert(1)>',
+        },
+      });
+      expect(result.folderIcons).toEqual({ '/a': 'star' });
     });
 
     it('ignores reserved keys in folderIcons', () => {

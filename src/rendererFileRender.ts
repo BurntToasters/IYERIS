@@ -48,6 +48,7 @@ type FileRenderConfig = {
   getEmptyState: () => HTMLElement | null;
   getCurrentSettings: () => Settings;
   getFileElementMap: () => Map<string, HTMLElement>;
+  isSelected?: (path: string) => boolean;
   showToast: (message: string, title: string, type: ToastType) => void;
   clearSelection: () => void;
   updateStatusBar: () => void;
@@ -82,7 +83,7 @@ export function createFileRenderController(config: FileRenderConfig) {
   let renderItemIndex = 0;
   const animationCleanupItems: HTMLElement[] = [];
   let animationCleanupTimer: ReturnType<typeof setTimeout> | null = null;
-  const fileIconNodeCache = new Map<string, HTMLElement>();
+  const fileIconNodeCache = new Map<string, Element>();
 
   let disableEntryAnimation = false;
   let disableThumbnailRendering = false;
@@ -169,19 +170,19 @@ export function createFileRenderController(config: FileRenderConfig) {
     }
   }
 
-  function createFileIconNode(iconHtml: string): HTMLElement {
+  function createFileIconNode(iconHtml: string): Element {
     const cached = fileIconNodeCache.get(iconHtml);
     if (cached) {
-      return cached.cloneNode(true) as HTMLElement;
+      return cached.cloneNode(true) as Element;
     }
     const wrapper = document.createElement('div');
     wrapper.innerHTML = iconHtml;
     const first = wrapper.firstElementChild;
-    const node = first instanceof HTMLElement ? first : document.createElement('span');
-    if (!(first instanceof HTMLElement)) {
+    const node = first ? first : document.createElement('span');
+    if (!first) {
       node.textContent = iconHtml;
     }
-    fileIconNodeCache.set(iconHtml, node.cloneNode(true) as HTMLElement);
+    fileIconNodeCache.set(iconHtml, node.cloneNode(true) as Element);
     return node;
   }
 
@@ -408,7 +409,9 @@ export function createFileRenderController(config: FileRenderConfig) {
     if (item.isShortcut) fileItem.dataset.isShortcut = 'true';
     if (item.isDesktopEntry) fileItem.dataset.isDesktopEntry = 'true';
     fileItem.setAttribute('role', 'option');
-    fileItem.setAttribute('aria-selected', 'false');
+    const isSelected = config.isSelected?.(item.path) ?? false;
+    fileItem.setAttribute('aria-selected', isSelected ? 'true' : 'false');
+    if (isSelected) fileItem.classList.add('selected');
 
     let icon: string;
     if (item.isAppBundle) {
@@ -476,6 +479,7 @@ export function createFileRenderController(config: FileRenderConfig) {
       ? '<span class="symlink-badge" aria-label="Symbolic link">⤳</span>'
       : '';
 
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     fileItem.innerHTML = `
     <div class="file-main">
       <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>

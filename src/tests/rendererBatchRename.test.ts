@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createBatchRenameController } from '../rendererBatchRename';
 
 function setupModalDom(): void {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="batch-rename-modal" style="display:none">
       <button id="batch-rename-close"></button>

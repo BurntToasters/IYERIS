@@ -28,8 +28,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
   const pendingThumbnailLoads: Array<() => void> = [];
   const inflightThumbnails = new Set<string>();
 
-  let thumbnailObserver: IntersectionObserver | null = null;
-  let thumbnailObserverRoot: HTMLElement | null = null;
+  const thumbnailObservers = new Map<string, IntersectionObserver>();
 
   function enqueueThumbnailLoad(loadFn: () => Promise<void>): boolean {
     const execute = async () => {
@@ -56,30 +55,21 @@ export function createThumbnailController(deps: ThumbnailDeps) {
   }
 
   function resetThumbnailObserver(): void {
-    if (thumbnailObserver) {
-      thumbnailObserver.disconnect();
-      thumbnailObserver = null;
-    }
-    thumbnailObserverRoot = null;
+    thumbnailObservers.forEach((observer) => observer.disconnect());
+    thumbnailObservers.clear();
   }
 
   function disconnectThumbnailObserver(): void {
-    if (thumbnailObserver) {
-      thumbnailObserver.disconnect();
-    }
+    thumbnailObservers.forEach((observer) => observer.disconnect());
   }
 
-  function getThumbnailObserver(): IntersectionObserver | null {
-    const scrollContainer = document.getElementById('file-view');
+  function getThumbnailObserver(rootId = 'file-view'): IntersectionObserver | null {
+    const scrollContainer = document.getElementById(rootId);
     if (!scrollContainer) return null;
-    if (thumbnailObserver && thumbnailObserverRoot === scrollContainer) return thumbnailObserver;
+    const existing = thumbnailObservers.get(rootId);
+    if (existing) return existing;
 
-    if (thumbnailObserver) {
-      thumbnailObserver.disconnect();
-    }
-
-    thumbnailObserverRoot = scrollContainer;
-    thumbnailObserver = new IntersectionObserver(
+    const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
@@ -89,7 +79,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
 
             if (item && fileItem.classList.contains('has-thumbnail')) {
               loadThumbnail(fileItem, item);
-              thumbnailObserver?.unobserve(fileItem);
+              observer.unobserve(fileItem);
             }
           }
         });
@@ -100,11 +90,12 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         threshold: 0.01,
       }
     );
-    return thumbnailObserver;
+    thumbnailObservers.set(rootId, observer);
+    return observer;
   }
 
-  function observeThumbnailItem(fileItem: HTMLElement): void {
-    const observer = getThumbnailObserver();
+  function observeThumbnailItem(fileItem: HTMLElement, rootId = 'file-view'): void {
+    const observer = getThumbnailObserver(rootId);
     if (observer) {
       observer.observe(fileItem);
     }
@@ -312,6 +303,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         const iconDiv = fileItem.querySelector('.file-icon');
 
         if (iconDiv) {
+          // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
         }
 
@@ -342,7 +334,12 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           return;
         }
 
-        const diskCacheResult = await window.tauriAPI.getCachedThumbnail(item.path);
+        const thumbMtime = item.modified instanceof Date ? item.modified.getTime() : item.modified;
+        const diskCacheResult = await window.tauriAPI.getCachedThumbnail(
+          item.path,
+          thumbMtime,
+          item.size
+        );
         if (diskCacheResult.success) {
           if (!document.body.contains(fileItem)) return;
           cacheThumbnail(item.path, diskCacheResult.dataUrl);
@@ -398,7 +395,14 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           renderThumbnailImage(iconDiv as HTMLElement, thumbnailUrl, item, fileItem);
 
           if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
-            window.tauriAPI.saveCachedThumbnail(item.path, thumbnailUrl).catch(ignoreError);
+            window.tauriAPI
+              .saveCachedThumbnail(
+                item.path,
+                thumbnailUrl,
+                item.modified instanceof Date ? item.modified.getTime() : item.modified,
+                item.size
+              )
+              .catch(ignoreError);
           }
         }
       } catch {

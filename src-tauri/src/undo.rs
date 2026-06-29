@@ -233,12 +233,12 @@ fn action_contains_path(action: &UndoAction, paths: &HashSet<String>) -> bool {
 fn expand_related_paths(stack: &[UndoAction], paths_to_remove: &mut HashSet<String>) {
     for action in stack.iter().rev() {
         match action {
-            UndoAction::Rename(data) => {
-                if paths_to_remove.contains(&data.old_path) || paths_to_remove.contains(&data.new_path)
-                {
-                    paths_to_remove.insert(data.old_path.clone());
-                    paths_to_remove.insert(data.new_path.clone());
-                }
+            UndoAction::Rename(data)
+                if paths_to_remove.contains(&data.old_path)
+                    || paths_to_remove.contains(&data.new_path) =>
+            {
+                paths_to_remove.insert(data.old_path.clone());
+                paths_to_remove.insert(data.new_path.clone());
             }
             UndoAction::BatchRename(data) => {
                 for rename in &data.renames {
@@ -602,7 +602,8 @@ fn execute_create_undo(action: &CreateActionData) -> Result<(), CreateUndoFailur
         }
     };
 
-    if let (Some(created_at), Some(current_created_at)) = (action.created_at_ms, metadata_time_ms(&metadata))
+    if let (Some(created_at), Some(current_created_at)) =
+        (action.created_at_ms, metadata_time_ms(&metadata))
     {
         if (current_created_at - created_at).abs() > CREATED_TIME_TOLERANCE_MS {
             return Err(CreateUndoFailure::Keep(
@@ -647,25 +648,21 @@ pub async fn undo_action() -> Result<UndoRedoState, String> {
             push_redo_action(UndoAction::Rename(data))?;
         }
         UndoAction::Move(data) => {
-            if let Err(err) = execute_move_undo(data.clone()) {
-                return Err(err);
-            }
+            execute_move_undo(data.clone())?;
             push_redo_action(UndoAction::Move(data))?;
         }
-        UndoAction::Create(data) => {
-            match execute_create_undo(&data) {
-                Ok(_) => {
-                    push_redo_action(UndoAction::Create(data))?;
-                }
-                Err(CreateUndoFailure::Keep(err)) => {
-                    push_undo_action(UndoAction::Create(data), false)?;
-                    return Err(err);
-                }
-                Err(CreateUndoFailure::Drop(err)) => {
-                    return Err(err);
-                }
+        UndoAction::Create(data) => match execute_create_undo(&data) {
+            Ok(_) => {
+                push_redo_action(UndoAction::Create(data))?;
             }
-        }
+            Err(CreateUndoFailure::Keep(err)) => {
+                push_undo_action(UndoAction::Create(data), false)?;
+                return Err(err);
+            }
+            Err(CreateUndoFailure::Drop(err)) => {
+                return Err(err);
+            }
+        },
         UndoAction::BatchRename(data) => {
             let total = data.renames.len();
             for (i, rename) in data.renames.iter().rev().enumerate() {
@@ -692,7 +689,10 @@ pub async fn undo_action() -> Result<UndoRedoState, String> {
             push_redo_action(UndoAction::BatchRename(data))?;
         }
         UndoAction::Trash(_) => {
-            return Err("Cannot undo: Items sent to trash must be restored from the system trash".to_string());
+            return Err(
+                "Cannot undo: Items sent to trash must be restored from the system trash"
+                    .to_string(),
+            );
         }
     }
 
@@ -752,9 +752,10 @@ pub async fn redo_action() -> Result<UndoRedoState, String> {
         }
         UndoAction::BatchRename(data) => {
             for (i, rename) in data.renames.iter().enumerate() {
-                if let Err(err) =
-                    move_path(&PathBuf::from(&rename.old_path), &PathBuf::from(&rename.new_path))
-                {
+                if let Err(err) = move_path(
+                    &PathBuf::from(&rename.old_path),
+                    &PathBuf::from(&rename.new_path),
+                ) {
                     // Roll back the renames that already succeeded (0..i)
                     for j in (0..i).rev() {
                         let previous = &data.renames[j];
@@ -770,7 +771,10 @@ pub async fn redo_action() -> Result<UndoRedoState, String> {
             push_undo_action(UndoAction::BatchRename(data), false)?;
         }
         UndoAction::Trash(_) => {
-            return Err("Cannot redo: Items sent to trash must be restored from the system trash".to_string());
+            return Err(
+                "Cannot redo: Items sent to trash must be restored from the system trash"
+                    .to_string(),
+            );
         }
     }
 

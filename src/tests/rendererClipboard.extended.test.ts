@@ -59,6 +59,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
 
 describe('createClipboardController — extended', () => {
   beforeEach(() => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="status-clipboard" style="display:none">
         <span id="status-clipboard-text"></span>
@@ -222,7 +223,7 @@ describe('createClipboardController — extended', () => {
 
       expect(tauriApi.moveItems).toHaveBeenCalledWith(['/sys/file.txt'], '/dest', 'ask');
       expect(deps.showToast).toHaveBeenCalledWith(
-        '1 item(s) moved from system clipboard',
+        '1 item moved from system clipboard',
         'Success',
         'success'
       );
@@ -240,7 +241,7 @@ describe('createClipboardController — extended', () => {
 
       expect(tauriApi.copyItems).toHaveBeenCalledWith(['/legacy.txt'], '/dest', 'ask');
       expect(deps.showToast).toHaveBeenCalledWith(
-        '1 item(s) pasted from system clipboard',
+        '1 item pasted from system clipboard',
         'Success',
         'success'
       );
@@ -310,7 +311,7 @@ describe('createClipboardController — extended', () => {
 
       expect(tauriApi.moveItems).toHaveBeenCalledWith(['/ok.txt'], '/dest', 'ask');
       expect(deps.showToast).toHaveBeenCalledWith(
-        '1 file(s) no longer exist and were skipped',
+        '1 file no longer exists and was skipped',
         'Paste',
         'warning'
       );
@@ -383,11 +384,7 @@ describe('createClipboardController — extended', () => {
 
       expect(deps.showConfirm).toHaveBeenCalled();
       expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(['/sys/file.txt'], '/dest');
-      expect(deps.showToast).toHaveBeenCalledWith(
-        '1 item(s) moved (elevated)',
-        'Success',
-        'success'
-      );
+      expect(deps.showToast).toHaveBeenCalledWith('1 item moved (elevated)', 'Success', 'success');
     });
   });
 
@@ -524,7 +521,7 @@ describe('createClipboardController — extended', () => {
 
       expect(tauriApi.moveItems).toHaveBeenCalledWith(['/sys/file.txt'], '/target', 'ask');
       expect(deps.showToast).toHaveBeenCalledWith(
-        '1 item(s) moved from system clipboard',
+        '1 item moved from system clipboard',
         'Success',
         'success'
       );
@@ -546,11 +543,7 @@ describe('createClipboardController — extended', () => {
 
       expect(deps.showConfirm).toHaveBeenCalled();
       expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(['/sys/file.txt'], '/target');
-      expect(deps.showToast).toHaveBeenCalledWith(
-        '1 item(s) moved (elevated)',
-        'Success',
-        'success'
-      );
+      expect(deps.showToast).toHaveBeenCalledWith('1 item moved (elevated)', 'Success', 'success');
     });
 
     it('pastes local clipboard items into folder and refreshes', async () => {
@@ -563,7 +556,7 @@ describe('createClipboardController — extended', () => {
 
       expect(tauriApi.copyItems).toHaveBeenCalledWith(['/from/local.txt'], '/target', 'ask');
       expect(deps.showToast).toHaveBeenCalledWith(
-        '1 item(s) copied into folder',
+        '1 item copied into folder',
         'Success',
         'success'
       );
@@ -645,7 +638,7 @@ describe('createClipboardController — extended', () => {
       await ctrl.duplicateItems(['/a.txt', '/b.txt']);
 
       expect(tauriApi.copyItems).toHaveBeenCalledWith(['/a.txt', '/b.txt'], '/dest-dir', 'rename');
-      expect(deps.showToast).toHaveBeenCalledWith('2 item(s) duplicated', 'Success', 'success');
+      expect(deps.showToast).toHaveBeenCalledWith('2 items duplicated', 'Success', 'success');
       expect(deps.refresh).toHaveBeenCalledTimes(1);
     });
 
@@ -662,7 +655,7 @@ describe('createClipboardController — extended', () => {
       expect(deps.showConfirm).toHaveBeenCalled();
       expect(tauriApi.elevatedCopyBatch).toHaveBeenCalledWith(['/a.txt'], '/dest');
       expect(deps.showToast).toHaveBeenCalledWith(
-        '1 item(s) duplicated (elevated)',
+        '1 item duplicated (elevated)',
         'Success',
         'success'
       );

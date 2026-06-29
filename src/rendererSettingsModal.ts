@@ -155,6 +155,12 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
     const maxDirectoryHistoryInput = document.getElementById(
       'max-directory-history-input'
     ) as HTMLInputElement;
+    const enableAutoChecksumToggle = document.getElementById(
+      'enable-auto-checksum-toggle'
+    ) as HTMLInputElement;
+    const defaultChecksumAlgoSelect = document.getElementById(
+      'default-checksum-algo-select'
+    ) as HTMLSelectElement;
     const settingsPath = document.getElementById('settings-path');
 
     if (systemThemeToggle) {
@@ -352,6 +358,12 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
     }
     if (maxDirectoryHistoryInput) {
       maxDirectoryHistoryInput.value = String(settings.maxDirectoryHistoryItems || 5);
+    }
+    if (enableAutoChecksumToggle) {
+      enableAutoChecksumToggle.checked = settings.enableAutoChecksum !== false;
+    }
+    if (defaultChecksumAlgoSelect) {
+      defaultChecksumAlgoSelect.value = settings.defaultChecksumAlgorithm || 'sha256';
     }
 
     await deps.updateIndexStatus();

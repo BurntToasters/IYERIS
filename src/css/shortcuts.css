@@ -12,9 +12,9 @@
 .about-shortcuts-hint kbd {
   display: inline-block;
   padding: 3px 8px;
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--surface-2);
   border: 1px solid var(--active-color);
-  border-radius: 4px;
+  border-radius: var(--radius-small);
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-primary);
@@ -26,7 +26,7 @@
   max-height: 85vh;
   background: var(--glass-modal-bg);
   border: 1px solid var(--glass-modal-border);
-  border-radius: 16px;
+  border-radius: var(--radius-medium);
   overflow: hidden;
 }
 
@@ -48,7 +48,7 @@
 .shortcuts-section {
   background: color-mix(in srgb, var(--text-primary) 2%, transparent);
   padding: 20px;
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   border: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
@@ -120,7 +120,7 @@
   padding: 4px 10px;
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   border: 1px solid var(--active-color);
-  border-radius: 4px;
+  border-radius: var(--radius-small);
   font-family: 'Segoe UI', 'Roboto', sans-serif;
   font-size: 12px;
   font-weight: 500;
@@ -140,9 +140,9 @@
 }
 
 .shortcuts-note {
-  background: rgba(123, 97, 255, 0.1);
+  background: rgba(var(--accent-rgb), 0.1);
   padding: 16px;
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   border-left: 3px solid var(--accent-color);
 }
 
@@ -158,7 +158,7 @@
   padding: 2px 6px;
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   border: 1px solid var(--active-color);
-  border-radius: 3px;
+  border-radius: var(--radius-small);
   font-size: 11px;
   font-weight: 500;
   margin: 0 2px;

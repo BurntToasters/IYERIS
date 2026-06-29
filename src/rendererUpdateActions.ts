@@ -34,6 +34,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
   let progressCleanup: (() => void) | null = null;
   let downloadStatusVisible = false;
   let latestDownloadStatus = '';
+  let installReadyVersion: string | null = null;
 
   function getCheckUpdatesButton(): HTMLButtonElement | null {
     return document.getElementById('check-updates-btn') as HTMLButtonElement | null;
@@ -65,9 +66,10 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     const toggleBtn = getStatusToggleButton();
     if (!toggleBtn) return;
 
-    const icon = downloadStatusVisible ? 0x1f441 : 0x1f50d;
+    const iconName = downloadStatusVisible ? 'eye' : 'search';
     const label = downloadStatusVisible ? 'Hide Download Status' : 'Show Download Status';
-    toggleBtn.innerHTML = `${twemojiImg(String.fromCodePoint(icon), 'twemoji')} ${label}`;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+    toggleBtn.innerHTML = `${twemojiImg(iconName, 'twemoji')} ${label}`;
     toggleBtn.setAttribute('aria-expanded', String(downloadStatusVisible));
   }
 
@@ -102,9 +104,46 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
   function setCheckUpdatesButtonDefault(): void {
     const checkUpdatesBtn = getCheckUpdatesButton();
     if (!checkUpdatesBtn) return;
-    checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f504), 'twemoji')} Check for Updates`;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+    checkUpdatesBtn.innerHTML = `${twemojiImg('refresh-cw', 'twemoji')} Check for Updates`;
     checkUpdatesBtn.classList.remove('primary');
     checkUpdatesBtn.disabled = false;
+  }
+
+  function setCheckUpdatesButtonInstallReady(version: string): void {
+    installReadyVersion = version;
+    const checkUpdatesBtn = getCheckUpdatesButton();
+    if (!checkUpdatesBtn) return;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+    checkUpdatesBtn.innerHTML = `${twemojiImg('check-circle', 'twemoji')} Update Ready`;
+    checkUpdatesBtn.classList.add('primary');
+    checkUpdatesBtn.disabled = false;
+  }
+
+  async function promptInstallReadyUpdate(version: string): Promise<void> {
+    setCheckUpdatesButtonInstallReady(version);
+
+    const shouldRestart = await deps.showDialog(
+      'Update Ready',
+      `Update v${version} has been downloaded and is ready to install.\n\nWould you like to restart now to apply the update?`,
+      'success',
+      true
+    );
+
+    if (!shouldRestart) return;
+
+    const installResult = await window.tauriAPI.installUpdate();
+    if (installResult.success) {
+      installReadyVersion = null;
+      return;
+    }
+
+    deps.showToast(
+      installResult.error || 'Failed to install update. Please try again.',
+      'Update Install Failed',
+      'error'
+    );
+    setCheckUpdatesButtonInstallReady(version);
   }
 
   function clearDownloadStatusUi(): void {
@@ -170,6 +209,11 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     const btn = getCheckUpdatesButton();
     if (!btn) return;
 
+    if (installReadyVersion) {
+      await promptInstallReadyUpdate(installReadyVersion);
+      return;
+    }
+
     if (isDownloading) {
       showDownloadStatusControls();
       setDownloadStatusVisibility(true);
@@ -183,7 +227,8 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
 
     let startedBackgroundDownload = false;
     const originalHTML = btn.innerHTML;
-    btn.innerHTML = `${twemojiImg(String.fromCodePoint(0x1f504), 'twemoji')} Checking...`;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+    btn.innerHTML = `${twemojiImg('refresh-cw', 'twemoji')} Checking...`;
     btn.disabled = true;
 
     try {
@@ -302,7 +347,8 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     if (checkUpdatesBtn) {
       checkUpdatesBtn.classList.remove('primary');
       checkUpdatesBtn.disabled = false;
-      checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2b07), 'twemoji')} Downloading...`;
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+      checkUpdatesBtn.innerHTML = `${twemojiImg('download', 'twemoji')} Downloading...`;
     }
 
     progressCleanup = window.tauriAPI.onUpdateDownloadProgress((progress) => {
@@ -314,7 +360,8 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
         `Downloading update: ${percent}% (${transferred} / ${total}) at ${speed}/s`
       );
       if (checkUpdatesBtn) {
-        checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2b07), 'twemoji')} Downloading ${percent}%`;
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+        checkUpdatesBtn.innerHTML = `${twemojiImg('download', 'twemoji')} Downloading ${percent}%`;
       }
     });
 
@@ -326,6 +373,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
 
         if (!result.success) {
           const errorMessage = result.error || 'Failed to download update.';
+          installReadyVersion = null;
           setDownloadStatus(`Download failed: ${errorMessage}`);
           setDownloadStatusVisibility(true);
           deps.showToast(errorMessage, 'Download Failed', 'error');
@@ -338,6 +386,7 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
       .catch((error) => {
         stopProgressListener();
         isDownloading = false;
+        installReadyVersion = null;
         const errorMessage = getErrorMessage(error);
         setDownloadStatus(`Download failed: ${errorMessage}`);
         setDownloadStatusVisibility(true);
@@ -352,35 +401,11 @@ export function createUpdateActionsController(deps: UpdateActionsDeps) {
     isDownloading = false;
     showDownloadStatusControls();
     setDownloadStatus(`Update v${info.version} is downloaded and ready to install.`);
-
-    const checkUpdatesBtn = getCheckUpdatesButton();
-    if (checkUpdatesBtn) {
-      checkUpdatesBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x2705), 'twemoji')} Update Ready`;
-      checkUpdatesBtn.classList.add('primary');
-    }
-
-    const shouldRestart = await deps.showDialog(
-      'Update Ready',
-      `Update v${info.version} has been downloaded and is ready to install.\n\nWould you like to restart now to apply the update?`,
-      'success',
-      true
-    );
-
-    if (shouldRestart) {
-      const installResult = await window.tauriAPI.installUpdate();
-      if (!installResult.success) {
-        deps.showToast(
-          installResult.error || 'Failed to install update. Please try again.',
-          'Update Install Failed',
-          'error'
-        );
-        setCheckUpdatesButtonDefault();
-      }
-    }
+    await promptInstallReadyUpdate(info.version);
   }
 
   async function silentCheckAndDownload(): Promise<void> {
-    if (isDownloading) return;
+    if (isDownloading || installReadyVersion) return;
     try {
       const result = await window.tauriAPI.checkForUpdates();
       if (!result.success) return;

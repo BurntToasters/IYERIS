@@ -15,6 +15,50 @@ type SelectionDeps = {
   announceToScreenReader?: (message: string) => void;
 };
 
+export function moveGridFocusWithinScope(
+  scope: HTMLElement,
+  key: string,
+  viewMode: 'grid' | 'list' | 'column'
+): void {
+  const items = Array.from(scope.querySelectorAll<HTMLElement>('.file-item'));
+  if (items.length === 0) return;
+
+  const activeItem = scope.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+  let currentIndex = activeItem ? items.indexOf(activeItem) : 0;
+  if (currentIndex === -1) currentIndex = 0;
+
+  const columns =
+    viewMode === 'list'
+      ? 1
+      : window.getComputedStyle(scope).getPropertyValue('grid-template-columns').split(' ')
+          .length || 1;
+
+  let newIndex: number;
+  switch (key) {
+    case 'ArrowUp':
+      newIndex = Math.max(0, currentIndex - columns);
+      break;
+    case 'ArrowDown':
+      newIndex = Math.min(items.length - 1, currentIndex + columns);
+      break;
+    case 'ArrowLeft':
+      newIndex = Math.max(0, currentIndex - 1);
+      break;
+    case 'ArrowRight':
+      newIndex = Math.min(items.length - 1, currentIndex + 1);
+      break;
+    default:
+      return;
+  }
+
+  if (newIndex !== currentIndex) {
+    if (activeItem) activeItem.tabIndex = -1;
+    items[newIndex]!.tabIndex = 0;
+    items[newIndex]!.focus({ preventScroll: true });
+    items[newIndex]!.scrollIntoView({ block: 'nearest' });
+  }
+}
+
 export function createSelectionController(deps: SelectionDeps) {
   let lastSelectedIndex = -1;
   let isRubberBandActive = false;
@@ -324,10 +368,18 @@ export function createSelectionController(deps: SelectionDeps) {
     }
   }
 
+  function selectSingleItem(fileItem: HTMLElement): void {
+    const fileItems = getFileItemsArray();
+    const index = fileItems.indexOf(fileItem);
+    if (index === -1) return;
+    selectItemAtIndex(fileItems, index, false, -1);
+  }
+
   function setupRubberBandSelection(): void {
     const fileView = document.getElementById('file-view');
     const selectionRect = document.getElementById('selection-rect');
     if (!fileView || !selectionRect) return;
+    let rubberBandLastIndex = -1;
 
     fileView.addEventListener('mousedown', (e) => {
       if (!(e.target instanceof HTMLElement)) return;
@@ -415,6 +467,10 @@ export function createSelectionController(deps: SelectionDeps) {
           if (intersects && cached.path) {
             setSelectedState(cached.el, true);
             nextSelection.add(cached.path);
+            const currentIndex = getFileItemsArray().indexOf(cached.el);
+            if (currentIndex !== -1) {
+              rubberBandLastIndex = currentIndex;
+            }
           } else if (!rubberBandInitialSelection.has(cached.path)) {
             setSelectedState(cached.el, false);
           }
@@ -431,6 +487,9 @@ export function createSelectionController(deps: SelectionDeps) {
       isRubberBandActive = false;
       rubberBandStart = null;
       cachedItemRects = [];
+      if (rubberBandLastIndex >= 0) {
+        lastSelectedIndex = rubberBandLastIndex;
+      }
       if (rubberBandRafId !== null) {
         cancelAnimationFrame(rubberBandRafId);
         rubberBandRafId = null;
@@ -467,6 +526,7 @@ export function createSelectionController(deps: SelectionDeps) {
     ensureActiveItem,
     invalidateGridColumnsCache,
     invalidateFileItemsCache,
+    selectSingleItem,
     destroy,
   };
 }

@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::time::{Duration, Instant};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 pub struct DirectoryWatcher {
     _watcher: notify::RecommendedWatcher,
@@ -23,7 +23,10 @@ fn is_noise_change_path(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
-fn classify_directory_change_event(event: &Event, watch_path: &Path) -> (&'static str, Vec<String>) {
+fn classify_directory_change_event(
+    event: &Event,
+    watch_path: &Path,
+) -> (&'static str, Vec<String>) {
     let is_meaningful_kind = matches!(
         event.kind,
         EventKind::Create(_)
@@ -39,9 +42,7 @@ fn classify_directory_change_event(event: &Event, watch_path: &Path) -> (&'stati
         return ("no-paths", Vec::new());
     }
 
-    if matches!(event.kind, EventKind::Remove(_))
-        && event.paths.iter().any(|p| p == watch_path)
-    {
+    if matches!(event.kind, EventKind::Remove(_)) && event.paths.iter().any(|p| p == watch_path) {
         return ("watched-dir-removed", Vec::new());
     }
 
@@ -67,19 +68,48 @@ pub fn watch_directory(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let window_label = window.label().to_string();
-    log::debug!("[Watcher] watch_directory request: {} (window={})", dir_path, window_label);
+    log::debug!(
+        "[Watcher] watch_directory request: {} (window={})",
+        dir_path,
+        window_label
+    );
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
     let path_display = path.to_string_lossy().to_string();
 
     // Build and start the new watcher BEFORE dropping the old one.
     // If watcher creation fails the existing watcher remains active.
-    let (tx, rx) = mpsc::channel::<notify::Result<Event>>();
-    let mut new_watcher = notify::recommended_watcher(tx).map_err(|e| e.to_string())?;
+    //
+    // M5: previously this was an unbounded `mpsc::channel`. A noisy directory
+    // (e.g. a tight touch loop, an unzip into the watched dir, build-system
+    // churn) could fill the channel faster than the debouncer drains it,
+    // growing heap until the consumer caught up. Now we use a bounded
+    // sync_channel and drop overflow events. The debouncer's job is to coalesce
+    // anyway, so dropping individual events is harmless — the next emit will
+    // still trigger a refresh.
+    const WATCH_CHANNEL_CAPACITY: usize = 1024;
+    let (tx, rx) = mpsc::sync_channel::<notify::Result<Event>>(WATCH_CHANNEL_CAPACITY);
+    let mut new_watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
+        if let Err(e) = tx.try_send(res) {
+            match e {
+                mpsc::TrySendError::Full(_) => {
+                    log::warn!(
+                        "[Watcher] channel full ({} events); dropping event",
+                        WATCH_CHANNEL_CAPACITY
+                    );
+                }
+                mpsc::TrySendError::Disconnected(_) => {
+                    log::debug!("[Watcher] channel disconnected; watcher thread exiting");
+                }
+            }
+        }
+    })
+    .map_err(|e| e.to_string())?;
     new_watcher
         .watch(&path, RecursiveMode::NonRecursive)
         .map_err(|e| e.to_string())?;
 
     let watch_path = path.clone();
+    let thread_window_label = window_label.clone();
     log::debug!("[Watcher] Started watcher thread for {}", path_display);
 
     // Acquire the watcher map lock BEFORE spawning the thread so that
@@ -96,13 +126,16 @@ pub fn watch_directory(
 
     std::thread::spawn(move || {
         let debounce_duration = Duration::from_millis(500);
-        let startup_suppression_duration = Duration::from_millis(800);
+        let startup_suppression_duration = Duration::from_millis(1500);
         let watch_started_at = Instant::now();
         let mut last_emit = Instant::now() - debounce_duration;
+        let mut consecutive_errors: u32 = 0;
+        const MAX_CONSECUTIVE_ERRORS: u32 = 5;
 
         while let Ok(event) = rx.recv() {
             match event {
                 Ok(event) => {
+                    consecutive_errors = 0;
                     let event_id = WATCH_EVENT_COUNTER.fetch_add(1, Ordering::Relaxed);
                     let now = Instant::now();
                     let event_kind = format!("{:?}", event.kind);
@@ -135,6 +168,21 @@ pub fn watch_directory(
                             }),
                         ) {
                             log::warn!("[Watcher] Failed to emit watched-dir-removed: {}", e);
+                        }
+                        // Drop our own map entry so the now-defunct watcher
+                        // doesn't keep an OS handle on the deleted directory.
+                        // Guard on _path so we never evict a watcher that a
+                        // concurrent watch_directory call may have replaced us with.
+                        if let Some(state) = app.try_state::<crate::AppState>() {
+                            if let Ok(mut watchers) = state.watchers.lock() {
+                                if watchers
+                                    .get(&thread_window_label)
+                                    .map(|existing| existing._path == watch_path)
+                                    .unwrap_or(false)
+                                {
+                                    watchers.remove(&thread_window_label);
+                                }
+                            }
                         }
                         break;
                     }
@@ -179,7 +227,18 @@ pub fn watch_directory(
                         log::warn!("[Watcher] Failed to emit directory-changed: {}", e);
                     }
                 }
-                Err(error) => log::warn!("[Watcher] notify error: {}", error),
+                Err(error) => {
+                    log::warn!("[Watcher] notify error: {}", error);
+                    consecutive_errors += 1;
+                    if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                        log::warn!(
+                            "[Watcher] Aborting after {} consecutive errors for {}",
+                            consecutive_errors,
+                            watch_path.to_string_lossy()
+                        );
+                        break;
+                    }
+                }
             }
         }
         log::debug!(
@@ -188,10 +247,13 @@ pub fn watch_directory(
         );
     });
 
-    w.insert(window_label, DirectoryWatcher {
-        _watcher: new_watcher,
-        _path: path,
-    });
+    w.insert(
+        window_label,
+        DirectoryWatcher {
+            _watcher: new_watcher,
+            _path: path,
+        },
+    );
 
     Ok(())
 }
@@ -202,8 +264,30 @@ pub fn unwatch_directory(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
     let window_label = window.label().to_string();
-    log::debug!("[Watcher] unwatch_directory request (window={})", window_label);
+    log::debug!(
+        "[Watcher] unwatch_directory request (window={})",
+        window_label
+    );
     let mut w = state.watchers.lock().map_err(|e| e.to_string())?;
     w.remove(&window_label);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn detects_os_noise_files() {
+        assert!(is_noise_change_path(Path::new("/x/.DS_Store")));
+        assert!(is_noise_change_path(Path::new("/x/Thumbs.db")));
+        assert!(is_noise_change_path(Path::new("/x/desktop.ini")));
+    }
+
+    #[test]
+    fn real_files_are_not_noise() {
+        assert!(!is_noise_change_path(Path::new("/x/report.txt")));
+        assert!(!is_noise_change_path(Path::new("/x/.ds_store_notes.md")));
+    }
 }

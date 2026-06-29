@@ -1,5 +1,6 @@
 import { clearHtml, getById } from './rendererDom.js';
 import { devLog, escapeHtml } from './shared.js';
+import { renderIcon } from './rendererUtils.js';
 import {
   ARCHIVE_RENDER_THROTTLE_MS,
   ARCHIVE_COMPLETION_DELAY_MS,
@@ -135,17 +136,17 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
       const item = document.createElement('div');
       item.className = 'archive-operation-item';
 
-      const icon = operation.type === 'compress' ? '1f5dc' : '1f4e6';
-      const iconEmoji = operation.type === 'compress' ? '🗜️' : '📦';
+      const icon = operation.type === 'compress' ? 'folder-archive' : 'package';
       const title = operation.type === 'compress' ? 'Compressing' : 'Extracting';
 
       const percent =
         operation.total > 0 ? Math.round((operation.current / operation.total) * 100) : 0;
 
+      // eslint-disable-next-line no-restricted-syntax -- icon is a fixed name; name/id/currentFile via escapeHtml(); current/total/percent are numbers
       item.innerHTML = `
       <div class="archive-operation-header">
         <div class="archive-operation-title">
-          <img src="/twemoji/${icon}.svg" class="twemoji" alt="${iconEmoji}" draggable="false" />
+          ${renderIcon(icon, 'twemoji')}
           <span class="archive-operation-name" title="${escapeHtml(operation.name)}">${title}: ${escapeHtml(operation.name)}</span>
         </div>
         ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${escapeHtml(id)}">Cancel</button>` : ''}

@@ -178,6 +178,7 @@ function createMockConfig() {
     moveSelectedToFolder: vi.fn(),
     clipboardOnClipboardChanged: vi.fn(),
     clipboardUpdateCutVisuals: vi.fn(),
+    clipboardUpdateIndicator: vi.fn(),
     zoomIn: vi.fn(),
     zoomOut: vi.fn(),
     zoomReset: vi.fn(),
@@ -218,6 +219,7 @@ function createMockConfig() {
 }
 
 function setupBasicDom() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="file-view">
       <div id="file-grid"></div>
@@ -1209,6 +1211,20 @@ describe('createEventListenersController', () => {
       onSettings(oldSettings);
 
       expect(config.setCurrentSettings).not.toHaveBeenCalled();
+    });
+
+    it('applies settings when payload has no timestamp (treat as external update)', () => {
+      const config = createMockConfig();
+      const ctrl = createEventListenersController(config);
+      ctrl.setupEventListeners();
+
+      const onSettings = (window.tauriAPI.onSettingsChanged as ReturnType<typeof vi.fn>).mock
+        .calls[0][0];
+      const { _timestamp: _ignored, ...rest } = makeSettings({ theme: 'light' });
+      onSettings(rest);
+
+      expect(config.setCurrentSettings).toHaveBeenCalled();
+      expect(config.applySettings).toHaveBeenCalled();
     });
 
     it('merges unsaved settings form state when settings modal is open', () => {

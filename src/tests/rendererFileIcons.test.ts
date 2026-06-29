@@ -2,9 +2,12 @@ import { describe, it, expect, vi } from 'vitest';
 
 vi.mock('../rendererUtils.js', () => ({
   twemojiImg: vi.fn((char: string, cls: string) => `<img class="${cls}" data-char="${char}">`),
+  renderIcon: vi.fn(
+    (char: string, cls: string) => `<img class="${cls || 'twemoji'}" data-char="${char}">`
+  ),
 }));
 
-import { twemojiImg } from '../rendererUtils.js';
+import { renderIcon } from '../rendererUtils.js';
 import {
   getFileExtension,
   getFileTypeFromName,
@@ -13,7 +16,7 @@ import {
   IMAGE_ICON,
 } from '../rendererFileIcons';
 
-const twemojiImgMock = vi.mocked(twemojiImg);
+const renderIconMock = vi.mocked(renderIcon);
 
 describe('getFileExtension', () => {
   it('extracts simple extension', () => {
@@ -202,7 +205,7 @@ describe('getFileIcon', () => {
 
   it('uses twemoji conversion for mapped non-image codepoints', () => {
     const icon = getFileIcon('script.js');
-    expect(icon).toContain('data-char="📜"');
+    expect(icon).toContain('data-char="file-code"');
   });
 
   it('uses RAW fallback for unmapped RAW extension', () => {
@@ -240,25 +243,25 @@ describe('getFileIcon', () => {
 
     const freshIcons = await import('../rendererFileIcons');
     const freshUtils = await import('../rendererUtils.js');
-    const freshTwemoji = vi.mocked(freshUtils.twemojiImg);
+    const freshRenderIcon = vi.mocked(freshUtils.renderIcon);
 
-    const before = freshTwemoji.mock.calls.length;
+    const before = freshRenderIcon.mock.calls.length;
     freshIcons.getFileIcon('first.java');
-    expect(freshTwemoji.mock.calls.length).toBe(before + 1);
+    expect(freshRenderIcon.mock.calls.length).toBe(before + 1);
 
     for (let i = 0; i < 300; i += 1) {
       freshIcons.getFileIcon(`f.eviction${i}`);
     }
 
-    const beforeRecompute = freshTwemoji.mock.calls.length;
+    const beforeRecompute = freshRenderIcon.mock.calls.length;
     freshIcons.getFileIcon('second.java');
-    expect(freshTwemoji.mock.calls.length).toBe(beforeRecompute + 1);
+    expect(freshRenderIcon.mock.calls.length).toBe(beforeRecompute + 1);
   });
 
   it('tracks twemoji calls from mapped extensions only', () => {
-    const before = twemojiImgMock.mock.calls.length;
+    const before = renderIconMock.mock.calls.length;
     getFileIcon('mapped.ts');
     getFileIcon('unknown.zzzzzz');
-    expect(twemojiImgMock.mock.calls.length).toBe(before + 1);
+    expect(renderIconMock.mock.calls.length).toBe(before + 1);
   });
 });

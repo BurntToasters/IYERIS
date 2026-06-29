@@ -1,8 +1,8 @@
 .home-view {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-xxxl);
-  padding: 12px;
+  gap: var(--spacing-xxl);
+  padding: 10px;
   padding-bottom: 56px;
   position: relative;
   min-height: 100%;
@@ -37,17 +37,17 @@
 }
 
 .home-section-title {
-  font-size: 11.5px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0.02em;
+  font-size: 10.5px;
+  font-weight: 580;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
   color: var(--text-tertiary);
 }
 
 .home-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
 }
 
 .home-list {
@@ -59,36 +59,61 @@
 .home-item {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-small);
-  min-height: calc(var(--control-height-lg) + 4px);
-  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
-  border: 1px solid var(--panel-border);
+  min-height: calc(var(--control-height-lg) + 2px);
+  background: color-mix(in srgb, var(--surface-1) 60%, transparent);
+  border: 1px solid transparent;
   color: var(--text-secondary);
   cursor: pointer;
   transition:
     background var(--animation-duration) var(--animation-easing),
     color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing),
-    transform var(--animation-duration) var(--animation-easing);
+    border-color var(--animation-duration) var(--animation-easing);
 }
 
 .home-item:hover {
   background: var(--interactive-hover);
-  border-color: var(--panel-border-strong);
   color: var(--text-primary);
+  transform: scale(1.02);
 }
 
 .home-item:active {
   background: var(--interactive-active);
-  border-color: var(--panel-border-strong);
+  transform: scale(0.99);
+}
+
+/* Per-action color tints for Quick Access icons */
+.home-item[data-home-color='blue'] .home-item-icon {
+  color: #3b82f6;
+}
+.home-item[data-home-color='purple'] .home-item-icon {
+  color: #a78bfa;
+}
+.home-item[data-home-color='amber'] .home-item-icon {
+  color: #f59e0b;
+}
+.home-item[data-home-color='green'] .home-item-icon {
+  color: #22c55e;
+}
+.home-item[data-home-color='pink'] .home-item-icon {
+  color: #ec4899;
+}
+.home-item[data-home-color='red'] .home-item-icon {
+  color: #ef4444;
+}
+.home-item[data-home-color='teal'] .home-item-icon {
+  color: #14b8a6;
+}
+.home-item[data-home-color='gray'] .home-item-icon {
+  color: var(--text-tertiary);
 }
 
 .home-item:focus-visible {
   background: var(--interactive-selected);
-  outline: 3px solid rgba(var(--accent-rgb), 0.6);
-  outline-offset: 2px;
+  box-shadow: var(--focus-ring-strong);
+  outline: none;
 }
 
 .home-item-icon {
@@ -108,13 +133,13 @@
 }
 
 .home-item-label {
-  font-weight: 600;
+  font-weight: 500;
   color: inherit;
 }
 
 .home-item-subtitle {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -123,31 +148,35 @@
 .home-empty {
   padding: 6px 8px;
   font-size: 12px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .home-recent-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 10px 12px;
+  gap: 8px;
+  padding: 8px 10px;
   border-radius: var(--radius-small);
-  min-height: calc(var(--control-height-lg) + 4px);
-  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
-  border: 1px solid var(--panel-border);
+  min-height: calc(var(--control-height-lg) + 2px);
+  background: transparent;
+  border: 1px solid transparent;
   color: var(--text-secondary);
   cursor: pointer;
   transition:
     background var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing);
+    color var(--animation-duration) var(--animation-easing);
 }
 
 .home-recent-item:hover {
   background: var(--interactive-hover);
-  border-color: var(--panel-border-strong);
   color: var(--text-primary);
+}
+
+.home-recent-item:focus-visible {
+  background: var(--interactive-selected);
+  box-shadow: var(--focus-ring-strong);
+  outline: none;
 }
 
 .home-recent-main {
@@ -192,44 +221,45 @@
   width: 14px;
   height: 14px;
   display: block;
-  background-color: currentColor;
-  mask: url('/twemoji/1f4cc.svg') center / contain no-repeat;
-  -webkit-mask: url('/twemoji/1f4cc.svg') center / contain no-repeat;
 }
 
 .home-drive-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 12px;
+  gap: 6px;
+  padding: 9px 10px;
   border-radius: var(--radius-small);
-  border: 1px solid var(--panel-border);
-  background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+  border: 1px solid transparent;
+  background: color-mix(in srgb, var(--surface-1) 60%, transparent);
   color: var(--text-secondary);
   cursor: pointer;
   transition:
     background var(--animation-duration) var(--animation-easing),
-    color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing);
+    color var(--animation-duration) var(--animation-easing);
 }
 
 .home-drive-card:hover {
   background: var(--interactive-hover);
-  border-color: var(--panel-border-strong);
   color: var(--text-primary);
+}
+
+.home-drive-card:focus-visible {
+  background: var(--interactive-selected);
+  box-shadow: var(--focus-ring-strong);
+  outline: none;
 }
 
 .home-drive-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-weight: 600;
+  font-weight: 500;
   color: inherit;
 }
 
 .home-drive-meta {
   font-size: 11px;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .home-drive-bar {
@@ -242,14 +272,16 @@
 .home-drive-bar span {
   display: block;
   height: 100%;
-  background: var(--accent-gradient);
+  background: var(--accent-color);
   border-radius: inherit;
 }
 
 .home-customize-btn {
-  position: absolute;
-  right: 12px;
+  position: sticky;
+  align-self: flex-end;
+  right: auto;
   bottom: 12px;
+  margin: 4px 2px 0 auto;
   width: 36px;
   height: 36px;
   border-radius: 999px;
@@ -269,21 +301,22 @@
   width: 16px;
   height: 16px;
   display: block;
-  background-color: currentColor;
-  mask: url('/twemoji/270f.svg') center / contain no-repeat;
-  -webkit-mask: url('/twemoji/270f.svg') center / contain no-repeat;
 }
 
 .home-customize-btn:hover {
   background: var(--interactive-hover);
   border-color: var(--panel-border-strong);
   color: var(--text-primary);
-  transform: translateY(-1px);
 }
 
 .home-customize-btn:active {
   background: var(--interactive-active);
-  transform: translateY(0);
+}
+
+.home-customize-btn:focus-visible {
+  background: var(--interactive-selected);
+  box-shadow: var(--focus-ring-strong);
+  outline: none;
 }
 
 .home-toggle-grid {

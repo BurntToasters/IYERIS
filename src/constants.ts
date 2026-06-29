@@ -60,6 +60,72 @@ export const THUMBNAIL_QUALITY_VALUES = [
   'medium',
   'high',
 ] as const satisfies readonly Settings['thumbnailQuality'][];
+export const CHECKSUM_ALGORITHM_VALUES = [
+  'sha256',
+  'md5',
+  'blake3',
+  'sha512',
+  'crc32',
+] as const satisfies readonly NonNullable<Settings['defaultChecksumAlgorithm']>[];
+
+export const DASHBOARD_WIDGET_KEYS = [
+  'quick-info',
+  'recent-operations',
+  'storage-overview',
+  'favorites',
+] as const;
+
+export const FOLDER_ICON_STYLE_VALUES = [
+  'outline',
+  'filled',
+  'colored',
+  'monochrome',
+] as const satisfies readonly NonNullable<Settings['folderIconStyle']>[];
+export const FOLDER_ICON_VALUES = [
+  'folder',
+  'folder-open',
+  'file-text',
+  'contact',
+  'archive',
+  'briefcase',
+  'star',
+  'sparkles',
+  'heart',
+  'lightbulb',
+  'gamepad-2',
+  'music',
+  'clapperboard',
+  'camera',
+  'video',
+  'library',
+  'book-open',
+  'pencil',
+  'laptop',
+  'monitor',
+  'home',
+  'building',
+  'wrench',
+  'settings',
+  'lock',
+  'unlock',
+  'package',
+  'inbox',
+  'upload',
+  'trash-2',
+  'cloud',
+  'globe',
+  'rocket',
+  'plane',
+  'car',
+  'bike',
+  'activity',
+  'trophy',
+  'apple',
+  'leaf',
+  'trees',
+  'sun',
+  'palette',
+] as const;
 
 export function isOneOf<T extends readonly string[]>(
   value: string,

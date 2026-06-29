@@ -16,7 +16,7 @@
 }
 
 .history-item {
-  padding: 12px 14px;
+  padding: 6px 14px;
   color: var(--text-primary);
   cursor: pointer;
   transition: background var(--animation-duration) var(--animation-easing);
@@ -29,6 +29,8 @@
   user-select: none;
   background: transparent;
   pointer-events: auto;
+  min-height: 30px;
+  line-height: 18px;
 }
 
 .history-item:hover,
@@ -142,11 +144,11 @@
 .search-filter-group select,
 .search-filter-group input[type='number'],
 .search-filter-group input[type='date'] {
-  background: var(--bg-secondary);
-  border: 1px solid var(--separator);
+  background: color-mix(in srgb, var(--surface-1) 80%, transparent);
+  border: 1px solid var(--native-divider);
   border-radius: var(--radius-small);
   color: var(--text-primary);
-  padding: 8px 10px;
+  padding: 6px 10px;
   font-size: 13px;
   outline: none;
   transition: var(--transition-standard);
@@ -385,8 +387,7 @@ body.theme-light .toggle-slider-small {
 }
 
 .search-bar input::selection {
-  background: var(--accent-color);
-  color: var(--text-on-accent);
+  background: rgba(var(--accent-rgb), 0.35);
 }
 
 .search-icon {

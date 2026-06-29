@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { FileItem } from '../types';
-import { createSelectionController } from '../rendererSelection';
+import { createSelectionController, moveGridFocusWithinScope } from '../rendererSelection';
 
 function createMockDeps() {
   const selectedItems = new Set<string>();
@@ -41,6 +41,7 @@ function addFileItems(paths: string[]): HTMLElement[] {
 
 describe('createSelectionController', () => {
   beforeEach(() => {
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="file-view">
         <div id="file-grid" style="display:grid;grid-template-columns:repeat(3, 1fr)"></div>
@@ -335,6 +336,58 @@ describe('createSelectionController', () => {
       const ctrl = createSelectionController(deps);
 
       expect(() => ctrl.ensureActiveItem()).not.toThrow();
+    });
+  });
+
+  describe('moveGridFocusWithinScope', () => {
+    it('uses the provided scope when moving focus in grid mode', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
+      document.body.innerHTML = `
+        <div id="file-grid" style="display:grid;grid-template-columns:repeat(2, 1fr)">
+          <div class="file-item" data-path="/left-a" tabindex="0"></div>
+          <div class="file-item" data-path="/left-b" tabindex="-1"></div>
+        </div>
+        <div id="dual-pane-secondary-list" style="display:grid;grid-template-columns:repeat(2, 1fr)">
+          <div class="file-item" data-path="/right-a" tabindex="-1"></div>
+          <div class="file-item" data-path="/right-b" tabindex="0"></div>
+          <div class="file-item" data-path="/right-c" tabindex="-1"></div>
+          <div class="file-item" data-path="/right-d" tabindex="-1"></div>
+        </div>
+      `;
+
+      const rightScope = document.getElementById('dual-pane-secondary-list') as HTMLElement;
+      const rightItems = Array.from(rightScope.querySelectorAll<HTMLElement>('.file-item'));
+      rightItems.forEach((item) => {
+        item.focus = vi.fn();
+        item.scrollIntoView = vi.fn();
+      });
+
+      moveGridFocusWithinScope(rightScope, 'ArrowDown', 'grid');
+
+      expect(rightItems[1]?.tabIndex).toBe(-1);
+      expect(rightItems[3]?.tabIndex).toBe(0);
+      expect(rightItems[3]?.focus).toHaveBeenCalled();
+      expect(rightItems[0]?.tabIndex).toBe(-1);
+    });
+
+    it('moves by one item in list mode', () => {
+      const scope = document.getElementById('file-grid') as HTMLElement;
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
+      scope.innerHTML = `
+        <div class="file-item" data-path="/a" tabindex="0"></div>
+        <div class="file-item" data-path="/b" tabindex="-1"></div>
+        <div class="file-item" data-path="/c" tabindex="-1"></div>
+      `;
+      const items = Array.from(scope.querySelectorAll<HTMLElement>('.file-item'));
+      items.forEach((item) => {
+        item.focus = vi.fn();
+        item.scrollIntoView = vi.fn();
+      });
+
+      moveGridFocusWithinScope(scope, 'ArrowDown', 'list');
+
+      expect(items[0]?.tabIndex).toBe(-1);
+      expect(items[1]?.tabIndex).toBe(0);
     });
   });
 });

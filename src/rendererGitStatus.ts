@@ -2,7 +2,11 @@ import type { GitStatusResponse, GitFileStatus } from './types';
 import { devLog } from './shared.js';
 
 type GitStatusDeps = {
-  getCurrentSettings: () => { enableGitStatus?: boolean; gitIncludeUntracked?: boolean };
+  getCurrentSettings: () => {
+    enableGitStatus?: boolean;
+    gitIncludeUntracked?: boolean;
+    statusBarItems?: Record<string, boolean>;
+  };
   getCurrentPath: () => string;
   getFileElement: (path: string) => HTMLElement | undefined;
   getRenderedPaths?: () => Iterable<string>;
@@ -11,7 +15,7 @@ type GitStatusDeps = {
 };
 
 const GIT_STATUS_CACHE_TTL_MS = 3000;
-const GIT_STATUS_CACHE_MAX = 100;
+const GIT_STATUS_CACHE_MAX = 500;
 
 export function createGitStatusController(deps: GitStatusDeps) {
   const { getCurrentSettings, getCurrentPath, getFileElement, getGitStatus, getGitBranch } = deps;
@@ -118,14 +122,22 @@ export function createGitStatusController(deps: GitStatusDeps) {
 
     if (!statusGitBranch || !statusGitBranchName) return;
 
-    if (!getCurrentSettings().enableGitStatus) {
+    const settings = getCurrentSettings();
+    if (!settings.enableGitStatus || settings.statusBarItems?.gitBranch === false) {
       statusGitBranch.style.display = 'none';
       return;
     }
 
     try {
       const result = await getGitBranch(dirPath);
-      if (result.success && result.branch && dirPath === getCurrentPath()) {
+      const currentSettings = getCurrentSettings();
+      if (
+        result.success &&
+        result.branch &&
+        dirPath === getCurrentPath() &&
+        currentSettings.enableGitStatus &&
+        currentSettings.statusBarItems?.gitBranch !== false
+      ) {
         statusGitBranchName.textContent = result.branch;
         statusGitBranch.style.display = 'inline-flex';
       } else {

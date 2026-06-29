@@ -4,6 +4,7 @@ import type { FileItem, Settings } from '../types';
 
 vi.mock('../rendererUtils.js', () => ({
   twemojiImg: (emoji: string, cls: string) => `<img class="${cls}" alt="${emoji}">`,
+  renderIcon: (emoji: string, cls: string) => `<img class="${cls || 'twemoji'}" alt="${emoji}">`,
 }));
 
 import { createFileRenderController } from '../rendererFileRender';
@@ -127,6 +128,7 @@ describe('createFileRenderController', () => {
         disconnect() {}
       };
     }
+    // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
     document.body.innerHTML = `
       <div id="file-view">
         <div id="file-grid"></div>
@@ -155,6 +157,26 @@ describe('createFileRenderController', () => {
       expect(el.getAttribute('aria-selected')).toBe('false');
       expect(el.getAttribute('aria-label')).toBe('document.txt');
       expect(el.draggable).toBe(true);
+    });
+
+    it('reflects selection state at creation when isSelected is provided', () => {
+      const config = {
+        ...createMockConfig(),
+        isSelected: (p: string) => p === '/home/user/sel.txt',
+      };
+      const ctrl = createFileRenderController(config);
+
+      const selected = ctrl.createFileItem(
+        makeItem({ name: 'sel.txt', path: '/home/user/sel.txt' })
+      );
+      expect(selected.classList.contains('selected')).toBe(true);
+      expect(selected.getAttribute('aria-selected')).toBe('true');
+
+      const other = ctrl.createFileItem(
+        makeItem({ name: 'other.txt', path: '/home/user/other.txt' })
+      );
+      expect(other.classList.contains('selected')).toBe(false);
+      expect(other.getAttribute('aria-selected')).toBe('false');
     });
 
     it('creates a DOM element for a directory', () => {
@@ -1038,6 +1060,7 @@ describe('createFileRenderController', () => {
     });
 
     it('handles virtualization when file-view root is missing', () => {
+      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <div id="file-grid"></div>
         <div id="empty-state" style="display:none">

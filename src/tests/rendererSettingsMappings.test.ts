@@ -9,6 +9,8 @@ import {
   THEME_VALUES,
   THUMBNAIL_QUALITY_VALUES,
   UPDATE_CHANNEL_VALUES,
+  CHECKSUM_ALGORITHM_VALUES,
+  FOLDER_ICON_STYLE_VALUES,
 } from '../constants';
 import { INT_RANGE_MAPPINGS, SELECT_MAPPINGS, TOGGLE_MAPPINGS } from '../rendererSettingsMappings';
 
@@ -40,14 +42,35 @@ describe('rendererSettingsMappings', () => {
     expect(selectMap.get('thumbnail-quality-select')?.values).toEqual(THUMBNAIL_QUALITY_VALUES);
     expect(selectMap.get('preview-panel-position-select')?.values).toEqual(PREVIEW_POSITION_VALUES);
     expect(selectMap.get('grid-columns-select')?.values).toEqual(GRID_COLUMNS_VALUES);
+    expect(selectMap.get('default-checksum-algo-select')?.values).toEqual(
+      CHECKSUM_ALGORITHM_VALUES
+    );
+    expect(selectMap.get('folder-icon-style-select')?.values).toEqual(FOLDER_ICON_STYLE_VALUES);
   });
 
   it('declares valid integer input ranges', () => {
     for (const [, , min, max] of INT_RANGE_MAPPINGS) {
       expect(Number.isInteger(min)).toBe(true);
       expect(Number.isInteger(max)).toBe(true);
-      expect(min).toBeGreaterThan(0);
+      expect(min).toBeGreaterThanOrEqual(0);
       expect(max).toBeGreaterThanOrEqual(min);
     }
+  });
+
+  it('persists animation sliders through integer mappings', () => {
+    const intMap = new Map(
+      INT_RANGE_MAPPINGS.map(([id, key, min, max]) => [id, { key, min, max }])
+    );
+
+    expect(intMap.get('nav-transition-duration-slider')).toEqual({
+      key: 'navTransitionDuration',
+      min: 0,
+      max: 400,
+    });
+    expect(intMap.get('operation-animation-slider')).toEqual({
+      key: 'operationAnimationDuration',
+      min: 0,
+      max: 200,
+    });
   });
 });

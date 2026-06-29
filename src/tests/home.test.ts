@@ -49,15 +49,14 @@ describe('HOME_QUICK_ACCESS_ITEMS', () => {
       expect(item.action.length).toBeGreaterThan(0);
       expect(typeof item.label).toBe('string');
       expect(item.label.length).toBeGreaterThan(0);
-      expect(typeof item.icon).toBe('number');
-      expect(item.icon).toBeGreaterThan(0);
+      expect(typeof item.icon).toBe('string');
+      expect(item.icon.length).toBeGreaterThan(0);
     });
   });
 
-  it('has valid emoji codepoints', () => {
+  it('has valid icon names', () => {
     HOME_QUICK_ACCESS_ITEMS.forEach((item) => {
-      expect(item.icon).toBeGreaterThanOrEqual(0x1f000);
-      expect(item.icon).toBeLessThanOrEqual(0x1ffff);
+      expect(item.icon).toMatch(/^[a-z0-9-]+$/);
     });
   });
 });

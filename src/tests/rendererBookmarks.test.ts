@@ -7,6 +7,7 @@ vi.mock('../shared.js', () => ({
 
 vi.mock('../rendererUtils.js', () => ({
   twemojiImg: (value: string) => value,
+  renderIcon: (value: string) => `<span class="mock-icon">${value}</span>`,
 }));
 
 vi.mock('../home.js', () => ({

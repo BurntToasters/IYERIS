@@ -8,6 +8,8 @@ import {
   GRID_COLUMNS_VALUES,
   UPDATE_CHANNEL_VALUES,
   THUMBNAIL_QUALITY_VALUES,
+  CHECKSUM_ALGORITHM_VALUES,
+  FOLDER_ICON_STYLE_VALUES,
 } from './constants.js';
 
 export const TOGGLE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings]> = [
@@ -43,6 +45,10 @@ export const TOGGLE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings]> =
   ['auto-play-videos-toggle', 'autoPlayVideos'],
   ['compact-file-info-toggle', 'compactFileInfo'],
   ['show-file-extensions-toggle', 'showFileExtensions'],
+  ['dual-pane-toggle', 'dualPaneEnabled'],
+  ['native-menu-toggle', 'nativeMenuEnabled'],
+  ['operation-panel-collapsed-toggle', 'operationPanelCollapsed'],
+  ['enable-auto-checksum-toggle', 'enableAutoChecksum'],
 ] as const;
 
 export const SELECT_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings, readonly string[]]> =
@@ -56,6 +62,8 @@ export const SELECT_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings, re
     ['thumbnail-quality-select', 'thumbnailQuality', THUMBNAIL_QUALITY_VALUES],
     ['preview-panel-position-select', 'previewPanelPosition', PREVIEW_POSITION_VALUES],
     ['grid-columns-select', 'gridColumns', GRID_COLUMNS_VALUES],
+    ['default-checksum-algo-select', 'defaultChecksumAlgorithm', CHECKSUM_ALGORITHM_VALUES],
+    ['folder-icon-style-select', 'folderIconStyle', FOLDER_ICON_STYLE_VALUES],
   ] as const;
 
 export const INT_RANGE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings, number, number]> =
@@ -64,4 +72,6 @@ export const INT_RANGE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings,
     ['max-preview-size-input', 'maxPreviewSizeMB', 1, 500],
     ['max-search-history-input', 'maxSearchHistoryItems', 1, 20],
     ['max-directory-history-input', 'maxDirectoryHistoryItems', 1, 20],
+    ['nav-transition-duration-slider', 'navTransitionDuration', 0, 400],
+    ['operation-animation-slider', 'operationAnimationDuration', 0, 200],
   ] as const;

@@ -1,13 +1,14 @@
 use std::fs;
-#[cfg(any(target_os = "windows", target_os = "linux"))]
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::path::Path;
+#[cfg(target_os = "linux")]
+use std::path::PathBuf;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
 use std::process::Command;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
-#[cfg(target_os = "linux")]
-use std::path::PathBuf;
 
 static TRAY_READY: AtomicBool = AtomicBool::new(false);
 static WINDOW_COUNTER: AtomicU64 = AtomicU64::new(1);
@@ -55,6 +56,11 @@ fn is_valid_windows_extension(value: &str) -> bool {
 
 #[cfg(target_os = "linux")]
 fn tokenize_exec_command(command: &str) -> Vec<String> {
+    if let Ok(parsed) = shell_words::split(command) {
+        if !parsed.is_empty() {
+            return parsed;
+        }
+    }
     let mut tokens = Vec::new();
     let mut current = String::new();
     let mut quote: Option<char> = None;
@@ -167,6 +173,8 @@ fn desktop_search_paths() -> Vec<PathBuf> {
         PathBuf::from("/usr/share/applications"),
         PathBuf::from("/usr/local/share/applications"),
         PathBuf::from("/var/lib/flatpak/exports/share/applications"),
+        PathBuf::from("/var/lib/snapd/desktop/applications"),
+        PathBuf::from("/snap/share/applications"),
     ];
     if let Ok(home) = std::env::var("HOME") {
         paths.push(Path::new(&home).join(".local/share/applications"));
@@ -177,7 +185,10 @@ fn desktop_search_paths() -> Vec<PathBuf> {
 
 #[cfg(target_os = "linux")]
 fn load_desktop_entry(desktop_file_name: &str) -> Option<(String, String)> {
-    if desktop_file_name.contains("..") || desktop_file_name.contains('/') || desktop_file_name.contains('\\') {
+    if desktop_file_name.contains("..")
+        || desktop_file_name.contains('/')
+        || desktop_file_name.contains('\\')
+    {
         return None;
     }
     for dir in desktop_search_paths() {
@@ -261,19 +272,34 @@ fn collect_linux_open_with_apps(path: &Path) -> Vec<(String, String)> {
     let mut desktop_ids: Vec<String> = Vec::new();
     let mut apps: Vec<(String, String)> = Vec::new();
 
-    if let Ok(mime_output) = Command::new("xdg-mime")
+    let mime_lookup = Command::new("xdg-mime")
         .args(["query", "filetype", &path.to_string_lossy()])
         .output()
-    {
-        if mime_output.status.success() {
-            let mime_type = String::from_utf8_lossy(&mime_output.stdout).trim().to_string();
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .filter(|s| !s.is_empty())
+        .or_else(|| {
+            Command::new("file")
+                .args(["--mime-type", "-b", &path.to_string_lossy()])
+                .output()
+                .ok()
+                .filter(|o| o.status.success())
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+                .filter(|s| !s.is_empty())
+        });
+
+    if let Some(mime_type) = mime_lookup {
+        {
             if !mime_type.is_empty() {
-                if let Ok(default_output) =
-                    Command::new("xdg-mime").args(["query", "default", &mime_type]).output()
+                if let Ok(default_output) = Command::new("xdg-mime")
+                    .args(["query", "default", &mime_type])
+                    .output()
                 {
                     if default_output.status.success() {
-                        let desktop_id =
-                            String::from_utf8_lossy(&default_output.stdout).trim().to_string();
+                        let desktop_id = String::from_utf8_lossy(&default_output.stdout)
+                            .trim()
+                            .to_string();
                         if !desktop_id.is_empty() {
                             desktop_ids.push(desktop_id);
                         }
@@ -321,7 +347,9 @@ fn collect_windows_open_with_apps(path: &Path) -> Vec<(String, String)> {
                 .output()
         } {
             if assoc_output.status.success() {
-                let assoc_text = String::from_utf8_lossy(&assoc_output.stdout).trim().to_string();
+                let assoc_text = String::from_utf8_lossy(&assoc_output.stdout)
+                    .trim()
+                    .to_string();
                 if let Some(file_type) = assoc_text.split('=').nth(1).map(|value| value.trim()) {
                     if is_valid_windows_filetype(file_type) {
                         if let Ok(ftype_output) = {
@@ -332,8 +360,9 @@ fn collect_windows_open_with_apps(path: &Path) -> Vec<(String, String)> {
                                 .output()
                         } {
                             if ftype_output.status.success() {
-                                let ftype_text =
-                                    String::from_utf8_lossy(&ftype_output.stdout).trim().to_string();
+                                let ftype_text = String::from_utf8_lossy(&ftype_output.stdout)
+                                    .trim()
+                                    .to_string();
                                 if let Some(command) = ftype_text.split('=').nth(1) {
                                     let command = command.trim();
                                     let executable = if command.starts_with('"') {
@@ -344,11 +373,7 @@ fn collect_windows_open_with_apps(path: &Path) -> Vec<(String, String)> {
                                             .unwrap_or("")
                                             .to_string()
                                     } else {
-                                        command
-                                            .split_whitespace()
-                                            .next()
-                                            .unwrap_or("")
-                                            .to_string()
+                                        command.split_whitespace().next().unwrap_or("").to_string()
                                     };
                                     if !executable.is_empty() {
                                         let name = Path::new(&executable)
@@ -473,7 +498,10 @@ pub fn get_system_accent_color() -> Result<serde_json::Value, String> {
                 .output()
                 .ok()?;
             if output.status.success() {
-                let color = String::from_utf8_lossy(&output.stdout).trim().trim_matches('\'').to_string();
+                let color = String::from_utf8_lossy(&output.stdout)
+                    .trim()
+                    .trim_matches('\'')
+                    .to_string();
                 let mapped = match color.as_str() {
                     "blue" => "3584E4",
                     "teal" => "2190A4",
@@ -506,7 +534,9 @@ pub fn get_system_accent_color() -> Result<serde_json::Value, String> {
                 .output()
                 .ok()?;
             if output.status.success() {
-                let theme = String::from_utf8_lossy(&output.stdout).trim().to_lowercase();
+                let theme = String::from_utf8_lossy(&output.stdout)
+                    .trim()
+                    .to_lowercase();
                 return Some(theme.contains("dark"));
             }
             None
@@ -623,7 +653,10 @@ pub fn is_mas() -> bool {
                     continue;
                 }
 
-                let receipt = ancestor.join("Contents").join("_MASReceipt").join("receipt");
+                let receipt = ancestor
+                    .join("Contents")
+                    .join("_MASReceipt")
+                    .join("receipt");
                 if receipt.exists() {
                     return true;
                 }
@@ -726,19 +759,19 @@ pub async fn open_new_window(app: tauri::AppHandle) -> Result<(), String> {
     log::debug!("[System] open_new_window");
     let label = format!("window-{}", WINDOW_COUNTER.fetch_add(1, Ordering::Relaxed));
 
-    let builder = tauri::WebviewWindowBuilder::new(
-        &app,
-        &label,
-        tauri::WebviewUrl::App("index.html".into()),
-    )
-    .title("IYERIS")
-    .inner_size(1200.0, 800.0)
-    .min_inner_size(800.0, 500.0)
-    .visible(true)
-    .focused(true);
+    let builder =
+        tauri::WebviewWindowBuilder::new(&app, &label, tauri::WebviewUrl::App("index.html".into()))
+            .title("IYERIS")
+            .inner_size(1200.0, 800.0)
+            .min_inner_size(800.0, 500.0)
+            .visible(true)
+            .focused(true);
 
     #[cfg(target_os = "macos")]
-    let builder = builder.decorations(true).title_bar_style(tauri::TitleBarStyle::Overlay).hidden_title(true);
+    let builder = builder
+        .decorations(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .hidden_title(true);
 
     #[cfg(not(target_os = "macos"))]
     let builder = builder.decorations(false);
@@ -779,10 +812,10 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        let mac_terminals = [
-            "iTerm", "Warp", "Alacritty", "kitty", "Hyper", "Terminal",
-        ];
-        let preferred = std::env::var("TERM_PROGRAM").unwrap_or_default().to_lowercase();
+        let mac_terminals = ["iTerm", "Warp", "Alacritty", "kitty", "Hyper", "Terminal"];
+        let preferred = std::env::var("TERM_PROGRAM")
+            .unwrap_or_default()
+            .to_lowercase();
         let ordered: Vec<&str> = if !preferred.is_empty() {
             let mut v: Vec<&str> = Vec::with_capacity(mac_terminals.len());
             for t in &mac_terminals {
@@ -828,9 +861,12 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
                 .spawn()
                 .map_err(|e| e.to_string())?;
         } else {
-            let cd_command = format!("cd /d \"{}\"", path.display());
+            // Pass the path via current_dir so it is never embedded in a shell
+            // command string — avoids %VAR% expansion in folder names. (W1)
+            use std::os::windows::process::CommandExt;
             std::process::Command::new("cmd")
-                .args(["/c", "start", "", "cmd", "/k", &cd_command])
+                .current_dir(&path)
+                .creation_flags(0x00000010) // CREATE_NEW_CONSOLE
                 .spawn()
                 .map_err(|e| e.to_string())?;
         }
@@ -839,24 +875,59 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         let terminals: Vec<(&str, Vec<String>)> = vec![
-            ("x-terminal-emulator", vec!["--working-directory".into(), dir_path.clone()]),
-            ("gnome-terminal", vec![format!("--working-directory={}", dir_path)]),
+            (
+                "x-terminal-emulator",
+                vec!["--working-directory".into(), dir_path.clone()],
+            ),
+            (
+                "gnome-terminal",
+                vec![format!("--working-directory={}", dir_path)],
+            ),
             ("konsole", vec!["--workdir".into(), dir_path.clone()]),
-            ("xfce4-terminal", vec![format!("--working-directory={}", dir_path)]),
-            ("mate-terminal", vec![format!("--working-directory={}", dir_path)]),
+            (
+                "xfce4-terminal",
+                vec![format!("--working-directory={}", dir_path)],
+            ),
+            (
+                "mate-terminal",
+                vec![format!("--working-directory={}", dir_path)],
+            ),
             ("tilix", vec![format!("--working-directory={}", dir_path)]),
-            ("terminator", vec![format!("--working-directory={}", dir_path)]),
-            ("alacritty", vec!["--working-directory".into(), dir_path.clone()]),
+            (
+                "terminator",
+                vec![format!("--working-directory={}", dir_path)],
+            ),
+            (
+                "alacritty",
+                vec!["--working-directory".into(), dir_path.clone()],
+            ),
             ("kitty", vec!["--directory".into(), dir_path.clone()]),
-            ("wezterm", vec!["start".into(), "--cwd".into(), dir_path.clone()]),
+            (
+                "wezterm",
+                vec!["start".into(), "--cwd".into(), dir_path.clone()],
+            ),
             ("foot", vec![format!("--working-directory={}", dir_path)]),
-            ("lxterminal", vec![format!("--working-directory={}", dir_path)]),
+            (
+                "lxterminal",
+                vec![format!("--working-directory={}", dir_path)],
+            ),
             ("sakura", vec![format!("--working-directory={}", dir_path)]),
-            ("xterm", vec!["-e".into(), "sh".into(), "-lc".into(), format!("cd '{}' && exec \"$SHELL\"", path.to_string_lossy().replace('\'', "'\\''"))]),
+            (
+                "xterm",
+                vec![
+                    "-e".into(),
+                    "sh".into(),
+                    "-lc".into(),
+                    format!(
+                        "cd '{}' && exec \"$SHELL\"",
+                        path.to_string_lossy().replace('\'', "'\\''")
+                    ),
+                ],
+            ),
         ];
 
-        let in_flatpak = std::env::var("FLATPAK_ID").is_ok()
-            || std::path::Path::new("/.flatpak-info").exists();
+        let in_flatpak =
+            std::env::var("FLATPAK_ID").is_ok() || std::path::Path::new("/.flatpak-info").exists();
 
         for (cmd, args) in &terminals {
             let result = if in_flatpak {
@@ -930,9 +1001,10 @@ pub fn get_licenses(app: tauri::AppHandle) -> Result<String, String> {
                 let license_path = resource_path.join(suffix);
                 attempted_paths.push(license_path.display().to_string());
                 if let Ok(content) = fs::read_to_string(&license_path) {
-                    let parsed: serde_json::Value = serde_json::from_str(&content).map_err(|e| {
-                        format!("Failed to parse {}: {}", license_path.display(), e)
-                    })?;
+                    let parsed: serde_json::Value =
+                        serde_json::from_str(&content).map_err(|e| {
+                            format!("Failed to parse {}: {}", license_path.display(), e)
+                        })?;
                     let object = parsed.as_object().ok_or_else(|| {
                         format!("{} must be a JSON object", license_path.display())
                     })?;
@@ -1005,21 +1077,19 @@ pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
         Ok(dir) => {
             let path = dir.join("settings.json");
             match fs::read_to_string(&path) {
-                Ok(content) => {
-                    match serde_json::from_str::<serde_json::Value>(&content) {
-                        Ok(mut val) => {
-                            if let Some(obj) = val.as_object_mut() {
-                                obj.remove("bookmarks");
-                                obj.remove("tabState");
-                                obj.remove("recentFiles");
-                                obj.remove("searchHistory");
-                                obj.remove("directoryHistory");
-                            }
-                            val
+                Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(mut val) => {
+                        if let Some(obj) = val.as_object_mut() {
+                            obj.remove("bookmarks");
+                            obj.remove("tabState");
+                            obj.remove("recentFiles");
+                            obj.remove("searchHistory");
+                            obj.remove("directoryHistory");
                         }
-                        Err(_) => serde_json::json!("parse error"),
+                        val
                     }
-                }
+                    Err(_) => serde_json::json!("parse error"),
+                },
                 Err(_) => serde_json::json!("not found"),
             }
         }
@@ -1041,7 +1111,7 @@ pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
         },
         "settings": settings_summary,
     });
-    Ok(serde_json::to_string_pretty(&info).map_err(|e| e.to_string())?)
+    serde_json::to_string_pretty(&info).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1054,8 +1124,7 @@ pub fn get_log_file_content(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e: tauri::Error| e.to_string())?;
     let log_file = log_dir.join("iyeris.log");
 
-    let mut file =
-        fs::File::open(&log_file).map_err(|e| format!("Failed to read log: {}", e))?;
+    let mut file = fs::File::open(&log_file).map_err(|e| format!("Failed to read log: {}", e))?;
 
     const MAX_LOG_BYTES: u64 = 1_024 * 1_024;
     let metadata = file.metadata().map_err(|e| e.to_string())?;
@@ -1075,12 +1144,17 @@ pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
     if file_paths.is_empty() {
         return Err("No files to share".into());
     }
+    let validated_paths: Vec<std::path::PathBuf> = file_paths
+        .iter()
+        .map(|path| crate::validate_existing_path(path, "File"))
+        .collect::<Result<Vec<_>, _>>()?;
 
     #[cfg(target_os = "macos")]
     {
-        for path in &file_paths {
+        for path in &validated_paths {
             std::process::Command::new("open")
-                .args(["-R", path])
+                .arg("-R")
+                .arg(path.as_os_str())
                 .spawn()
                 .map_err(|e| e.to_string())?;
         }
@@ -1088,20 +1162,21 @@ pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
-        for path in &file_paths {
-            let parent = std::path::Path::new(path)
+        for path in &validated_paths {
+            let parent = path
                 .parent()
                 .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_default();
+                .unwrap_or_else(|| "/".to_string());
             let _ = open::that(&parent);
         }
     }
 
     #[cfg(target_os = "windows")]
     {
-        for path in &file_paths {
+        for path in &validated_paths {
             std::process::Command::new("explorer")
-                .args(["/select,", path])
+                .arg("/select,")
+                .arg(path.as_os_str())
                 .spawn()
                 .map_err(|e| e.to_string())?;
         }
@@ -1114,12 +1189,10 @@ pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
 pub async fn check_full_disk_access() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
-        let test_paths = vec![
-            format!(
-                "{}/Library/Application Support/com.apple.TCC/TCC.db",
-                std::env::var("HOME").unwrap_or_default()
-            ),
-        ];
+        let test_paths = vec![format!(
+            "{}/Library/Application Support/com.apple.TCC/TCC.db",
+            std::env::var("HOME").unwrap_or_default()
+        )];
         for path in test_paths {
             if fs::metadata(&path).is_ok() {
                 return Ok(true);
@@ -1149,7 +1222,7 @@ pub async fn get_open_with_apps(file_path: String) -> Result<Vec<serde_json::Val
     #[cfg(target_os = "macos")]
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
-        let output = tokio::task::spawn_blocking(move || {
+        let blocking = tokio::task::spawn_blocking(move || {
             let jxa_code = r#"ObjC.import('AppKit');
 ObjC.import('Foundation');
 const env = $.NSProcessInfo.processInfo.environment;
@@ -1189,10 +1262,12 @@ print(String(data: data, encoding: .utf8)!)"#;
                 .args(["-e", swift_code])
                 .env("FILE_PATH", path.to_string_lossy().as_ref())
                 .output()
-        })
-        .await
-        .map_err(|e| e.to_string())?
-        .map_err(|e| e.to_string())?;
+        });
+        let output = tokio::time::timeout(std::time::Duration::from_secs(8), blocking)
+            .await
+            .map_err(|_| "Timed out querying available applications".to_string())?
+            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
 
         if output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -1207,7 +1282,10 @@ print(String(data: data, encoding: .utf8)!)"#;
             ("/System/Applications/Preview.app", "Preview"),
             ("/Applications/Safari.app", "Safari"),
             ("/System/Applications/Utilities/Terminal.app", "Terminal"),
-            ("/System/Applications/QuickTime Player.app", "QuickTime Player"),
+            (
+                "/System/Applications/QuickTime Player.app",
+                "QuickTime Player",
+            ),
         ];
         let available: Vec<serde_json::Value> = fallback_apps
             .into_iter()
@@ -1241,7 +1319,9 @@ print(String(data: data, encoding: .utf8)!)"#;
     #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = file_path;
-        Ok(vec![serde_json::json!({ "id": "default", "name": "Default Application" })])
+        Ok(vec![
+            serde_json::json!({ "id": "default", "name": "Default Application" }),
+        ])
     }
 }
 
@@ -1251,9 +1331,45 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
     #[cfg(target_os = "macos")]
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
+        if app_id.trim().is_empty() || app_id == "default" {
+            return open::that(&path).map_err(|e| e.to_string());
+        }
+        let app_path = crate::validate_existing_path(&app_id, "Application")?;
+        let is_app_bundle = app_path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("app"))
+            .unwrap_or(false);
+        if !is_app_bundle {
+            return Err("Selected application must be a .app bundle.".to_string());
+        }
+        // M9: require the .app bundle to live under a trusted root. Without
+        // this, a planted /tmp/Evil.app could be picked from the "Open with"
+        // dialog and launched. macOS launch services normally surface only
+        // apps in these locations; this just enforces it.
+        let canonical_app = app_path
+            .canonicalize()
+            .map_err(|e| format!("Cannot resolve application path: {}", e))?;
+        let canonical_str = canonical_app.to_string_lossy();
+        let home = std::env::var("HOME").unwrap_or_default();
+        let allowed_roots: Vec<String> = vec![
+            "/Applications/".to_string(),
+            "/System/Applications/".to_string(),
+            "/System/Library/CoreServices/".to_string(),
+            format!("{}/Applications/", home),
+        ];
+        if !allowed_roots
+            .iter()
+            .any(|root| canonical_str.starts_with(root))
+        {
+            return Err(
+                "Selected application must live under /Applications, /System/Applications, /System/Library/CoreServices, or ~/Applications."
+                    .to_string(),
+            );
+        }
         std::process::Command::new("open")
             .arg("-a")
-            .arg(&app_id)
+            .arg(canonical_app.as_os_str())
             .arg(path.as_os_str())
             .spawn()
             .map_err(|e| e.to_string())?;
@@ -1290,7 +1406,10 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
         }
 
         let allowed_apps = collect_linux_open_with_apps(&path);
-        if !allowed_apps.iter().any(|(allowed_id, _)| allowed_id == &app_id) {
+        if !allowed_apps
+            .iter()
+            .any(|(allowed_id, _)| allowed_id == &app_id)
+        {
             return Err("Selected application is not allowed for this file type.".to_string());
         }
 
@@ -1361,6 +1480,271 @@ pub async fn launch_desktop_entry(file_path: String) -> Result<(), String> {
     }
 }
 
+fn app_exe_string() -> Result<String, String> {
+    std::env::current_exe()
+        .map_err(|e| e.to_string())
+        .map(|path| path.to_string_lossy().to_string())
+}
+
+/// H1: reject the current exe path for native-integration installation if it
+/// contains shell metacharacters or quote characters. The installation writes
+/// the path verbatim into an AppleScript / Bash / Registry template, and a
+/// path containing `"`, `$`, `\\`, etc. would either break the template or
+/// (worse) make the registered entry a shell-injection primitive that fires
+/// on every right-click. Today the install path is a vendor-controlled
+/// .app / .exe / AppImage and never contains these characters, but if a
+/// future Tauri release ever generates one with weird path encoding we want
+/// to refuse rather than silently writing a broken/exploitable workflow.
+fn validate_native_integration_exe_path(exe: &str) -> Result<(), String> {
+    for ch in exe.chars() {
+        if matches!(
+            ch,
+            '"' | '$' | '`' | ';' | '|' | '&' | '<' | '>' | '\n' | '\r' | '\0'
+        ) {
+            return Err(format!(
+                "Refusing to install native integration: exe path contains shell metacharacter {:?}",
+                ch
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_native_integration_status() -> Result<serde_json::Value, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let installed = Command::new("reg")
+            .args(["query", r"HKCU\Software\Classes\Directory\shell\IYERIS"])
+            .creation_flags(0x08000000)
+            .output()
+            .map(|out| out.status.success())
+            .unwrap_or(false);
+        Ok(serde_json::json!({
+            "supported": true,
+            "installed": installed,
+            "message": if installed { "Windows context menu entries installed" } else { "Windows context menu entries not installed" },
+        }))
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let installed = std::env::var("HOME")
+            .ok()
+            .map(|home| {
+                Path::new(&home)
+                    .join("Library/Services/Open in IYERIS.workflow")
+                    .exists()
+            })
+            .unwrap_or(false);
+        Ok(serde_json::json!({
+            "supported": true,
+            "installed": installed,
+            "message": if installed { "Finder service installed" } else { "Finder service not installed" },
+        }))
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let installed = std::env::var("HOME")
+            .ok()
+            .map(|home| {
+                Path::new(&home)
+                    .join(".local/share/kio/servicemenus/iyeris-open.desktop")
+                    .exists()
+                    || Path::new(&home)
+                        .join(".local/share/nautilus/scripts/Open in IYERIS")
+                        .exists()
+            })
+            .unwrap_or(false);
+        Ok(serde_json::json!({
+            "supported": true,
+            "installed": installed,
+            "message": if installed { "Linux file manager entries installed" } else { "Linux file manager entries not installed" },
+        }))
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    Ok(serde_json::json!({
+        "supported": false,
+        "installed": false,
+        "message": "Native integration is not supported on this platform",
+    }))
+}
+
+#[tauri::command]
+pub async fn install_native_integration() -> Result<(), String> {
+    let exe = app_exe_string()?;
+    validate_native_integration_exe_path(&exe)?; // H1
+
+    #[cfg(target_os = "windows")]
+    {
+        // The exe path is passed verbatim — `reg add /d` stores its argument
+        // literally and does NOT unescape backslashes, so any escaping here
+        // (e.g. doubling `\`) ends up stored in the registry and produces a
+        // broken `C:\\Users\\...` command that Explorer cannot resolve. H1
+        // already guarantees the path contains no shell metacharacters or
+        // quote chars, so it is safe to embed as-is inside the surrounding
+        // double quotes.
+        let command = format!("\"{}\" \"%1\"", exe);
+        // Per-verb icon: show the app's own icon next to the menu entry.
+        let icon = format!("\"{}\",0", exe);
+        let pairs = [
+            (r"HKCU\Software\Classes\*\shell\IYERIS", "Open in IYERIS"),
+            (
+                r"HKCU\Software\Classes\Directory\shell\IYERIS",
+                "Open in IYERIS",
+            ),
+        ];
+
+        fn run_reg(args: &[&str]) -> Result<(), String> {
+            let status = Command::new("reg")
+                .args(args)
+                .creation_flags(0x08000000)
+                .status()
+                .map_err(|e| format!("Failed to run reg: {}", e))?;
+            if !status.success() {
+                return Err(format!(
+                    "reg exited with status {} while writing context-menu entry",
+                    status.code().unwrap_or(-1)
+                ));
+            }
+            Ok(())
+        }
+
+        for (key, label) in pairs {
+            run_reg(&["add", key, "/ve", "/d", label, "/f"])?;
+            run_reg(&["add", key, "/v", "Icon", "/d", &icon, "/f"])?;
+            run_reg(&[
+                "add",
+                &format!(r"{}\command", key),
+                "/ve",
+                "/d",
+                &command,
+                "/f",
+            ])?;
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
+        let workflow = Path::new(&home).join("Library/Services/Open in IYERIS.workflow/Contents");
+        fs::create_dir_all(&workflow).map_err(|e| e.to_string())?;
+        fs::write(
+            workflow.join("Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>NSServices</key><array><dict><key>NSMenuItem</key><dict><key>default</key><string>Open in IYERIS</string></dict><key>NSMessage</key><string>runWorkflowAsService</string><key>NSSendFileTypes</key><array><string>public.item</string></array></dict></array></dict></plist>"#,
+        )
+        .map_err(|e| e.to_string())?;
+        fs::write(
+            workflow.join("document.wflow"),
+            format!(
+                r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>actions</key><array><dict><key>action</key><dict><key>AMAccepts</key><dict><key>Container</key><string>List</string><key>Types</key><array><string>com.apple.cocoa.path</string></array></dict><key>AMActionVersion</key><string>2.0.3</string><key>AMApplication</key><array><string>Automator</string></array><key>AMParameterProperties</key><dict><key>COMMAND_STRING</key><dict><key>default value</key><string>while IFS= read -r item; do "{}" "$item"; done</string></dict></dict><key>AMProvides</key><dict><key>Container</key><string>List</string><key>Types</key><array><string>com.apple.cocoa.string</string></array></dict><key>ActionBundlePath</key><string>/System/Library/Automator/Run Shell Script.action</string><key>ActionName</key><string>Run Shell Script</string><key>ActionParameters</key><dict><key>COMMAND_STRING</key><string>while IFS= read -r item; do "{}" "$item"; done</string><key>inputMethod</key><integer>1</integer><key>shell</key><string>/bin/zsh</string></dict><key>BundleIdentifier</key><string>com.apple.RunShellScript</string></dict></dict></array></dict></plist>"#,
+                exe, exe
+            ),
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
+        let service_dir = Path::new(&home).join(".local/share/kio/servicemenus");
+        fs::create_dir_all(&service_dir).map_err(|e| e.to_string())?;
+        let service_file = service_dir.join("iyeris-open.desktop");
+        // Use `ServiceTypes=` (the current KDE key) rather than the legacy
+        // `X-KDE-ServiceTypes=`, which newer Plasma (5.85+/6) does not honor.
+        fs::write(
+            &service_file,
+            format!(
+                "[Desktop Entry]\nType=Service\nMimeType=all/all;inode/directory;\nActions=openInIyeris;openParentInIyeris;\nServiceTypes=KonqPopupMenu/Plugin\n\n[Desktop Action openInIyeris]\nName=Open in IYERIS\nExec=\"{}\" %f\n\n[Desktop Action openParentInIyeris]\nName=Open Parent in IYERIS\nExec=sh -c '\"{}\" \"$(dirname \"$1\")\"' -- %f\n",
+                exe, exe
+            ),
+        )
+        .map_err(|e| e.to_string())?;
+        // KDE Plasma 5.85+ / 6 only loads servicemenus from this non-standard
+        // user location if the .desktop file is marked executable; without this
+        // the entry is silently ignored. (The nautilus script below is chmod'd
+        // for the same reason.)
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&service_file, fs::Permissions::from_mode(0o755))
+                .map_err(|e| e.to_string())?;
+        }
+
+        let nautilus_dir = Path::new(&home).join(".local/share/nautilus/scripts");
+        fs::create_dir_all(&nautilus_dir).map_err(|e| e.to_string())?;
+        let script = nautilus_dir.join("Open in IYERIS");
+        fs::write(
+            &script,
+            format!(
+                "#!/bin/sh\nprintf '%s\\n' \"$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS\" | while IFS= read -r item; do [ -n \"$item\" ] && \"{}\" \"$item\"; done\n",
+                exe
+            ),
+        )
+        .map_err(|e| e.to_string())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&script, fs::Permissions::from_mode(0o755))
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    {
+        let _ = exe;
+        Err("Native integration is not supported on this platform".to_string())
+    }
+}
+
+#[tauri::command]
+pub async fn uninstall_native_integration() -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        for key in [
+            r"HKCU\Software\Classes\*\shell\IYERIS",
+            r"HKCU\Software\Classes\Directory\shell\IYERIS",
+        ] {
+            let _ = Command::new("reg")
+                .args(["delete", key, "/f"])
+                .creation_flags(0x08000000)
+                .status();
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            let _ = fs::remove_dir_all(
+                Path::new(&home).join("Library/Services/Open in IYERIS.workflow"),
+            );
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            let _ = fs::remove_file(
+                Path::new(&home).join(".local/share/kio/servicemenus/iyeris-open.desktop"),
+            );
+            let _ = fs::remove_file(
+                Path::new(&home).join(".local/share/nautilus/scripts/Open in IYERIS"),
+            );
+        }
+        Ok(())
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+    Err("Native integration is not supported on this platform".to_string())
+}
+
 pub fn has_other_visible_windows(app: &tauri::AppHandle, exclude_label: &str) -> bool {
     app.webview_windows()
         .iter()
@@ -1411,9 +1795,11 @@ pub fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
     manager.is_enabled().map_err(|e| e.to_string())
 }
 
-pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
-    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+pub fn setup_tray(
+    app: &mut tauri::App,
+) -> Result<tauri::tray::TrayIcon, Box<dyn std::error::Error>> {
     use tauri::menu::{MenuBuilder, MenuItemBuilder};
+    use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 
     let show = MenuItemBuilder::with_id("show", "Show IYERIS").build(app)?;
     let quit = MenuItemBuilder::with_id("quit", "Quit").build(app)?;
@@ -1425,42 +1811,39 @@ pub fn setup_tray(app: &mut tauri::App) -> Result<tauri::tray::TrayIcon, Box<dyn
     let icon_bytes = include_bytes!("../icons/icon.png");
     let icon = tauri::image::Image::from_bytes(icon_bytes)?;
 
-    let tray_builder = TrayIconBuilder::new()
-        .icon(icon);
+    let tray_builder = TrayIconBuilder::new().icon(icon);
     #[cfg(target_os = "macos")]
     let tray_builder = tray_builder.icon_as_template(true);
     #[cfg(not(target_os = "linux"))]
     let tray_builder = tray_builder.show_menu_on_left_click(false);
     let tray = tray_builder
         .menu(&menu)
-        .on_menu_event(move |app, event| {
-            match event.id().as_ref() {
-                "show" => {
-                    #[cfg(target_os = "macos")]
-                    {
-                        let _ = app.set_dock_visibility(true);
-                        let _ = app.show();
-                    }
-                    if let Some(window) = app.get_webview_window("main") {
-                        let _ = window.show();
-                        let _ = window.set_focus();
-                    } else {
-                        let windows = app.webview_windows();
-                        let target = windows
-                            .values()
-                            .find(|w| w.is_visible().unwrap_or(false))
-                            .or_else(|| windows.values().next());
-                        if let Some(w) = target {
-                            let _ = w.show();
-                            let _ = w.set_focus();
-                        }
+        .on_menu_event(move |app, event| match event.id().as_ref() {
+            "show" => {
+                #[cfg(target_os = "macos")]
+                {
+                    let _ = app.set_dock_visibility(true);
+                    let _ = app.show();
+                }
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                } else {
+                    let windows = app.webview_windows();
+                    let target = windows
+                        .values()
+                        .find(|w| w.is_visible().unwrap_or(false))
+                        .or_else(|| windows.values().next());
+                    if let Some(w) = target {
+                        let _ = w.show();
+                        let _ = w.set_focus();
                     }
                 }
-                "quit" => {
-                    app.exit(0);
-                }
-                _ => {}
             }
+            "quit" => {
+                app.exit(0);
+            }
+            _ => {}
         })
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click {

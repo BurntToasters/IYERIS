@@ -37,12 +37,17 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     'show-folder-tree-toggle': 'showFolderTree',
     'legacy-tree-spacing-toggle': 'useLegacyTreeSpacing',
     'enable-tabs-toggle': 'enableTabs',
+    'dual-pane-toggle': 'dualPaneEnabled',
+    'native-menu-toggle': 'nativeMenuEnabled',
+    'operation-panel-collapsed-toggle': 'operationPanelCollapsed',
     'enable-syntax-highlighting-toggle': 'enableSyntaxHighlighting',
     'auto-play-videos-toggle': 'autoPlayVideos',
     'preview-panel-position-select': 'previewPanelPosition',
     'max-preview-size-input': 'maxPreviewSizeMB',
     'grid-columns-select': 'gridColumns',
     'icon-size-slider': 'iconSize',
+    'nav-transition-duration-slider': 'navTransitionDuration',
+    'operation-animation-slider': 'operationAnimationDuration',
     'compact-file-info-toggle': 'compactFileInfo',
     'show-file-extensions-toggle': 'showFileExtensions',
     'reduce-motion-toggle': 'reduceMotion',
@@ -67,6 +72,9 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     'max-thumbnail-size-input': 'maxThumbnailSizeMB',
     'thumbnail-quality-select': 'thumbnailQuality',
     'dangerous-options-toggle': 'showDangerousOptions',
+    'enable-auto-checksum-toggle': 'enableAutoChecksum',
+    'default-checksum-algo-select': 'defaultChecksumAlgorithm',
+    'folder-icon-style-select': 'folderIconStyle',
   };
 
   function setSuppressSettingsTracking(value: boolean) {
@@ -90,6 +98,22 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     const iconSizeValue = document.getElementById('icon-size-value');
     if (iconSizeSlider && iconSizeValue) {
       iconSizeValue.textContent = iconSizeSlider.value;
+    }
+
+    const navTransitionDurationSlider = document.getElementById(
+      'nav-transition-duration-slider'
+    ) as HTMLInputElement | null;
+    const navTransitionDurationValue = document.getElementById('nav-transition-duration-value');
+    if (navTransitionDurationSlider && navTransitionDurationValue) {
+      navTransitionDurationValue.textContent = navTransitionDurationSlider.value;
+    }
+
+    const operationAnimationSlider = document.getElementById(
+      'operation-animation-slider'
+    ) as HTMLInputElement | null;
+    const operationAnimationValue = document.getElementById('operation-animation-value');
+    if (operationAnimationSlider && operationAnimationValue) {
+      operationAnimationValue.textContent = operationAnimationSlider.value;
     }
 
     const dangerousOptionsToggle = document.getElementById(
@@ -525,6 +549,9 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     searchInput.addEventListener('input', () => {
       if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
       searchDebounceTimer = setTimeout(() => {
+        // Skip if the input was detached (modal closed / test torn down) so a
+        // pending timer can't touch a gone document.
+        if (!searchInput.isConnected) return;
         applySettingsSearch(searchInput.value);
       }, SETTINGS_SEARCH_DEBOUNCE_MS);
     });

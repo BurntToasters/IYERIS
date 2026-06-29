@@ -103,6 +103,7 @@ function makeFile(overrides: Partial<FileItem> = {}): FileItem {
 }
 
 function buildDOM() {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="preview-panel" style="display:none">
       <div id="preview-content"></div>
@@ -216,6 +217,32 @@ describe('rendererPreviews', () => {
       const closeBtn = document.getElementById('preview-close')!;
       closeBtn.click();
       expect(ctrl.isPreviewVisible()).toBe(false);
+    });
+
+    it('hides the preview panel if close animationend never fires at runtime', () => {
+      vi.useFakeTimers();
+      const previousNodeEnv = process.env.NODE_ENV;
+      process.env.NODE_ENV = 'production';
+      try {
+        const deps = createDeps();
+        const ctrl = createPreviewController(deps as any);
+        ctrl.initPreviewUi();
+        ctrl.togglePreviewPanel();
+
+        const panel = document.getElementById('preview-panel')!;
+        expect(panel.style.display).toBe('flex');
+
+        document.getElementById('preview-close')!.click();
+        expect(panel.classList.contains('closing')).toBe(true);
+
+        vi.advanceTimersByTime(350);
+
+        expect(panel.style.display).toBe('none');
+        expect(panel.classList.contains('closing')).toBe(false);
+      } finally {
+        process.env.NODE_ENV = previousNodeEnv;
+        vi.useRealTimers();
+      }
     });
 
     it('initializes quicklook UI', () => {
@@ -1180,6 +1207,40 @@ describe('rendererPreviews', () => {
 
       expect(ctrl.isPreviewVisible()).toBe(false);
       expect(panel.style.display).toBe('none');
+
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: previousMatchMedia,
+      });
+    });
+
+    it('restores an open preview panel after resizing back from compact viewport', () => {
+      const previousMatchMedia = window.matchMedia;
+      let isCompact = false;
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: vi.fn(() => ({ matches: isCompact })),
+      });
+
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.initPreviewUi();
+
+      const panel = document.getElementById('preview-panel') as HTMLElement;
+      const toggleBtn = document.getElementById('preview-toggle-btn')!;
+      ctrl.togglePreviewPanel();
+      expect(panel.style.display).toBe('flex');
+      expect(toggleBtn.getAttribute('aria-expanded')).toBe('true');
+
+      isCompact = true;
+      window.dispatchEvent(new Event('resize'));
+      expect(panel.style.display).toBe('none');
+      expect(toggleBtn.getAttribute('aria-expanded')).toBe('false');
+
+      isCompact = false;
+      window.dispatchEvent(new Event('resize'));
+      expect(panel.style.display).toBe('flex');
+      expect(toggleBtn.getAttribute('aria-expanded')).toBe('true');
 
       Object.defineProperty(window, 'matchMedia', {
         configurable: true,

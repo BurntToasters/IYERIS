@@ -15,6 +15,7 @@ type InlineRenameDeps = {
   showConfirm: (message: string, title: string, type: 'warning') => Promise<boolean>;
   isHomeViewPath: (path: string) => boolean;
   announceToScreenReader?: (message: string) => void;
+  setRecentlyRenamedPath?: (path: string | null) => void;
 };
 
 const INVALID_FILENAME_CHARS = /[<>:"|?*]/;
@@ -250,6 +251,16 @@ export function createInlineRenameController(deps: InlineRenameDeps) {
         cleanup();
         nameElement.textContent = newName;
         deps.announceToScreenReader?.(`Renamed to ${newName}`);
+
+        if (deps.setRecentlyRenamedPath) {
+          const lastSlash = itemPath.lastIndexOf('/');
+          const lastBackslash = itemPath.lastIndexOf('\\');
+          const separatorIndex = Math.max(lastSlash, lastBackslash);
+          const parent = itemPath.substring(0, separatorIndex + 1);
+          const newPath = parent + newName;
+          deps.setRecentlyRenamedPath(newPath);
+        }
+
         await deps.navigateTo(deps.getCurrentPath());
       } else {
         renameHandled = true;

@@ -91,7 +91,8 @@ export function createIndexerController(config: IndexerConfig) {
 
     const originalHTML = rebuildBtn.innerHTML;
     rebuildBtn.disabled = true;
-    rebuildBtn.innerHTML = `${twemojiImg(String.fromCodePoint(0x23f3), 'twemoji')} Rebuilding...`;
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+    rebuildBtn.innerHTML = `${twemojiImg('refresh-cw', 'twemoji')} Rebuilding...`;
 
     try {
       const result = await window.tauriAPI.rebuildIndex();

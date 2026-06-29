@@ -1,6 +1,6 @@
 import type { Settings } from './types';
 import { escapeHtml, getErrorMessage } from './shared.js';
-import { twemojiImg } from './rendererUtils.js';
+import { renderIcon } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
 
 type BookmarksDeps = {
@@ -68,10 +68,11 @@ export function createBookmarksController(deps: BookmarksDeps) {
       bookmarkItem.tabIndex = 0;
       bookmarkItem.setAttribute('aria-label', `Open bookmark ${name}`);
 
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       bookmarkItem.innerHTML = `
-      <span class="bookmark-icon">${twemojiImg(String.fromCodePoint(0x2b50), 'twemoji')}</span>
+      <span class="bookmark-icon">${renderIcon('star', 'twemoji')}</span>
       <span class="bookmark-label">${escapeHtml(name)}</span>
-      <button class="bookmark-remove" type="button" title="Remove bookmark" aria-label="Remove bookmark">${twemojiImg(String.fromCodePoint(0x274c), 'twemoji')}</button>
+      <button class="bookmark-remove" type="button" title="Remove bookmark" aria-label="Remove bookmark">${renderIcon('x', 'twemoji')}</button>
     `;
 
       bookmarkItem.addEventListener('click', (e) => {
@@ -151,6 +152,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
           const fromIndex = currentSettings.bookmarks.indexOf(draggedPath);
           const toIndex = currentSettings.bookmarks.indexOf(bookmarkPath);
           if (fromIndex === -1 || toIndex === -1 || fromIndex === toIndex) return;
+          const previousBookmarks = [...currentSettings.bookmarks];
           const updated = [...currentSettings.bookmarks];
           updated.splice(fromIndex, 1);
           updated.splice(toIndex, 0, draggedPath);
@@ -159,6 +161,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
           if (saveResult.success) {
             loadBookmarks();
           } else {
+            currentSettings.bookmarks = previousBookmarks;
             showToast('Failed to reorder bookmarks', 'Bookmarks', 'error');
           }
           hideDropIndicator();
@@ -260,6 +263,8 @@ export function createBookmarksController(deps: BookmarksDeps) {
       loadBookmarks();
       showToast('Bookmark added', 'Bookmarks', 'success');
     } else {
+      // Roll back the in-memory mutation so disk and memory stay in sync.
+      currentSettings.bookmarks = currentSettings.bookmarks.filter((b) => b !== path);
       showToast('Failed to add bookmark', 'Error', 'error');
     }
   }
@@ -268,6 +273,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
     const currentSettings = getCurrentSettings();
     if (!currentSettings.bookmarks) return;
 
+    const previousBookmarks = [...currentSettings.bookmarks];
     currentSettings.bookmarks = currentSettings.bookmarks.filter((b) => b !== path);
     const result = await saveSettingsWithTimestamp(currentSettings);
 
@@ -275,6 +281,7 @@ export function createBookmarksController(deps: BookmarksDeps) {
       loadBookmarks();
       showToast('Bookmark removed', 'Bookmarks', 'success');
     } else {
+      currentSettings.bookmarks = previousBookmarks;
       showToast('Failed to remove bookmark', 'Error', 'error');
     }
   }

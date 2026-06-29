@@ -12,6 +12,7 @@ function makeSettings(overrides: Partial<Settings> = {}): Settings {
 }
 
 function setupTourDOM(): void {
+  // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
   document.body.innerHTML = `
     <div id="tour-prompt-modal" style="display:none"></div>
     <button id="tour-prompt-skip"></button>
@@ -670,7 +671,7 @@ describe('tour.extended', () => {
 
       expect(titleEl.textContent).toBe('Welcome to Home');
 
-      expect(stepCountEl.textContent).toBe('Step 1 of 7');
+      expect(stepCountEl.textContent).toBe('Step 1 of 12');
     });
 
     it('navigates through multiple default steps', () => {

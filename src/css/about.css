@@ -3,10 +3,10 @@
   align-items: center;
   gap: 20px;
   padding: 24px;
-  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.1), transparent);
-  border-radius: 16px;
+  background: var(--surface-1);
+  border-radius: var(--radius-medium);
   margin-bottom: 20px;
-  border: 1px solid rgba(var(--accent-rgb), 0.2);
+  border: 1px solid var(--native-divider);
 }
 
 .about-logo {
@@ -95,7 +95,7 @@
   padding: 12px 16px;
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
   border: 1px solid var(--separator);
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   color: var(--text-primary);
   font-size: 13px;
   font-weight: 500;
@@ -110,9 +110,8 @@
 }
 
 .about-link-btn:hover {
-  background: var(--active-color);
-  border-color: var(--accent-color);
-  transform: translateY(-1px);
+  background: var(--interactive-hover);
+  border-color: var(--panel-border);
 }
 
 .about-link-btn svg {
@@ -129,7 +128,7 @@
   margin-bottom: 24px;
   padding: 16px;
   background: color-mix(in srgb, var(--accent-color) 10%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   border-left: 3px solid var(--accent-color);
 }
 
@@ -152,7 +151,7 @@
   margin-bottom: 32px;
   padding: 16px;
   background: color-mix(in srgb, var(--text-primary) 2%, transparent);
-  border-radius: 8px;
+  border-radius: var(--radius-small);
   border: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
 }
 
@@ -184,16 +183,16 @@
 .license-package-license {
   display: inline-block;
   padding: 2px 8px;
-  background: rgba(123, 97, 255, 0.2);
-  border-radius: 4px;
+  background: rgba(var(--accent-rgb), 0.2);
+  border-radius: var(--radius-small);
   font-weight: 500;
 }
 
 .license-package-text {
   margin-top: 12px;
   padding: 12px;
-  background: rgba(0, 0, 0, 0.2);
-  border-radius: 4px;
+  background: var(--surface-1);
+  border-radius: var(--radius-small);
   font-size: 11px;
   max-height: 200px;
   overflow-y: auto;

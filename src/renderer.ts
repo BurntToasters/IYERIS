@@ -1,6 +1,5 @@
 import type { Settings, FileItem, DriveInfo } from './types';
-import { assignKey, escapeHtml, getErrorMessage, ignoreError, devLog } from './shared.js';
-import { clearHtml } from './rendererDom.js';
+import { assignKey, getErrorMessage, ignoreError, devLog } from './shared.js';
 import type { TabData } from './rendererTabs.js';
 import { showConfirm } from './rendererModals.js';
 import { isPermissionDeniedError } from './rendererClipboard.js';
@@ -12,29 +11,24 @@ import {
   twemojiImg,
 } from './rendererUtils.js';
 import { createDefaultSettings, sanitizeSettings } from './settings.js';
+import { setLocale, detectLocale } from './i18n.js';
 
-import {
-  HOME_VIEW_LABEL,
-  HOME_VIEW_PATH,
-  HOME_QUICK_ACCESS_ITEMS,
-  isHomeViewPath,
-} from './home.js';
+import { HOME_VIEW_LABEL, HOME_VIEW_PATH, isHomeViewPath } from './home.js';
 
-import { formatFileSize, getFileIcon } from './rendererFileIcons.js';
 import { createFileRenderController } from './rendererFileRender.js';
 import { createFileGridEventsController } from './rendererFileGridEvents.js';
 import { createEventListenersController } from './rendererEventListeners.js';
 import { createBootstrapController } from './rendererBootstrap.js';
+import { createUtilityDrawerController } from './rendererUtilityDrawer.js';
+import { moveGridFocusWithinScope } from './rendererSelection.js';
 import { applyAppearance } from './rendererAppearance.js';
 import {
   SETTINGS_SAVE_DEBOUNCE_MS,
   SEARCH_HISTORY_MAX,
   DIRECTORY_HISTORY_MAX,
   SUPPORT_POPUP_DELAY_MS,
-  MAX_RECENT_FILES,
   NAME_COLLATOR,
   DATE_FORMATTER,
-  SPECIAL_DIRECTORY_ACTIONS,
   consumeEvent,
   type ViewMode,
 } from './rendererLocalConstants.js';
@@ -44,9 +38,15 @@ import {
   INT_RANGE_MAPPINGS,
 } from './rendererSettingsMappings.js';
 import { wireControllers, type LateBound } from './rendererControllerWiring.js';
+import { createDualPaneController } from './rendererDualPane.js';
+import { createStatusBarController } from './rendererStatusBar.js';
+import { createRecentFilesController } from './rendererRecentFiles.js';
+import { createSidebarController } from './rendererSidebar.js';
 import { isOneOf } from './constants.js';
+import { renderSkeleton, clearSkeleton } from './rendererSkeleton.js';
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
+let utilityDrawerController: ReturnType<typeof createUtilityDrawerController> | null = null;
 const driveLabelByPath = new Map<string, string>();
 let cachedDriveInfo: DriveInfo[] = [];
 
@@ -120,6 +120,10 @@ let currentPath: string = '';
 let history: string[] = [];
 let historyIndex: number = -1;
 let selectedItems: Set<string> = new Set();
+let primaryPaneSelectedItems: Set<string> = new Set();
+let secondaryPaneSelectedItems: Set<string> = new Set();
+let recentlyPastedPaths: Set<string> = new Set();
+let recentlyRenamedPath: string | null = null;
 let selectedItemsSizeBytes = 0;
 let selectedItemsSizeDirty = true;
 let viewMode: ViewMode = 'grid';
@@ -139,6 +143,11 @@ function markSelectionDirty(): void {
 
 function setSelectedItemsState(value: Set<string>): void {
   selectedItems = value;
+  if (currentSettings.dualPaneEnabled && currentSettings.activePane === 'right') {
+    secondaryPaneSelectedItems = new Set(value);
+  } else {
+    primaryPaneSelectedItems = new Set(value);
+  }
   markSelectionDirty();
 }
 
@@ -187,7 +196,6 @@ import {
   viewOptions,
   listHeader,
   folderTree,
-  drivesList,
   sortBtn,
   bookmarkAddBtn,
   selectionCopyBtn,
@@ -195,13 +203,6 @@ import {
   selectionMoveBtn,
   selectionRenameBtn,
   selectionDeleteBtn,
-  statusItems,
-  statusSelected,
-  statusSearch,
-  statusSearchText,
-  selectionIndicator,
-  selectionCount,
-  statusHidden,
   announceToScreenReader,
 } from './rendererElements.js';
 
@@ -213,6 +214,18 @@ const isMainWindow = window.tauriAPI.getWindowLabel() === 'main';
 
 const wired = wireControllers({
   getCurrentPath: () => currentPath,
+  getSearchScopePath: () => {
+    if (currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right') {
+      return dualPane.getSecondaryPanePath() || currentPath;
+    }
+    return currentPath;
+  },
+  getSearchScopeLabel: () => {
+    if (currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right') {
+      return 'right pane';
+    }
+    return 'files';
+  },
   setCurrentPath: (v) => {
     currentPath = v;
   },
@@ -280,7 +293,12 @@ const wired = wireControllers({
 });
 
 const {
-  cleanupArchiveOperations,
+  generateOperationId,
+  addOperation,
+  updateOperation,
+  completeOperation,
+  isOperationCancelling,
+  cleanupOperationQueue,
   showSortMenu,
   hideSortMenu,
   updateSortIndicators,
@@ -358,6 +376,8 @@ const {
   getSearchInputElement,
   setSearchQuery,
   focusSearchInput,
+  updateContentSearchToggle,
+  updateSearchPlaceholder,
   previewController,
   initPreviewUi,
   showQuickLook,
@@ -441,6 +461,76 @@ const {
   handleUpdateDownloaded,
 } = wired;
 const showToast = toastManager.showToast;
+
+const dualPane = createDualPaneController({
+  getCurrentSettings: () => currentSettings,
+  getCurrentPath: () => currentPath,
+  getSelectedItems: () => selectedItems,
+  setSelectedItems: (v) => setSelectedItemsState(v),
+  getPrimaryPaneSelected: () => primaryPaneSelectedItems,
+  setPrimaryPaneSelected: (v) => {
+    primaryPaneSelectedItems = v;
+  },
+  getSecondaryPaneSelected: () => secondaryPaneSelectedItems,
+  setSecondaryPaneSelected: (v) => {
+    secondaryPaneSelectedItems = v;
+  },
+  getFileElementMap: () => fileElementMap,
+  updateStatusBar: () => updateStatusBar(),
+  debouncedSaveSettings: (delay) => debouncedSaveSettings(delay),
+  showToast,
+  refresh: (reason) => refresh(reason),
+  navigateTo: (p) => {
+    void navigateTo(p);
+  },
+  observeThumbnailItem: (row, scope) => thumbnails.observeThumbnailItem(row, scope),
+  showContextMenu: (x, y, item) => showContextMenu(x, y, item),
+  getDragOperation: (e) => getDragOperation(e),
+  getDraggedPaths: (e) => getDraggedPaths(e),
+  showDropIndicator: (op, p, x, y) => showDropIndicator(op, p, x, y),
+  hideDropIndicator: () => hideDropIndicator(),
+  scheduleSpringLoad: (row, action) => scheduleSpringLoad(row, action),
+  clearSpringLoad: () => clearSpringLoad(),
+  handleDrop: (paths, dest, op) => handleDrop(paths, dest, op),
+  copySelectedToDestination: (dest) => clipboardController.copySelectedToDestination(dest),
+  moveSelectedToDestination: (dest) => clipboardController.moveSelectedToDestination(dest),
+});
+const { getActiveFileGridScope, syncDualPaneControls, setActivePane, loadSecondaryPane } = dualPane;
+
+const statusBarController = createStatusBarController({
+  getCurrentSettings: () => currentSettings,
+  getSelectedItems: () => selectedItems,
+  getAllFiles: () => allFiles,
+  getSecondaryPaneItems: () => dualPane.getSecondaryPaneItems(),
+  getSelectedItemsSizeBytes: () => getSelectedItemsSizeBytes(),
+  getHiddenFilesCount: () => hiddenFilesCount,
+  getCurrentPath: () => currentPath,
+  getViewMode: () => viewMode,
+  getSearchStatusText: () => getSearchStatusText(),
+  syncDualPaneControls: () => syncDualPaneControls(),
+  updateUtilitySelection: (p) => utilityDrawerController?.updateSelection(p),
+  saveSettings: () => debouncedSaveSettings(),
+  updateGitBranch: (p) => updateGitBranch(p),
+  updateClipboardIndicator: () => clipboardController.updateClipboardIndicator(),
+});
+const { update: updateStatusBar } = statusBarController;
+
+const { loadRecentFiles, addToRecentFiles } = createRecentFilesController({
+  getCurrentSettings: () => currentSettings,
+  debouncedSaveSettings: () => debouncedSaveSettings(),
+  openPath: (filePath, name, isDirectory) => openPathWithArchivePrompt(filePath, name, isDirectory),
+  renderHomeRecents: () => homeController.renderHomeRecents(),
+});
+
+const { renderSidebarQuickAccess, handleQuickAction, loadDrives } = createSidebarController({
+  getCurrentSettings: () => currentSettings,
+  navigateTo: (p) => navigateTo(p),
+  showToast,
+  getVisibleSidebarQuickAccessItems: () => homeController.getVisibleSidebarQuickAccessItems(),
+  renderHomeDrives: (drives) => homeController.renderHomeDrives(drives),
+  cacheDriveInfo: (drives) => cacheDriveInfo(drives),
+  renderFolderTree: (drivePaths) => folderTreeManager.render(drivePaths),
+});
 
 function syncOsAccessibilityPreferences(settings: Settings): void {
   const isFirstLaunch = (settings.launchCount || 0) === 0;
@@ -530,6 +620,9 @@ async function applySystemFontSize(): Promise<void> {
 
 function applySettings(settings: Settings) {
   devLog('Settings', 'applySettings', { viewMode: settings.viewMode, theme: settings.theme });
+  setLocale(
+    detectLocale(settings.language && settings.language !== 'auto' ? settings.language : undefined)
+  );
   applyAppearance(settings, {
     applyCustomThemeColors,
     clearCustomThemeColors,
@@ -579,8 +672,25 @@ function applySettings(settings: Settings) {
 
   loadBookmarks();
   loadRecentFiles();
+  document.body.classList.toggle('dual-pane-enabled', settings.dualPaneEnabled === true);
+  setActivePane(settings.activePane === 'right' ? 'right' : 'left', false);
+  if (
+    settings.dualPaneEnabled &&
+    !dualPane.getSecondaryPanePath() &&
+    currentPath &&
+    !isHomeViewPath(currentPath)
+  ) {
+    void loadSecondaryPane(currentPath);
+  } else if (!settings.dualPaneEnabled) {
+    dualPane.clearSecondaryPane();
+    setActivePane('left', false);
+  }
+  syncDualPaneControls();
 
   window.tauriAPI.setUpdateChannel(settings.updateChannel || 'auto');
+
+  updateContentSearchToggle();
+  updateSearchPlaceholder();
 
   warnIfMultipleScalingActive(settings);
 }
@@ -741,63 +851,6 @@ async function resetSettings() {
   }
 }
 
-function renderSidebarQuickAccess() {
-  const grid = document.getElementById('sidebar-quick-access-grid');
-  if (!grid) return;
-
-  grid.replaceChildren();
-
-  const homeDiv = document.createElement('div');
-  homeDiv.className = 'nav-item quick-action';
-  homeDiv.dataset.action = 'home';
-  homeDiv.setAttribute('role', 'button');
-  homeDiv.tabIndex = 0;
-  homeDiv.setAttribute('aria-label', 'Navigate to Home');
-  homeDiv.innerHTML = `
-    <span class="nav-icon" aria-hidden="true">${twemojiImg(String.fromCodePoint(0x1f3e0), 'twemoji')}</span>
-    <span class="nav-label">Home</span>
-  `;
-  homeDiv.addEventListener('click', () => handleQuickAction('home'));
-  homeDiv.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      handleQuickAction('home');
-    }
-  });
-  grid.appendChild(homeDiv);
-
-  const visibleItems = homeController.getVisibleSidebarQuickAccessItems();
-  const itemsByAction = new Map(HOME_QUICK_ACCESS_ITEMS.map((item) => [item.action, item]));
-
-  visibleItems.forEach((item) => {
-    const itemData = itemsByAction.get(item.action);
-    if (!itemData) return;
-
-    const div = document.createElement('div');
-    div.className = 'nav-item quick-action';
-    div.dataset.action = item.action;
-    div.setAttribute('role', 'button');
-    div.tabIndex = 0;
-    div.setAttribute('aria-label', `Navigate to ${item.label}`);
-
-    const icon = twemojiImg(String.fromCodePoint(item.icon), 'twemoji');
-    div.innerHTML = `
-      <span class="nav-icon" aria-hidden="true">${icon}</span>
-      <span class="nav-label">${escapeHtml(item.label)}</span>
-    `;
-
-    div.addEventListener('click', () => handleQuickAction(item.action));
-    div.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        handleQuickAction(item.action);
-      }
-    });
-
-    grid.appendChild(div);
-  });
-}
-
 function setHomeViewActive(active: boolean): void {
   if (!homeView) return;
   homeView.style.display = active ? 'flex' : 'none';
@@ -848,174 +901,7 @@ function setHomeViewActive(active: boolean): void {
       .querySelectorAll('button')
       .forEach((button) => ((button as HTMLButtonElement).disabled = disableFileActions));
   }
-}
-
-async function handleQuickAction(action?: string | null): Promise<void> {
-  if (!action) return;
-
-  try {
-    if (action === 'home') {
-      navigateTo(HOME_VIEW_PATH);
-      return;
-    }
-
-    if (action === 'userhome') {
-      const homePath = await window.tauriAPI.getHomeDirectory();
-      if (homePath) {
-        navigateTo(homePath);
-      } else {
-        showToast('Failed to open Home Folder', 'Quick Access', 'error');
-      }
-      return;
-    }
-
-    const specialAction = SPECIAL_DIRECTORY_ACTIONS[action];
-    if (specialAction) {
-      const result = await window.tauriAPI.getSpecialDirectory(specialAction.key);
-      if (!result.success) {
-        showToast(
-          result.error || `Failed to open ${specialAction.label} folder`,
-          'Quick Access',
-          'error'
-        );
-        return;
-      }
-      navigateTo(result.path);
-      return;
-    }
-
-    if (action === 'browse') {
-      const result = await window.tauriAPI.selectFolder();
-      if (result.success) {
-        navigateTo(result.path);
-      }
-      return;
-    }
-
-    if (action === 'trash') {
-      const result = await window.tauriAPI.openTrash();
-      if (!result.success) {
-        showToast(result.error || 'Failed to open trash folder', 'Error', 'error');
-        return;
-      }
-      showToast('Opening system trash folder', 'Info', 'info');
-    }
-  } catch (error) {
-    showToast(getErrorMessage(error), 'Quick Access', 'error');
-  }
-}
-
-function loadRecentFiles() {
-  const recentList = document.getElementById('recent-list');
-  const recentSection = document.getElementById('recent-section');
-  if (!recentList || !recentSection) return;
-
-  recentList.replaceChildren();
-
-  if (currentSettings.showRecentFiles === false) {
-    recentSection.style.display = 'none';
-    return;
-  }
-
-  if (!currentSettings.recentFiles || currentSettings.recentFiles.length === 0) {
-    recentSection.style.display = 'block';
-    recentList.innerHTML = '<div class="sidebar-empty">No recent files yet</div>';
-    return;
-  }
-
-  recentSection.style.display = 'block';
-
-  currentSettings.recentFiles.forEach((filePath) => {
-    const recentItem = document.createElement('div');
-    recentItem.className = 'nav-item recent-item';
-    const pathParts = filePath.split(/[/\\]/);
-    const name = pathParts[pathParts.length - 1] || filePath;
-    const icon = getFileIcon(name);
-
-    recentItem.innerHTML = `
-      <span class="nav-icon">${icon}</span>
-      <span class="nav-label" title="${escapeHtml(filePath)}">${escapeHtml(name)}</span>
-    `;
-
-    recentItem.addEventListener('click', () => {
-      void openPathWithArchivePrompt(filePath, name, false);
-    });
-
-    recentList.appendChild(recentItem);
-  });
-}
-
-async function addToRecentFiles(filePath: string) {
-  if (!filePath || filePath.startsWith('http://') || filePath.startsWith('https://')) return;
-
-  if (!currentSettings.recentFiles) {
-    currentSettings.recentFiles = [];
-  }
-
-  currentSettings.recentFiles = currentSettings.recentFiles.filter((f) => f !== filePath);
-  currentSettings.recentFiles.unshift(filePath);
-  currentSettings.recentFiles = currentSettings.recentFiles.slice(0, MAX_RECENT_FILES);
-
-  debouncedSaveSettings();
-  loadRecentFiles();
-  homeController.renderHomeRecents();
-}
-
-function updateStatusBar() {
-  if (statusItems) {
-    statusItems.textContent = `${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`;
-  }
-
-  if (statusSelected) {
-    if (selectedItems.size > 0) {
-      const totalSize = getSelectedItemsSizeBytes();
-      const sizeStr = formatFileSize(totalSize);
-      statusSelected.textContent = `${selectedItems.size} selected (${sizeStr})`;
-      statusSelected.style.display = 'inline';
-    } else {
-      statusSelected.style.display = 'none';
-    }
-  }
-
-  if (selectionIndicator && selectionCount) {
-    if (selectedItems.size > 0) {
-      selectionCount.textContent = String(selectedItems.size);
-      selectionIndicator.style.display = 'inline-flex';
-    } else {
-      selectionIndicator.style.display = 'none';
-    }
-  }
-
-  if (statusHidden) {
-    if (!currentSettings.showHiddenFiles) {
-      const hiddenCount = hiddenFilesCount;
-      if (hiddenCount > 0) {
-        statusHidden.textContent = `(+${hiddenCount} hidden)`;
-        statusHidden.style.display = 'inline';
-        statusHidden.title = 'Click to show hidden files';
-      } else {
-        statusHidden.style.display = 'none';
-      }
-    } else {
-      statusHidden.style.display = 'none';
-    }
-  }
-
-  if (statusSearch && statusSearchText) {
-    const searchStatus = getSearchStatusText();
-    if (searchStatus.active) {
-      statusSearchText.textContent = searchStatus.text;
-      statusSearch.style.display = 'inline-flex';
-      announceToScreenReader(
-        `Search results: ${allFiles.length} item${allFiles.length !== 1 ? 's' : ''} found`
-      );
-    } else {
-      statusSearch.style.display = 'none';
-      const folderName = currentPath ? currentPath.split(/[\\/]/).pop() || currentPath : '';
-      const prefix = folderName ? `${folderName}: ` : '';
-      announceToScreenReader(`${prefix}${allFiles.length} item${allFiles.length !== 1 ? 's' : ''}`);
-    }
-  }
+  updateSortIndicators();
 }
 
 const bootstrapController = createBootstrapController({
@@ -1052,7 +938,9 @@ const bootstrapController = createBootstrapController({
   setCurrentSettings: (s) => {
     currentSettings = s;
   },
-  saveSettings: () => saveSettings(),
+  saveSettings: () => {
+    void saveSettingsWithTimestamp(currentSettings);
+  },
   setPlatformOS: (os) => {
     platformOS = os;
   },
@@ -1072,39 +960,6 @@ const {
   setFolderTreeVisibility,
   setFolderTreeSpacingMode,
 } = bootstrapController;
-
-async function loadDrives() {
-  if (!drivesList) return;
-  try {
-    const drives = await window.tauriAPI.getDriveInfo();
-    cacheDriveInfo(drives);
-    clearHtml(drivesList);
-
-    drives.forEach((drive) => {
-      const driveLabel = drive.label || drive.path;
-      const driveItem = document.createElement('div');
-      driveItem.className = 'nav-item';
-      driveItem.title = drive.path;
-      driveItem.innerHTML = `
-      <span class="nav-icon">${twemojiImg(String.fromCodePoint(0x1f4be), 'twemoji')}</span>
-      <span class="nav-label">${escapeHtml(driveLabel)}</span>
-    `;
-      driveItem.addEventListener('click', () => navigateTo(drive.path));
-      drivesList.appendChild(driveItem);
-    });
-
-    const drivePaths = drives.map((drive) => drive.path);
-    void homeController.renderHomeDrives(drives);
-
-    if (currentSettings.showFolderTree !== false) {
-      folderTreeManager.render(drivePaths);
-    } else if (folderTree) {
-      clearHtml(folderTree);
-    }
-  } catch (error) {
-    devLog('Drives', 'Failed to load drives', error);
-  }
-}
 
 const eventListenersController = createEventListenersController({
   getCurrentSettings: () => currentSettings,
@@ -1146,7 +1001,9 @@ const eventListenersController = createEventListenersController({
   deleteSelected: (permanent) => deleteSelected(permanent),
   performUndo,
   performRedo,
-  saveSettings: () => saveSettings(),
+  saveSettings: () => {
+    void saveSettingsWithTimestamp(currentSettings);
+  },
   openSelectedItem,
   selectFirstItem,
   selectLastItem,
@@ -1210,6 +1067,7 @@ const eventListenersController = createEventListenersController({
   moveSelectedToFolder: () => clipboardController.moveSelectedToFolder(),
   clipboardOnClipboardChanged: (c) => clipboardController.setClipboard(c),
   clipboardUpdateCutVisuals: () => clipboardController.updateCutVisuals(),
+  clipboardUpdateIndicator: () => clipboardController.updateClipboardIndicator(),
   zoomIn,
   zoomOut,
   zoomReset,
@@ -1217,7 +1075,7 @@ const eventListenersController = createEventListenersController({
     currentSettings.showHiddenFiles = !currentSettings.showHiddenFiles;
     const toggle = document.getElementById('show-hidden-files-toggle') as HTMLInputElement | null;
     if (toggle) toggle.checked = currentSettings.showHiddenFiles;
-    saveSettings();
+    void saveSettingsWithTimestamp(currentSettings);
     refresh('toggle-hidden-files');
   },
   showPropertiesForSelected: () => {
@@ -1240,7 +1098,7 @@ const eventListenersController = createEventListenersController({
     const selectedPaths = Array.from(selectedItems);
     if (selectedPaths.length === 0) return;
     const firstPath = selectedPaths[0]!;
-    const item = allFiles.find((f) => f.path === firstPath);
+    const item = filePathMap.get(firstPath) ?? dualPane.getSecondaryFilePathMap().get(firstPath);
     if (!item) return;
     const el = document.querySelector<HTMLElement>(
       `.file-item[data-path="${CSS.escape(firstPath)}"]`
@@ -1252,61 +1110,29 @@ const eventListenersController = createEventListenersController({
   },
   focusFileGrid: () => {
     ensureActiveItem();
-    const fileGrid = document.getElementById('file-grid');
-    const activeItem = fileGrid?.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+    const scope = getActiveFileGridScope();
+    const activeItem = scope?.querySelector<HTMLElement>('.file-item[tabindex="0"]');
     if (activeItem) {
       activeItem.focus();
     } else {
-      fileGrid?.focus();
+      scope?.focus();
     }
   },
   ensureActiveItem: () => ensureActiveItem(),
   toggleSelectionAtCursor: () => {
-    const fileGrid = document.getElementById('file-grid');
-    if (!fileGrid) return;
-    const activeItem = fileGrid.querySelector<HTMLElement>('.file-item[tabindex="0"]');
+    const isSecondary =
+      currentSettings.dualPaneEnabled === true && currentSettings.activePane === 'right';
+    const scope = document.getElementById(isSecondary ? 'dual-pane-secondary-list' : 'file-grid');
+    if (!scope) return;
+    const activeItem = scope.querySelector<HTMLElement>('.file-item[tabindex="0"]');
     if (activeItem) {
       toggleSelection(activeItem);
     }
   },
   navigateFileGridFocusOnly: (key: string) => {
-    const fileGrid = document.getElementById('file-grid');
-    if (!fileGrid) return;
-    const items = Array.from(fileGrid.querySelectorAll<HTMLElement>('.file-item'));
-    if (items.length === 0) return;
-
-    const active = fileGrid.querySelector<HTMLElement>('.file-item[tabindex="0"]');
-    let currentIndex = active ? items.indexOf(active) : 0;
-    if (currentIndex === -1) currentIndex = 0;
-
-    const gridStyle = window.getComputedStyle(fileGrid);
-    const columns =
-      viewMode === 'list'
-        ? 1
-        : gridStyle.getPropertyValue('grid-template-columns').split(' ').length || 1;
-
-    let newIndex = currentIndex;
-    switch (key) {
-      case 'ArrowUp':
-        newIndex = Math.max(0, currentIndex - columns);
-        break;
-      case 'ArrowDown':
-        newIndex = Math.min(items.length - 1, currentIndex + columns);
-        break;
-      case 'ArrowLeft':
-        newIndex = Math.max(0, currentIndex - 1);
-        break;
-      case 'ArrowRight':
-        newIndex = Math.min(items.length - 1, currentIndex + 1);
-        break;
-    }
-
-    if (newIndex !== currentIndex) {
-      if (active) active.tabIndex = -1;
-      items[newIndex]!.tabIndex = 0;
-      items[newIndex]!.focus({ preventScroll: true });
-      items[newIndex]!.scrollIntoView({ block: 'nearest' });
-    }
+    const scope = getActiveFileGridScope();
+    if (!scope) return;
+    moveGridFocusWithinScope(scope, key, viewMode);
   },
   initSettingsTabs,
   initSettingsUi,
@@ -1328,6 +1154,68 @@ const eventListenersController = createEventListenersController({
 });
 const { setupEventListeners } = eventListenersController;
 
+function hideFileViewError(): void {
+  const el = document.getElementById('fileview-error');
+  if (el) el.style.display = 'none';
+}
+
+let fileViewErrorWired = false;
+function showFileViewError(message: string): void {
+  if (!fileViewErrorWired) {
+    fileViewErrorWired = true;
+    document.getElementById('fileview-error-retry')?.addEventListener('click', () => {
+      hideFileViewError();
+      void navigateTo(currentPath, true);
+    });
+    document.getElementById('fileview-error-terminal')?.addEventListener('click', () => {
+      if (currentPath) window.tauriAPI.openTerminal(currentPath).catch(ignoreError);
+    });
+    document.getElementById('fileview-error-fda')?.addEventListener('click', () => {
+      window.tauriAPI.requestFullDiskAccess().catch(ignoreError);
+    });
+  }
+  hideLoading();
+  if (emptyState) emptyState.style.display = 'none';
+  if (listHeader) listHeader.style.display = 'none';
+  if (fileGrid) fileGrid.replaceChildren();
+  const msgEl = document.getElementById('fileview-error-message');
+  if (msgEl) msgEl.textContent = message || 'This folder could not be opened.';
+  const fdaBtn = document.getElementById('fileview-error-fda');
+  if (fdaBtn) {
+    fdaBtn.style.display =
+      platformOS === 'darwin' && isPermissionDeniedError(message) ? 'inline-flex' : 'none';
+  }
+  const el = document.getElementById('fileview-error');
+  if (el) el.style.display = 'flex';
+}
+
+function detectNavigationDirection(oldPath: string, newPath: string, trigger: string): boolean {
+  if (trigger === 'back') return false;
+  if (trigger === 'forward') return true;
+  if (trigger === 'up') return false;
+
+  if (isHomeViewPath(newPath)) return false;
+  if (isHomeViewPath(oldPath)) return true;
+
+  const cleanOld = oldPath.replace(/\\/g, '/').replace(/\/$/, '');
+  const cleanNew = newPath.replace(/\\/g, '/').replace(/\/$/, '');
+
+  if (cleanNew.startsWith(cleanOld + '/')) {
+    return true;
+  }
+  if (cleanOld.startsWith(cleanNew + '/')) {
+    return false;
+  }
+
+  const oldSegments = cleanOld.split('/').filter(Boolean);
+  const newSegments = cleanNew.split('/').filter(Boolean);
+  if (newSegments.length !== oldSegments.length) {
+    return newSegments.length > oldSegments.length;
+  }
+
+  return true;
+}
+
 async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'direct') {
   if (!path) {
     devLog('Navigate', 'Ignored empty navigation request', { trigger });
@@ -1348,38 +1236,48 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
   }
 
   if (isHomeViewPath(path)) {
-    resetTypeahead();
+    try {
+      resetTypeahead();
 
-    if (isSearchModeActive()) {
-      closeSearch({ restoreCurrentPath: false });
+      if (isSearchModeActive()) {
+        closeSearch({ restoreCurrentPath: false });
+      }
+
+      thumbnails.disconnectThumbnailObserver();
+      thumbnails.clearPendingThumbnailLoads();
+
+      hideLoading();
+
+      const isForward = detectNavigationDirection(currentPath, path, trigger);
+      currentPath = HOME_VIEW_PATH;
+      updateCurrentTabPath(path);
+      if (addressInput) addressInput.value = HOME_VIEW_LABEL;
+      updateBreadcrumb(path);
+
+      if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
+        history = history.slice(0, historyIndex + 1);
+        history.push(path);
+        historyIndex = history.length - 1;
+      }
+
+      updateNavigationButtons();
+      setHomeViewActive(true);
+
+      if (homeView && trigger !== 'tab') {
+        homeView.classList.remove('nav-forward', 'nav-back');
+        void homeView.offsetWidth; // Force reflow
+        homeView.classList.add(isForward ? 'nav-forward' : 'nav-back');
+      }
+      announceToScreenReader('Home view');
+      devLog('Navigate', `[${navigationId}] completed`, {
+        source: 'home',
+        path: HOME_VIEW_PATH,
+        trigger,
+        durationMs: Date.now() - navigationStartAt,
+      });
+    } finally {
+      isNavigating = false;
     }
-
-    thumbnails.disconnectThumbnailObserver();
-    thumbnails.clearPendingThumbnailLoads();
-
-    hideLoading();
-
-    currentPath = HOME_VIEW_PATH;
-    updateCurrentTabPath(path);
-    if (addressInput) addressInput.value = HOME_VIEW_LABEL;
-    updateBreadcrumb(path);
-
-    if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
-      history = history.slice(0, historyIndex + 1);
-      history.push(path);
-      historyIndex = history.length - 1;
-    }
-
-    updateNavigationButtons();
-    setHomeViewActive(true);
-    announceToScreenReader('Home view');
-    isNavigating = false;
-    devLog('Navigate', `[${navigationId}] completed`, {
-      source: 'home',
-      path: HOME_VIEW_PATH,
-      trigger,
-      durationMs: Date.now() - navigationStartAt,
-    });
     return;
   }
 
@@ -1397,7 +1295,14 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     thumbnails.clearPendingThumbnailLoads();
 
     showLoading('Loading folder...');
-    if (fileGrid) fileGrid.replaceChildren();
+    hideFileViewError();
+    if (fileGrid) {
+      if (viewMode === 'grid' || viewMode === 'list') {
+        renderSkeleton(fileGrid, viewMode);
+      } else {
+        fileGrid.replaceChildren();
+      }
+    }
     const request = startDirectoryRequest(path);
     requestId = request.requestId;
     devLog('Navigate', `[${navigationId}] directory request`, {
@@ -1428,10 +1333,11 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
         error: result.error || 'Unknown error',
       });
       devLog('Navigate', 'Error loading directory', result.error);
-      showToast(result.error || 'Unknown error', 'Error Loading Directory', 'error');
+      showFileViewError(result.error || 'This folder could not be opened.');
       return;
     }
 
+    const isForward = detectNavigationDirection(currentPath, path, trigger);
     currentPath = path;
     updateCurrentTabPath(path);
     if (addressInput) addressInput.value = path;
@@ -1442,6 +1348,9 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       ignoreError(error);
     }
     addToDirectoryHistory(path);
+    if (currentSettings.dualPaneEnabled === true && !dualPane.getSecondaryPanePath()) {
+      void loadSecondaryPane(path);
+    }
 
     if (!skipHistoryUpdate && (historyIndex === -1 || history[historyIndex] !== path)) {
       history = history.slice(0, historyIndex + 1);
@@ -1456,6 +1365,39 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
     } else {
       renderFiles(result.contents || []);
       invalidateFileItemsCache();
+    }
+
+    if (fileView && trigger !== 'tab') {
+      fileView.classList.remove('nav-forward', 'nav-back');
+      void fileView.offsetWidth; // Force reflow
+      fileView.classList.add(isForward ? 'nav-forward' : 'nav-back');
+    }
+
+    // Trigger paste-in and rename-flash micro-animations
+    if (recentlyPastedPaths.size > 0) {
+      recentlyPastedPaths.forEach((p) => {
+        const itemEl = document.querySelector<HTMLElement>(`[data-path="${CSS.escape(p)}"]`);
+        if (itemEl) {
+          itemEl.classList.add('animate-paste-in');
+          setTimeout(() => {
+            itemEl.classList.remove('animate-paste-in');
+          }, 400);
+        }
+      });
+      recentlyPastedPaths.clear();
+    }
+
+    if (recentlyRenamedPath) {
+      const itemEl = document.querySelector<HTMLElement>(
+        `[data-path="${CSS.escape(recentlyRenamedPath)}"]`
+      );
+      if (itemEl) {
+        itemEl.classList.add('animate-rename-flash');
+        setTimeout(() => {
+          itemEl.classList.remove('animate-rename-flash');
+        }, 600);
+      }
+      recentlyRenamedPath = null;
     }
     devLog('Navigate', `[${navigationId}] render complete`, {
       path,
@@ -1492,11 +1434,12 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       durationMs: Date.now() - navigationStartAt,
     });
     devLog('Navigate', 'Error navigating', error);
-    showToast(getErrorMessage(error), 'Error Loading Directory', 'error');
+    showFileViewError(getErrorMessage(error));
   } finally {
     const isCurrentRequest = directoryLoader.isCurrentRequest(requestId);
     finishDirectoryRequest(requestId);
     if (isCurrentRequest) {
+      if (fileGrid) clearSkeleton(fileGrid);
       hideLoading();
       isNavigating = false;
       devLog('Navigate', `[${navigationId}] finalized`, {
@@ -1517,6 +1460,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
 const fileRenderController = createFileRenderController({
   getFileGrid: () => fileGrid,
   getEmptyState: () => emptyState,
+  isSelected: (p) => selectedItems.has(p),
   getCurrentSettings: () => currentSettings,
   getFileElementMap: () => fileElementMap,
   showToast: (m, t, ty) => showToast(m, t, ty),
@@ -1546,6 +1490,13 @@ const fileRenderController = createFileRenderController({
 const { renderFiles, resetVirtualizedRender } = fileRenderController;
 const filePathMap = fileRenderController.getFilePathMap();
 const getFileItemData = fileRenderController.getFileItemData;
+utilityDrawerController = createUtilityDrawerController({
+  getCurrentSettings: () => currentSettings,
+  saveSettingsWithTimestamp: (settings) => saveSettingsWithTimestamp(settings),
+  showToast: (m, t, ty) => showToast(m, t, ty as 'success' | 'error' | 'info' | 'warning'),
+  getCurrentPath: () => currentPath,
+  navigateTo: (p) => navigateTo(p),
+});
 
 const fileGridEventsController = createFileGridEventsController({
   getFileGrid: () => fileGrid,
@@ -1574,9 +1525,10 @@ const { setupFileGridEventDelegation } = fileGridEventsController;
 async function renameSelected() {
   if (selectedItems.size !== 1) return;
   const itemPath = Array.from(selectedItems)[0]!;
-  const fileItem = fileElementMap.get(itemPath);
+  const fileItem =
+    fileElementMap.get(itemPath) ?? dualPane.getSecondaryFileElementMap().get(itemPath);
   if (fileItem) {
-    const item = filePathMap.get(itemPath);
+    const item = filePathMap.get(itemPath) ?? dualPane.getSecondaryFilePathMap().get(itemPath);
     if (item) {
       inlineRenameController.startInlineRename(fileItem, item.name, item.path);
     }
@@ -1590,7 +1542,7 @@ async function deleteSelected(permanent = false) {
 
   if (permanent) {
     const confirmed = await showConfirm(
-      `${twemojiImg(String.fromCodePoint(0x26a0), 'twemoji')} PERMANENTLY delete ${count} item${plural}? This CANNOT be undone!`,
+      `${twemojiImg('alert-triangle', 'twemoji')} PERMANENTLY delete ${count} item${plural}? This CANNOT be undone!`,
       'Permanent Delete',
       'error'
     );
@@ -1606,27 +1558,44 @@ async function deleteSelected(permanent = false) {
   }
 
   const itemsSnapshot = Array.from(selectedItems);
+
+  const operationId = generateOperationId();
+  addOperation(operationId, 'delete', `${count} item${plural}${permanent ? ' permanently' : ''}`, {
+    cancellable: true,
+    total: itemsSnapshot.length,
+    retry: () => void deleteSelected(permanent),
+  });
   const DELETE_BATCH_SIZE = 20;
   const allResults: PromiseSettledResult<{ success: boolean; error?: string }>[] = [];
+  const processedPaths: string[] = [];
   for (let i = 0; i < itemsSnapshot.length; i += DELETE_BATCH_SIZE) {
+    if (isOperationCancelling(operationId)) break;
     const batch = itemsSnapshot.slice(i, i + DELETE_BATCH_SIZE);
     const batchResults = await Promise.allSettled(
       batch.map((p) => (permanent ? window.tauriAPI.deleteItem(p) : window.tauriAPI.trashItem(p)))
     );
     allResults.push(...batchResults);
+    processedPaths.push(...batch);
+    updateOperation(operationId, {
+      current: allResults.length,
+      total: itemsSnapshot.length,
+      currentFile: batch[batch.length - 1] || 'Deleting...',
+      status: 'active',
+    });
   }
   const successCount = allResults.filter((r) => r.status === 'fulfilled' && r.value.success).length;
   const failCount = allResults.length - successCount;
+  const cancelled = isOperationCancelling(operationId);
 
   const permissionFailedPaths: string[] = [];
   for (let i = 0; i < allResults.length; i++) {
     const r = allResults[i]!;
     if (r.status === 'fulfilled' && !r.value.success && isPermissionDeniedError(r.value.error)) {
-      permissionFailedPaths.push(itemsSnapshot[i]!);
+      permissionFailedPaths.push(processedPaths[i]!);
     }
   }
 
-  if (permissionFailedPaths.length > 0) {
+  if (!cancelled && permissionFailedPaths.length > 0) {
     const needsPermanentFallback = !permanent;
     const confirmed = await showConfirm(
       needsPermanentFallback
@@ -1636,6 +1605,10 @@ async function deleteSelected(permanent = false) {
       needsPermanentFallback ? 'error' : 'warning'
     );
     if (confirmed) {
+      updateOperation(operationId, {
+        currentFile: 'Waiting for elevated permissions...',
+        status: 'active',
+      });
       const elevResult = await window.tauriAPI.elevatedDeleteBatch(permissionFailedPaths);
       if (elevResult.success) {
         const totalSuccess = successCount + permissionFailedPaths.length;
@@ -1652,10 +1625,29 @@ async function deleteSelected(permanent = false) {
             'error'
           );
         }
-        refresh(effectivePermanent ? 'delete-selected-permanent' : 'delete-selected');
+        if (unresolvedFailures > 0) {
+          completeOperation(
+            operationId,
+            'failed',
+            `${unresolvedFailures} item(s) could not be deleted`
+          );
+        } else {
+          completeOperation(operationId, 'done');
+        }
+        refreshAfterDeleteAnimation(
+          permissionFailedPaths,
+          effectivePermanent ? 'delete-selected-permanent' : 'delete-selected'
+        );
         return;
       }
+      completeOperation(operationId, 'failed', elevResult.error || 'Elevated delete failed');
       showToast(elevResult.error || 'Elevated delete failed', 'Error', 'error');
+      refresh(
+        permanent || needsPermanentFallback
+          ? 'delete-selected-permanent-failed'
+          : 'delete-selected-failed'
+      );
+      return;
     }
   }
 
@@ -1683,15 +1675,56 @@ async function deleteSelected(permanent = false) {
     } else {
       showToast(msg, 'Success', 'success');
     }
-    refresh(permanent ? 'delete-selected-permanent' : 'delete-selected');
+    const successfulPaths = processedPaths.filter((_path, index) => {
+      const result = allResults[index];
+      return result?.status === 'fulfilled' && result.value.success;
+    });
+    refreshAfterDeleteAnimation(
+      successfulPaths,
+      permanent ? 'delete-selected-permanent' : 'delete-selected'
+    );
   }
-  if (failCount > 0) {
+  if (cancelled) {
+    completeOperation(
+      operationId,
+      'failed',
+      `Cancelled after ${successCount} item${successCount === 1 ? '' : 's'}`
+    );
+  } else if (failCount > 0) {
+    completeOperation(
+      operationId,
+      'failed',
+      `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`
+    );
     showToast(
       `${failCount} item${failCount > 1 ? 's' : ''} could not be deleted`,
       'Partial Failure',
       'error'
     );
+  } else {
+    completeOperation(operationId, 'done');
   }
+}
+
+function refreshAfterDeleteAnimation(paths: string[], reason: string): void {
+  const duration =
+    typeof currentSettings.operationAnimationDuration === 'number'
+      ? currentSettings.operationAnimationDuration
+      : 100;
+  const shouldAnimate =
+    duration > 0 &&
+    !document.body.classList.contains('reduce-motion') &&
+    !document.body.classList.contains('performance-mode');
+  if (!shouldAnimate || paths.length === 0) {
+    refresh(reason);
+    return;
+  }
+
+  paths.forEach((p) => {
+    const itemEl = fileGrid?.querySelector<HTMLElement>(`[data-path="${CSS.escape(p)}"]`);
+    itemEl?.classList.add('animate-delete-out');
+  });
+  window.setTimeout(() => refresh(reason), Math.min(duration, 200));
 }
 
 async function updateUndoRedoState() {
@@ -1854,7 +1887,7 @@ function navigateHistory(delta: -1 | 1): void {
   const nextIndex = historyIndex + delta;
   if (nextIndex < 0 || nextIndex >= history.length) return;
   historyIndex = nextIndex;
-  void navigateTo(history[historyIndex]!, true);
+  void navigateTo(history[historyIndex]!, true, delta === -1 ? 'back' : 'forward');
 }
 
 function goBack() {
@@ -1883,7 +1916,7 @@ function goUp() {
   if (isRootPath(currentPath)) return;
   const parentPath = path.dirname(currentPath);
   if (!parentPath) return;
-  navigateTo(parentPath);
+  navigateTo(parentPath, false, 'up');
 }
 
 function refresh(reason = 'unspecified') {
@@ -1978,8 +2011,15 @@ late.updateDangerousOptionsVisibility = updateDangerousOptionsVisibility;
 late.setViewMode = setViewMode;
 late.setHomeViewActive = setHomeViewActive;
 late.updateNavigationButtons = updateNavigationButtons;
-late.getFileByPath = (p) => filePathMap.get(p);
-late.getFileItemData = getFileItemData;
+late.registerRecentlyPastedPaths = (paths) => {
+  recentlyPastedPaths = new Set(paths);
+};
+late.setRecentlyRenamedPath = (p) => {
+  recentlyRenamedPath = p;
+};
+late.getFileByPath = (p) => filePathMap.get(p) ?? dualPane.getSecondaryFilePathMap().get(p);
+late.getFileItemData = (el) =>
+  getFileItemData(el) ?? dualPane.getSecondaryFilePathMap().get(el.dataset.path || '') ?? null;
 
 async function toggleView() {
   const viewModeCycle: ViewMode[] = ['grid', 'list', 'column'];
@@ -2072,6 +2112,7 @@ function updateViewModeControls() {
     listHeader.style.display =
       viewMode === 'list' && !isHomeViewPath(currentPath) ? 'grid' : 'none';
   }
+  updateSortIndicators();
 }
 
 function setupViewOptions(): void {
@@ -2217,6 +2258,8 @@ const searchInputElement = getSearchInputElement();
 bindHistoryDropdownOnFocus(searchInputElement, showSearchHistoryDropdown);
 bindHistoryDropdownOnFocus(addressInput, showDirectoryHistoryDropdown);
 
+dualPane.setupListeners();
+
 document.addEventListener('mousedown', (e) => {
   const target = e.target as HTMLElement;
 
@@ -2272,6 +2315,9 @@ document.addEventListener('mousedown', (e) => {
 (async () => {
   try {
     await bootstrapInit();
+    if (utilityDrawerController) {
+      utilityDrawerController.init();
+    }
   } catch (error) {
     devLog('Init', 'Failed to initialize IYERIS', error);
     alert('Failed to start IYERIS: ' + getErrorMessage(error));
@@ -2318,7 +2364,7 @@ window.addEventListener('beforeunload', () => {
     settingsSaveTimeout = null;
   }
   cleanupTabs();
-  cleanupArchiveOperations();
+  cleanupOperationQueue();
 
   [filePathMap, fileElementMap].forEach((cache) => cache.clear());
   diskSpaceController.clearCache();
