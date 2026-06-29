@@ -80,6 +80,13 @@ pub struct DuplicateGroup {
     pub paths: Vec<String>,
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DuplicateFindResult {
+    pub groups: Vec<DuplicateGroup>,
+    pub partial: bool,
+}
+
 enum OpenTarget {
     FilePath(PathBuf),
     External(String),
@@ -1278,7 +1285,10 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
 }
 
 #[tauri::command]
-pub async fn read_file_content(file_path: String, max_size: Option<u64>) -> Result<String, String> {
+pub async fn read_file_content(
+    file_path: String,
+    max_size: Option<u64>,
+) -> Result<serde_json::Value, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
     ensure_safe_preview_read_path(&path)?;
     let limit = max_size
@@ -1287,18 +1297,19 @@ pub async fn read_file_content(file_path: String, max_size: Option<u64>) -> Resu
 
     tokio::task::spawn_blocking(move || {
         let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
-        if meta.len() > limit {
-            return Err(format!(
-                "File too large: {} bytes (limit: {} bytes)",
-                meta.len(),
-                limit
-            ));
-        }
+        let file_len = meta.len();
+        let is_truncated = file_len > limit;
+        let read_len = if is_truncated { limit } else { file_len };
         let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
-        let mut content = String::new();
-        file.read_to_string(&mut content)
-            .map_err(|e| format!("Failed to read file as text: {}", e))?;
-        Ok(content)
+        let mut buffer = vec![0u8; read_len as usize];
+        use std::io::Read;
+        file.read_exact(&mut buffer)
+            .map_err(|e| format!("Failed to read file: {}", e))?;
+        let content = String::from_utf8_lossy(&buffer).into_owned();
+        Ok(serde_json::json!({
+            "content": content,
+            "isTruncated": is_truncated,
+        }))
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1412,7 +1423,7 @@ pub async fn find_duplicate_files(
     dir_path: String,
     min_size: Option<u64>,
     include_hidden: Option<bool>,
-) -> Result<Vec<DuplicateGroup>, String> {
+) -> Result<DuplicateFindResult, String> {
     let root = crate::validate_existing_path(&dir_path, "Directory")?;
     if !root.is_dir() {
         return Err("Path is not a directory".to_string());
@@ -1491,7 +1502,10 @@ pub async fn find_duplicate_files(
                             "[FileOps] find_duplicate_files: total hash budget exceeded ({} bytes), returning partial results",
                             total_hashed_bytes
                         );
-                        return Ok(groups);
+                        return Ok(DuplicateFindResult {
+                            groups,
+                            partial: true,
+                        });
                     }
                     let full_hash = full_blake3(&candidate)?;
                     total_hashed_bytes = total_hashed_bytes.saturating_add(size);
@@ -1517,7 +1531,10 @@ pub async fn find_duplicate_files(
         }
 
         groups.sort_by(|a, b| b.size.cmp(&a.size).then(a.hash.cmp(&b.hash)));
-        Ok(groups)
+        Ok(DuplicateFindResult {
+            groups,
+            partial: false,
+        })
     })
     .await
     .map_err(|e| e.to_string())?
@@ -1567,6 +1584,51 @@ pub async fn batch_rename(items: Vec<serde_json::Value>) -> Result<Vec<serde_jso
                 continue;
             }
         };
+        let parent = match old_path.parent() {
+            Some(p) => p,
+            None => {
+                plan.push(Err((old_path_str, "Cannot determine parent".to_string())));
+                continue;
+            }
+        };
+        let canonical_parent = match parent.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                plan.push(Err((
+                    old_path_str,
+                    format!("Cannot resolve parent directory: {}", e),
+                )));
+                continue;
+            }
+        };
+        let canonical_source = match old_path.canonicalize() {
+            Ok(p) => p,
+            Err(e) => {
+                plan.push(Err((
+                    old_path_str,
+                    format!("Cannot resolve source path: {}", e),
+                )));
+                continue;
+            }
+        };
+        let canonical_source_parent = match canonical_source.parent() {
+            Some(p) => p,
+            None => {
+                plan.push(Err((
+                    old_path_str,
+                    "Cannot determine canonical source parent".to_string(),
+                )));
+                continue;
+            }
+        };
+        if canonical_source_parent != canonical_parent {
+            plan.push(Err((
+                old_path_str,
+                "Refusing to rename: source resolves outside its apparent parent (symlink trick)"
+                    .to_string(),
+            )));
+            continue;
+        }
         let new_path = match old_path.parent() {
             Some(parent) => parent.join(&new_name),
             None => {

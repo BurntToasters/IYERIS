@@ -112,7 +112,7 @@
 
 ## Archive and Compress!
 
-### IYERIS comes with 7zip built in allowing you to compress and uncompress files with ease! Advanced users can also choose extra compression options!
+### IYERIS includes built-in archive support (ZIP, 7z, tar, tar.gz, tar.bz2, tar.xz, and plain .gz/.xz) for compress and extract. Advanced users can choose extra compression options. RAR, CAB, ISO, and other formats are not supported for extract.
 
 <p align="center">
   <img width="45%" height="1012" alt="IYERIS-Compress1" src="https://prod.rosie.run/apps/iyeris/_static/v1/Compress1.png" />

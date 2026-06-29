@@ -27,6 +27,7 @@ body.theme-light .file-hover-card {
 }
 
 body.theme-light {
+  --selection-accent-color: var(--accent-color);
   --glass-bg: rgba(255, 255, 255, 0.96);
   --glass-border: rgba(0, 0, 0, 0.08);
   --glass-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
@@ -60,6 +61,24 @@ body.theme-light {
   --interactive-active: var(--active-color);
   --interactive-selected: rgba(var(--accent-rgb), 0.18);
   --interactive-selected-border: rgba(var(--accent-rgb), 0.38);
+  --button-disabled-bg: color-mix(in srgb, #ffffff 84%, var(--surface-1));
+  --button-disabled-border: rgba(0, 0, 0, 0.12);
+  --button-disabled-text: rgba(0, 0, 0, 0.46);
+  --button-disabled-primary-bg: color-mix(
+    in srgb,
+    var(--system-accent-color, var(--accent-color)) 10%,
+    #ffffff
+  );
+  --button-disabled-primary-border: color-mix(
+    in srgb,
+    var(--system-accent-color, var(--accent-color)) 24%,
+    rgba(0, 0, 0, 0.12)
+  );
+  --button-disabled-primary-text: color-mix(
+    in srgb,
+    var(--text-primary) 68%,
+    var(--system-accent-color, var(--accent-color)) 32%
+  );
   --themed-icon-hue: 210deg;
 
   background-color: var(--bg-primary);
@@ -207,13 +226,13 @@ body.theme-light .file-item:hover {
 }
 
 body.theme-light .file-item.selected {
-  background: rgba(var(--accent-rgb), 0.16);
-  border-color: rgba(var(--accent-rgb), 0.3);
-  box-shadow: none;
+  background: var(--file-selection-bg);
+  border-color: var(--file-selection-border);
+  box-shadow: var(--file-selection-shadow);
 }
 
 body.theme-light .file-item.selected:hover {
-  background: rgba(var(--accent-rgb), 0.2);
+  background: var(--file-selection-hover-bg);
 }
 
 body.theme-light .file-item.drag-over {
@@ -608,6 +627,7 @@ body.theme-catppuccin,
 body.theme-dracula,
 body.theme-solarized,
 body.theme-github {
+  --selection-accent-color: var(--accent-color);
   --hover-color: color-mix(in srgb, var(--text-primary) 6%, transparent);
   --active-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
   --separator: color-mix(in srgb, var(--text-primary) 16%, transparent);
@@ -626,6 +646,7 @@ body.theme-github {
 }
 
 body.theme-custom {
+  --selection-accent-color: var(--accent-color);
   --accent-color: var(--custom-accent-color, #0078d4);
   --accent-rgb: var(--custom-accent-rgb, 0, 120, 212);
   --bg-primary: var(--custom-bg-primary, #1a1a1a);

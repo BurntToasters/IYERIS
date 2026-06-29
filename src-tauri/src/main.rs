@@ -589,9 +589,11 @@ fn main() {
                 .unwrap_or(true);
 
             if enable_indexer {
+                indexer::set_enabled(true, None);
                 indexer::initialize_index(app.handle());
                 log::debug!("[Setup] File indexer initialized");
             } else {
+                indexer::set_enabled(false, Some(app.handle()));
                 log::debug!("[Setup] File indexer disabled by settings");
             }
             log::info!("[Setup] App setup complete");

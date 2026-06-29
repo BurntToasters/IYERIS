@@ -1,7 +1,12 @@
 import type { FileItem, ItemProperties } from './types';
 import { escapeHtml, getErrorMessage, ignoreError, sanitizeMarkdownHtml } from './shared.js';
 import { getById } from './rendererDom.js';
-import { encodeFileUrl, getFileDataUrlWithCache, twemojiImg } from './rendererUtils.js';
+import {
+  encodeFileUrl,
+  getFileDataUrlWithCache,
+  openFileWithFeedback,
+  twemojiImg,
+} from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
 import { loadHighlightJs, getLanguageForExt } from './rendererHighlight.js';
 import { createQuicklookController, type QuicklookDeps } from './rendererQuicklook.js';
@@ -15,6 +20,7 @@ import {
   PDF_EXTENSIONS,
   ARCHIVE_EXTENSIONS,
 } from './fileTypes.js';
+import { isListableArchivePath } from './archiveFormatCapabilities.js';
 
 import { loadMarked } from './rendererMarkdown.js';
 
@@ -251,7 +257,11 @@ export function createPreviewController(deps: PreviewDeps) {
       } else if (PDF_EXTENSIONS.has(ext)) {
         showPdfPreview(file, requestId);
       } else if (ARCHIVE_EXTENSIONS.has(ext)) {
-        showArchivePreview(file, requestId);
+        if (isListableArchivePath(file.path)) {
+          showArchivePreview(file, requestId);
+        } else {
+          showUnsupportedArchivePreview(file, requestId);
+        }
       } else {
         showFileInfo(file, requestId);
       }
@@ -262,6 +272,19 @@ export function createPreviewController(deps: PreviewDeps) {
         previewContent.innerHTML = `<div class="preview-error">Preview failed: ${escapeHtml(getErrorMessage(error))}</div>`;
       }
     }
+  }
+
+  async function showUnsupportedArchivePreview(file: FileItem, requestId: number) {
+    ensureElements();
+    if (!previewContent || requestId !== previewRequestId) return;
+    // eslint-disable-next-line no-restricted-syntax -- static copy; file fields via escapeHtml() in generateFileInfo()
+    previewContent.innerHTML = `
+      <div class="preview-section">
+        <h3>Archive Preview Unavailable</h3>
+        <p>This archive format is recognized but preview and extract are not supported in IYERIS.</p>
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
   }
 
   async function showArchivePreview(file: FileItem, requestId: number) {
@@ -722,7 +745,7 @@ export function createPreviewController(deps: PreviewDeps) {
       openBtn.title = 'Open in default application';
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       openBtn.innerHTML = `${twemojiImg('file', 'twemoji-small')} Open in Default App`;
-      openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
+      openBtn.addEventListener('click', () => void openFileWithFeedback(file.path, deps.showToast));
       actionsDiv.appendChild(openBtn);
       previewContent.appendChild(actionsDiv);
 
@@ -766,7 +789,10 @@ export function createPreviewController(deps: PreviewDeps) {
           openBtn.title = 'Open in default application';
           // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           openBtn.innerHTML = `${twemojiImg('file', 'twemoji-small')} Open in Default App`;
-          openBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
+          openBtn.addEventListener(
+            'click',
+            () => void openFileWithFeedback(file.path, deps.showToast)
+          );
           actionsDiv.appendChild(openBtn);
           previewContent.appendChild(actionsDiv);
 
@@ -801,7 +827,10 @@ export function createPreviewController(deps: PreviewDeps) {
         '.preview-pdf-open-btn'
       ) as HTMLButtonElement | null;
       if (fallbackBtn) {
-        fallbackBtn.addEventListener('click', () => void window.tauriAPI.openFile(file.path));
+        fallbackBtn.addEventListener(
+          'click',
+          () => void openFileWithFeedback(file.path, deps.showToast)
+        );
       }
     }
   }

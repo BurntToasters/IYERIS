@@ -344,8 +344,8 @@ export function createDragDropController(config: DragDropConfig) {
     sourcePaths: string[],
     destPath: string,
     operation: 'copy' | 'move'
-  ): Promise<void> {
-    if (dropInProgress) return;
+  ): Promise<boolean> {
+    if (dropInProgress) return false;
     for (const sp of sourcePaths) {
       if (sp === destPath || isDescendantPath(destPath, sp)) {
         config.getShowToast()(
@@ -353,7 +353,7 @@ export function createDragDropController(config: DragDropConfig) {
           'Invalid Drop',
           'warning'
         );
-        return;
+        return false;
       }
     }
     dropInProgress = true;
@@ -421,7 +421,7 @@ export function createDragDropController(config: DragDropConfig) {
               }
               await config.navigateTo(config.getCurrentPath());
               config.clearSelection();
-              return;
+              return true;
             }
             completeQueued(
               operationId,
@@ -429,11 +429,11 @@ export function createDragDropController(config: DragDropConfig) {
               elevResult.error || `Elevated ${operation} failed`
             );
             showToast(elevResult.error || `Elevated ${operation} failed`, 'Error', 'error');
-            return;
+            return false;
           }
           completeQueued(operationId, 'failed', 'Operation cancelled');
           showToast('Operation cancelled', 'Info', 'info');
-          return;
+          return false;
         }
         completeQueued(operationId, 'failed', result.error || `Failed to ${operation} items`);
         showToast(result.error || `Failed to ${operation} items`, 'Error', 'error', [
@@ -442,7 +442,7 @@ export function createDragDropController(config: DragDropConfig) {
             onClick: () => void handleDrop(sourcePaths, destPath, operation),
           },
         ]);
-        return;
+        return false;
       }
       completeQueued(operationId, 'done');
       showToast(
@@ -458,6 +458,7 @@ export function createDragDropController(config: DragDropConfig) {
 
       await config.navigateTo(config.getCurrentPath());
       config.clearSelection();
+      return true;
     } catch (error) {
       console.error(`Error during ${operation}:`, error);
       completeQueued(operationId, 'failed', String(error));
@@ -467,6 +468,7 @@ export function createDragDropController(config: DragDropConfig) {
           onClick: () => void handleDrop(sourcePaths, destPath, operation),
         },
       ]);
+      return false;
     } finally {
       dropInProgress = false;
     }
@@ -526,6 +528,9 @@ export function createDragDropController(config: DragDropConfig) {
         const currentPath = config.getCurrentPath();
 
         if (draggedPaths.length === 0 || !currentPath) {
+          if (draggedPaths.length === 0 && e.dataTransfer?.files.length) {
+            config.getShowToast()('Could not resolve dropped file paths', 'Drop Failed', 'warning');
+          }
           return;
         }
 
@@ -598,6 +603,9 @@ export function createDragDropController(config: DragDropConfig) {
         const currentPath = config.getCurrentPath();
 
         if (draggedPaths.length === 0 || !currentPath) {
+          if (draggedPaths.length === 0 && e.dataTransfer?.files.length) {
+            config.getShowToast()('Could not resolve dropped file paths', 'Drop Failed', 'warning');
+          }
           return;
         }
 

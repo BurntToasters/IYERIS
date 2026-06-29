@@ -67,6 +67,43 @@
   --interactive-active: var(--active-color);
   --interactive-selected: var(--accent-light);
   --interactive-selected-border: var(--accent-strong);
+  --selection-accent-color: var(--system-accent-color, var(--accent-color));
+  --file-selection-bg: color-mix(in srgb, var(--selection-accent-color) 24%, var(--surface-0));
+  --file-selection-border: color-mix(
+    in srgb,
+    var(--selection-accent-color) 58%,
+    var(--text-primary) 42%
+  );
+  --file-selection-hover-bg: color-mix(
+    in srgb,
+    var(--selection-accent-color) 30%,
+    var(--surface-0)
+  );
+  --file-selection-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--selection-accent-color) 34%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--selection-accent-color) 14%, transparent);
+  --file-selection-inactive-bg: color-mix(in srgb, var(--text-primary) 18%, transparent);
+  --file-selection-inactive-border: color-mix(in srgb, var(--text-primary) 24%, transparent);
+  --file-selection-inactive-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--text-primary) 16%, transparent);
+  --button-disabled-bg: color-mix(in srgb, var(--surface-1) 72%, transparent);
+  --button-disabled-border: var(--native-divider);
+  --button-disabled-text: var(--text-tertiary);
+  --button-disabled-primary-bg: color-mix(
+    in srgb,
+    var(--system-accent-color, var(--accent-color)) 14%,
+    var(--surface-1)
+  );
+  --button-disabled-primary-border: color-mix(
+    in srgb,
+    var(--system-accent-color, var(--accent-color)) 28%,
+    var(--native-divider)
+  );
+  --button-disabled-primary-text: color-mix(
+    in srgb,
+    var(--text-primary) 72%,
+    var(--system-accent-color, var(--accent-color)) 28%
+  );
 
   --titlebar-height: 34px;
   --tab-bar-height: 32px;

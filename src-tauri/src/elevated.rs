@@ -11,6 +11,31 @@ fn ps_escape(s: &str) -> String {
     s.replace('\'', "''").replace(['\0', '\n', '\r'], "")
 }
 
+#[cfg(target_os = "windows")]
+fn elevated_windows_copy_command(src: &str, dest: &str) -> String {
+    use std::path::Path;
+    let src_path = Path::new(src);
+    if src_path.is_dir() {
+        format!(
+            "robocopy '{}' '{}' /E /SL /COPY:DAT /DCOPY:DAT /R:0 /W:0 /NFL /NDL /NJH /NJS /NC /NS; if ($LASTEXITCODE -ge 8) {{ exit $LASTEXITCODE }} else {{ exit 0 }}",
+            ps_escape(src),
+            ps_escape(dest)
+        )
+    } else {
+        let parent = src_path.parent().and_then(|p| p.to_str()).unwrap_or(".");
+        let name = src_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("");
+        format!(
+            "robocopy '{}' '{}' '{}' /SL /COPY:DAT /R:0 /W:0 /NFL /NDL /NJH /NJS /NC /NS; if ($LASTEXITCODE -ge 8) {{ exit $LASTEXITCODE }} else {{ exit 0 }}",
+            ps_escape(parent),
+            ps_escape(dest),
+            ps_escape(name)
+        )
+    }
+}
+
 /// Escape a string for safe embedding in a POSIX shell single-quoted context.
 /// The only character that needs escaping in single quotes is the single quote itself.
 /// We also strip null bytes and newlines to prevent argument injection.
@@ -229,11 +254,7 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
         #[cfg(target_os = "windows")]
         {
             let script = match op.as_str() {
-                "copy" => format!(
-                    "Copy-Item -LiteralPath '{}' -Destination '{}' -Recurse -Force",
-                    ps_escape(&source),
-                    ps_escape(dest_str.unwrap_or_default())
-                ),
+                "copy" => elevated_windows_copy_command(&source, dest_str.unwrap_or_default()),
                 "move" => format!(
                     "Move-Item -LiteralPath '{}' -Destination '{}' -Force",
                     ps_escape(&source),
@@ -326,7 +347,7 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
             // as a flag by the privileged cp/mv/rm. Combined with the
             // validate_elevated_path check at the entry, this is belt + suspenders.
             let (cmd, leading_args): (&str, &[&str]) = match op.as_str() {
-                "copy" => ("cp", &["-r", "--"]),
+                "copy" => ("cp", &["-RP", "--"]),
                 "move" => ("mv", &["--"]),
                 "delete" => ("rm", &["-rf", "--"]),
                 _ => return Err(format!("Unknown operation: {}", op)),
@@ -431,11 +452,7 @@ async fn run_elevated_batch_op(
             let mut lines = Vec::new();
             for (src, dst) in &items {
                 let line = match op.as_str() {
-                    "copy" => format!(
-                        "Copy-Item -LiteralPath '{}' -Destination '{}' -Recurse -Force",
-                        ps_escape(src),
-                        ps_escape(dst.as_deref().unwrap_or(""))
-                    ),
+                    "copy" => elevated_windows_copy_command(src, dst.as_deref().unwrap_or("")),
                     "move" => format!(
                         "Move-Item -LiteralPath '{}' -Destination '{}' -Force",
                         ps_escape(src),
@@ -523,7 +540,7 @@ async fn run_elevated_batch_op(
             for (src, dst) in &items {
                 let line = match op.as_str() {
                     "copy" => format!(
-                        "cp -r -- '{}' '{}'",
+                        "cp -RP -- '{}' '{}'",
                         shell_escape(src),
                         shell_escape(dst.as_deref().unwrap_or(""))
                     ),

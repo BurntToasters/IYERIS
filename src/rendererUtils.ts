@@ -305,3 +305,13 @@ export function renderIcon(
 export function twemojiImg(emoji: string, className: string = 'twemoji', alt?: string): string {
   return renderIcon(emoji, className, alt);
 }
+
+export async function openFileWithFeedback(
+  filePath: string,
+  showToast: (message: string, title: string, type: 'success' | 'error' | 'info') => void
+): Promise<void> {
+  const result = await window.tauriAPI.openFile(filePath);
+  if (!result.success) {
+    showToast(result.error || 'Failed to open file', 'Open File', 'error');
+  }
+}

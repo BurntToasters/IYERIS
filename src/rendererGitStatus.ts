@@ -12,6 +12,7 @@ type GitStatusDeps = {
   getRenderedPaths?: () => Iterable<string>;
   getGitStatus: (dirPath: string, includeUntracked: boolean) => Promise<GitStatusResponse>;
   getGitBranch: (dirPath: string) => Promise<{ success: boolean; branch?: string }>;
+  showToast?: (message: string, title: string, type: 'success' | 'error' | 'info') => void;
 };
 
 const GIT_STATUS_CACHE_TTL_MS = 3000;
@@ -64,9 +65,13 @@ export function createGitStatusController(deps: GitStatusDeps) {
         updateGitIndicators();
       } else {
         clearGitIndicators();
+        if (!result.success && result.error) {
+          deps.showToast?.(result.error, 'Git Status', 'error');
+        }
       }
     } catch (error) {
       devLog('GitStatus', 'Failed to fetch', error);
+      deps.showToast?.(String(error), 'Git Status', 'error');
     }
   }
 

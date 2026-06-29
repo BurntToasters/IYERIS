@@ -1,7 +1,7 @@
 import type { Settings, FileItem } from './types';
 import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { t } from './i18n.js';
-import { rendererPath as path } from './rendererUtils.js';
+import { rendererPath as path, openFileWithFeedback } from './rendererUtils.js';
 import { formatFileSize, getFileIcon } from './rendererFileIcons.js';
 import { NAME_COLLATOR, DATE_FORMATTER } from './rendererLocalConstants.js';
 
@@ -394,7 +394,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
         void loadSecondaryPane(itemPath);
         return;
       }
-      void window.tauriAPI.openFile(itemPath);
+      void openFileWithFeedback(itemPath, deps.showToast);
     });
 
     window.addEventListener('dual-pane-open-directory', (event: Event) => {

@@ -39,7 +39,7 @@ type ClipboardDeps = {
     sourcePaths: string[],
     destPath: string,
     operation: 'copy' | 'move'
-  ) => Promise<void>;
+  ) => Promise<boolean>;
   generateOperationId?: () => string;
   addOperation?: (
     id: string,
@@ -479,8 +479,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
       return false;
     }
-    await deps.handleDrop(sourcePaths, destPath, 'move');
-    return true;
+    return deps.handleDrop(sourcePaths, destPath, 'move');
   }
 
   async function copySelectedToDestination(destPath: string): Promise<boolean> {
@@ -492,8 +491,7 @@ export function createClipboardController(deps: ClipboardDeps) {
       deps.showToast(t('toast.alreadyInDirectory'), 'Info', 'info');
       return false;
     }
-    await deps.handleDrop(sourcePaths, destPath, 'copy');
-    return true;
+    return deps.handleDrop(sourcePaths, destPath, 'copy');
   }
 
   async function pasteIntoFolder(folderPath: string): Promise<void> {

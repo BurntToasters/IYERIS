@@ -372,7 +372,7 @@ export function createOperationQueueController(deps: QueueDeps) {
         </div>
         <div class="operation-queue-name" title="${escapeHtml(operation.name)}">${escapeHtml(operation.name)}</div>
         <div class="operation-queue-file">${escapeHtml(operation.error || operation.currentFile || '')}</div>
-        <div class="operation-queue-progress" aria-hidden="true">
+        <div class="operation-queue-progress">
           <div class="operation-queue-progress-fill" style="width:${percent}%"></div>
         </div>
         ${

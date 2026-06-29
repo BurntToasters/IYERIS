@@ -549,6 +549,28 @@ export function createEventListenersController(config: EventListenersConfig) {
           ['shortcuts-modal', 'flex', config.hideShortcutsModal],
           ['licenses-modal', 'flex', config.hideLicensesModal],
           ['home-settings-modal', 'flex', () => config.closeHomeSettingsModal()],
+          ['properties-modal', 'flex', () => document.getElementById('properties-close')?.click()],
+          [
+            'batch-rename-modal',
+            'flex',
+            () => document.getElementById('batch-rename-cancel')?.click(),
+          ],
+          [
+            'theme-editor-modal',
+            'flex',
+            () => document.getElementById('theme-editor-cancel')?.click(),
+          ],
+          [
+            'folder-icon-modal',
+            'flex',
+            () => document.getElementById('folder-icon-cancel')?.click(),
+          ],
+          ['fda-prompt-modal', 'flex', () => document.getElementById('fda-prompt-later')?.click()],
+          [
+            'support-popup-modal',
+            'flex',
+            () => document.getElementById('support-popup-dismiss')?.click(),
+          ],
           ['sort-menu', 'block', config.hideSortMenu],
           ['context-menu', 'block', config.hideContextMenu],
           ['empty-space-context-menu', 'block', config.hideEmptySpaceContextMenu],

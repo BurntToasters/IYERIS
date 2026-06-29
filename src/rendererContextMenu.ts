@@ -1,6 +1,6 @@
 import type { FileItem, ItemProperties } from './types';
 import type { ToastAction } from './rendererToasts.js';
-import { isArchivePath } from './rendererCompressExtract.js';
+import { isExtractableArchivePath } from './archiveFormatCapabilities.js';
 import { PDF_EXTENSIONS } from './fileTypes.js';
 import { getErrorMessage } from './shared.js';
 import { rendererPath as path, renderIcon } from './rendererUtils.js';
@@ -366,7 +366,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     showIf(elCopyPath, true);
     showIf(elOpenTerminal, item.isDirectory && !isBundle);
     showIf(elCompress, true);
-    showIf(elExtract, !item.isDirectory && isArchivePath(item.path));
+    showIf(elExtract, !item.isDirectory && isExtractableArchivePath(item.path));
     showIf(elPreviewPdf, !item.isDirectory && PDF_EXTENSIONS.has(deps.getFileExtension(item.name)));
     showIf(elOpenWithSubmenu, !item.isDirectory);
     showIf(elBatchRename, deps.getSelectedItems().size >= 2);

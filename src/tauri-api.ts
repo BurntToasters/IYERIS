@@ -300,7 +300,7 @@ const tauriAPI: TauriAPI = {
       return drives.map((d) => d.mountPoint as string);
     } catch (e) {
       devLog('IPC', 'getDrives failed', e);
-      return [];
+      throw e;
     }
   },
   getDriveInfo: async () => {
@@ -314,9 +314,9 @@ const tauriAPI: TauriAPI = {
       });
       logIpcTiming('get_drive_info', elapsedMs(startedAt), { driveCount: mapped.length });
       return mapped;
-    } catch {
-      devLog('IPC', `get_drive_info failed in ${elapsedMs(startedAt).toFixed(1)}ms`);
-      return [];
+    } catch (e) {
+      devLog('IPC', `get_drive_info failed in ${elapsedMs(startedAt).toFixed(1)}ms`, e);
+      throw e;
     }
   },
   getHomeDirectory: () => invoke('get_home_directory'),
@@ -509,7 +509,14 @@ const tauriAPI: TauriAPI = {
     }
   },
   clearDragData: () => invoke('clear_drag_data'),
-  getPathForFile: () => '',
+  getPathForFile: (file: File) => {
+    try {
+      const webview = getCurrentWebview() as { getPathForFile?: (f: File) => string };
+      return webview.getPathForFile?.(file) ?? '';
+    } catch {
+      return '';
+    }
+  },
   onNativeDragDrop: (callback) => {
     const unlisten = getCurrentWebview().onDragDropEvent((event) => {
       const payload = event.payload as DragDropEvent;
@@ -659,11 +666,15 @@ const tauriAPI: TauriAPI = {
   },
   readFileContent: async (filePath, maxSize) => {
     try {
-      const content = await invoke<string>('read_file_content', {
+      const payload = await invoke<{ content: string; isTruncated: boolean }>('read_file_content', {
         filePath,
         maxSize: maxSize ?? null,
       });
-      return { success: true, content, isTruncated: false } as never;
+      return {
+        success: true,
+        content: payload.content,
+        isTruncated: payload.isTruncated,
+      } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;
     }
@@ -983,9 +994,14 @@ const tauriAPI: TauriAPI = {
         advancedOptions: advancedOptions ?? null,
       })
     ),
-  extractArchive: (archivePath, destPath, operationId) =>
+  extractArchive: (archivePath, destPath, operationId, password) =>
     wrap(() =>
-      invoke('extract_archive', { archivePath, destPath, operationId: operationId ?? null })
+      invoke('extract_archive', {
+        archivePath,
+        destPath,
+        operationId: operationId ?? null,
+        password: password ?? null,
+      })
     ),
   cancelArchiveOperation: (operationId) =>
     wrap(() => invoke('cancel_archive_operation', { operationId })),
@@ -1227,14 +1243,20 @@ const tauriAPI: TauriAPI = {
 
   findDuplicateFiles: async (dirPath, minSize, includeHidden) => {
     try {
-      const groups = await invoke<Record<string, unknown>[]>('find_duplicate_files', {
-        dirPath,
-        minSize: minSize ?? null,
-        includeHidden: includeHidden ?? null,
-      });
+      const payload = await invoke<{ groups: Record<string, unknown>[]; partial: boolean }>(
+        'find_duplicate_files',
+        {
+          dirPath,
+          minSize: minSize ?? null,
+          includeHidden: includeHidden ?? null,
+        }
+      );
       return {
         success: true,
-        groups: groups.map((g) => validateIpc(RawDuplicateGroupSchema, g, 'DuplicateGroup')),
+        groups: payload.groups.map((g) =>
+          validateIpc(RawDuplicateGroupSchema, g, 'DuplicateGroup')
+        ),
+        partial: payload.partial,
       } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;

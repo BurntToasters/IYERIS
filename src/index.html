@@ -1403,17 +1403,6 @@
             type="button"
             class="context-menu-item"
             data-action="compress"
-            data-format="tar"
-            role="menuitem"
-            tabindex="0"
-          >
-            <span class="twemoji" data-icon="1f5dc" aria-hidden="true"></span>
-            TAR
-          </button>
-          <button
-            type="button"
-            class="context-menu-item"
-            data-action="compress"
             data-format="tar.gz"
             role="menuitem"
             tabindex="0"
@@ -1525,7 +1514,7 @@
         tabindex="0"
       >
         <span class="twemoji" data-icon="1f310" aria-hidden="true"></span>
-        Share...
+        Show in Folder
       </button>
       <div class="context-menu-separator" role="separator"></div>
       <button
@@ -1694,13 +1683,6 @@
       </div>
     </div>
 
-    <div class="archive-operations-panel" id="archive-operations-panel" style="display: none">
-      <div class="archive-operations-header">
-        <span><span class="twemoji" data-icon="1f5c4" alt="�️"></span> Active Operations</span>
-      </div>
-      <div class="archive-operations-list" id="archive-operations-list"></div>
-    </div>
-
     <div class="modal-overlay" id="dialog-modal" style="display: none">
       <div
         class="modal dialog-modal glass-panel"
@@ -1777,7 +1759,6 @@
                   <option value="PPMd">PPMd</option>
                   <option value="BZip2">BZip2</option>
                   <option value="Deflate">Deflate</option>
-                  <option value="Deflate64">Deflate64</option>
                 </select>
               </div>
               <div class="compress-option-field" id="compress-dictionary-field" hidden>
@@ -1932,6 +1913,27 @@
             <p class="extract-modal-preview">
               Extracts to: <span id="extract-preview-path"></span>
             </p>
+          </div>
+          <div class="extract-modal-field" id="extract-password-field">
+            <label class="extract-modal-label" for="extract-password">Password (optional)</label>
+            <div class="setting-input-group">
+              <input
+                type="password"
+                id="extract-password"
+                class="settings-input"
+                placeholder="Enter password if archive is encrypted"
+                autocomplete="off"
+              />
+              <button
+                class="modal-button compact"
+                id="extract-password-toggle"
+                title="Show password"
+                aria-label="Toggle password visibility"
+                type="button"
+              >
+                <span class="twemoji" data-icon="1f441" alt="👁"></span>
+              </button>
+            </div>
           </div>
         </div>
         <div class="modal-footer">

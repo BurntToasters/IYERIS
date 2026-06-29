@@ -169,6 +169,7 @@ export function createSidebarController(deps: SidebarDeps) {
       }
     } catch (error) {
       devLog('Drives', 'Failed to load drives', error);
+      deps.showToast(getErrorMessage(error), 'Drives', 'error');
     }
   }
 

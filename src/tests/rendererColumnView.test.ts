@@ -13,6 +13,7 @@ vi.mock('../shared.js', () => ({
   devLog: () => {},
   escapeHtml: (value: string) => value,
   ignoreError: () => {},
+  getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
 }));
 
 vi.mock('../rendererUtils.js', () => ({
@@ -240,6 +241,7 @@ describe('createColumnViewController', () => {
 
       const columnView = document.getElementById('column-view')!;
       expect(columnView.textContent).toContain('Error loading drives');
+      expect(deps.showToast).toHaveBeenCalledWith('fail', 'Drives', 'error');
     });
 
     describe('Unix path splitting', () => {

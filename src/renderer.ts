@@ -719,6 +719,8 @@ function openNewWindow() {
 
 async function saveSettings() {
   const previousTabsEnabled = tabsEnabled;
+  const previousDisableHwAccel = currentSettings.disableHardwareAcceleration;
+  const previousNativeMenu = currentSettings.nativeMenuEnabled ?? true;
 
   for (const [id, key] of TOGGLE_MAPPINGS) {
     const el = document.getElementById(id) as HTMLInputElement | null;
@@ -813,6 +815,17 @@ async function saveSettings() {
   clearSettingsChanged();
   hideSettingsModal();
   showToast('Settings saved successfully!', 'Settings', 'success');
+  const needsRestart =
+    previousDisableHwAccel !== currentSettings.disableHardwareAcceleration ||
+    previousNativeMenu !== (currentSettings.nativeMenuEnabled ?? true);
+  if (needsRestart) {
+    showToast(
+      'Restart IYERIS to apply hardware acceleration or native menu changes.',
+      'Restart Required',
+      'info',
+      [{ label: 'Restart', onClick: () => void window.tauriAPI.relaunchApp() }]
+    );
+  }
   if (currentPath) {
     refresh('settings-saved');
   }
@@ -1561,7 +1574,7 @@ async function deleteSelected(permanent = false) {
 
   const operationId = generateOperationId();
   addOperation(operationId, 'delete', `${count} item${plural}${permanent ? ' permanently' : ''}`, {
-    cancellable: true,
+    cancellable: false,
     total: itemsSnapshot.length,
     retry: () => void deleteSelected(permanent),
   });
@@ -1931,6 +1944,14 @@ function refresh(reason = 'unspecified') {
     });
     return;
   }
+  if (document.body.classList.contains('pending-created-item-rename')) {
+    devLog('Refresh', 'Skipped refresh (created item rename pending)', { reason, currentPath });
+    return;
+  }
+  if (document.querySelector('.file-item.renaming')) {
+    devLog('Refresh', 'Skipped refresh (inline rename active)', { reason, currentPath });
+    return;
+  }
   if (isSearchModeActive()) {
     devLog('Refresh', 'Skipped refresh (search is active)', { reason, currentPath });
     return;
@@ -2179,6 +2200,16 @@ const extractDestinationInput = document.getElementById(
 extractConfirm?.addEventListener('click', () => {
   void confirmExtractModal();
 });
+const extractPasswordInput = document.getElementById('extract-password') as HTMLInputElement | null;
+const extractPasswordToggle = document.getElementById('extract-password-toggle');
+extractPasswordToggle?.addEventListener('click', () => {
+  if (!extractPasswordInput) return;
+  const show = extractPasswordInput.type === 'password';
+  extractPasswordInput.type = show ? 'text' : 'password';
+  if (extractPasswordToggle instanceof HTMLButtonElement) {
+    extractPasswordToggle.title = show ? 'Hide password' : 'Show password';
+  }
+});
 extractBrowseBtn?.addEventListener('click', async () => {
   await chooseFolderAndApply((selectedPath) => {
     if (!extractDestinationInput) return;
@@ -2320,7 +2351,22 @@ document.addEventListener('mousedown', (e) => {
     }
   } catch (error) {
     devLog('Init', 'Failed to initialize IYERIS', error);
-    alert('Failed to start IYERIS: ' + getErrorMessage(error));
+    const message = 'Failed to start IYERIS: ' + getErrorMessage(error);
+    const dialogModal = document.getElementById('dialog-modal');
+    const dialogMessage = document.getElementById('dialog-message');
+    const dialogTitle = document.getElementById('dialog-title');
+    if (dialogModal && dialogMessage) {
+      if (dialogTitle) dialogTitle.textContent = 'Startup Error';
+      dialogMessage.textContent = message;
+      dialogModal.style.display = 'flex';
+    } else {
+      const alert = document.createElement('div');
+      alert.setAttribute('role', 'alert');
+      alert.style.padding = '24px';
+      alert.style.fontFamily = 'system-ui';
+      alert.textContent = message;
+      document.body.replaceChildren(alert);
+    }
   }
 })();
 

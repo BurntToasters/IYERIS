@@ -13,6 +13,11 @@ type BatchRenameDeps = {
   deactivateModal: (el: HTMLElement) => void;
   refresh: () => void;
   updateUndoRedoState: () => Promise<void>;
+  showConfirm?: (
+    message: string,
+    title?: string,
+    type?: 'info' | 'warning' | 'error' | 'success' | 'question'
+  ) => Promise<boolean>;
 };
 
 type RenameMode = 'find-replace' | 'sequential' | 'extension';
@@ -246,6 +251,15 @@ export function createBatchRenameController(deps: BatchRenameDeps) {
         return;
       }
       newNames.add(dedupKey(item.newName));
+    }
+
+    if (toRename.length > 20) {
+      const confirmed = await deps.showConfirm(
+        `Rename ${toRename.length} items?`,
+        'Batch Rename',
+        'question'
+      );
+      if (!confirmed) return;
     }
 
     try {
