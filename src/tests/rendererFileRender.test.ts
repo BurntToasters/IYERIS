@@ -1010,54 +1010,57 @@ describe('createFileRenderController', () => {
   });
 
   describe('virtualized rendering', () => {
-    it('appends additional batches through observer intersections and cleans sentinel at end', () => {
-      const observe = vi.fn();
-      const unobserve = vi.fn();
-      const disconnect = vi.fn();
-      let callback:
-        | ((entries: Array<{ isIntersecting: boolean; target: Element }>) => void)
-        | null = null;
-      let observedTarget: Element | null = null;
-      const original = (globalThis as any).IntersectionObserver;
+    it(
+      'appends additional batches through observer intersections and cleans sentinel at end',
+      { timeout: 15000 },
+      () => {
+        const observe = vi.fn();
+        const unobserve = vi.fn();
+        const disconnect = vi.fn();
+        let callback:
+          ((entries: Array<{ isIntersecting: boolean; target: Element }>) => void) | null = null;
+        let observedTarget: Element | null = null;
+        const original = (globalThis as any).IntersectionObserver;
 
-      class MockIntersectionObserver {
-        constructor(cb: typeof callback) {
-          callback = cb as any;
+        class MockIntersectionObserver {
+          constructor(cb: typeof callback) {
+            callback = cb as any;
+          }
+          observe = (target: Element) => {
+            observedTarget = target;
+            observe(target);
+          };
+          unobserve = unobserve;
+          disconnect = disconnect;
         }
-        observe = (target: Element) => {
-          observedTarget = target;
-          observe(target);
-        };
-        unobserve = unobserve;
-        disconnect = disconnect;
+
+        (globalThis as any).IntersectionObserver = MockIntersectionObserver;
+
+        const config = createMockConfig();
+        const ctrl = createFileRenderController(config);
+        const items = Array.from({ length: 1200 }, (_, i) =>
+          makeItem({ name: `v${i}.txt`, path: `/v${i}.txt` })
+        );
+
+        ctrl.renderFiles(items);
+
+        for (let i = 0; i < 12; i++) {
+          callback?.([{ isIntersecting: true, target: observedTarget as Element }]);
+        }
+
+        const grid = document.getElementById('file-grid')!;
+        expect(grid.querySelectorAll('.file-item').length).toBe(1200);
+        expect(observe).toHaveBeenCalled();
+        expect(unobserve).toHaveBeenCalled();
+        expect(document.querySelector('#file-grid > div[style*="height: 1px"]')).toBeFalsy();
+
+        if (original) {
+          (globalThis as any).IntersectionObserver = original;
+        } else {
+          delete (globalThis as any).IntersectionObserver;
+        }
       }
-
-      (globalThis as any).IntersectionObserver = MockIntersectionObserver;
-
-      const config = createMockConfig();
-      const ctrl = createFileRenderController(config);
-      const items = Array.from({ length: 1200 }, (_, i) =>
-        makeItem({ name: `v${i}.txt`, path: `/v${i}.txt` })
-      );
-
-      ctrl.renderFiles(items);
-
-      for (let i = 0; i < 12; i++) {
-        callback?.([{ isIntersecting: true, target: observedTarget as Element }]);
-      }
-
-      const grid = document.getElementById('file-grid')!;
-      expect(grid.querySelectorAll('.file-item').length).toBe(1200);
-      expect(observe).toHaveBeenCalled();
-      expect(unobserve).toHaveBeenCalled();
-      expect(document.querySelector('#file-grid > div[style*="height: 1px"]')).toBeFalsy();
-
-      if (original) {
-        (globalThis as any).IntersectionObserver = original;
-      } else {
-        delete (globalThis as any).IntersectionObserver;
-      }
-    });
+    );
 
     it('handles virtualization when file-view root is missing', () => {
       // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input

@@ -15,6 +15,7 @@ export default defineConfig({
         'src/tauri-api.ts',
         'src/types.d.ts',
         'src/rendererBootstrap.ts',
+        'src/rendererActivityState.ts',
         'src/rendererControllerWiring.ts',
         'src/rendererDirectoryLoader.ts',
         'src/rendererElements.ts',

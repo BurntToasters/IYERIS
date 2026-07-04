@@ -152,8 +152,7 @@ describe('createClipboardController — extended', () => {
       await ctrl.pasteFromClipboard();
 
       const actions = deps.showToast.mock.calls[0]?.[3] as
-        | Array<{ label: string; onClick: () => void }>
-        | undefined;
+        Array<{ label: string; onClick: () => void }> | undefined;
       expect(actions?.[0]?.label).toBe('Retry');
       actions?.[0]?.onClick();
       await Promise.resolve();

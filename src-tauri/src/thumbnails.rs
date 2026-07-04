@@ -1,11 +1,19 @@
 use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Manager;
 
 const MAX_THUMBNAIL_BYTES: usize = 10 * 1024 * 1024;
 const MAX_CACHE_BYTES: u64 = 256 * 1024 * 1024;
 const MAX_CACHE_FILES: usize = 5000;
+
+// Trim scans whole cache dir; batch it, not every save.
+const TRIM_EVERY_SAVES: usize = 64;
+const TRIM_MIN_INTERVAL_SECS: u64 = 60;
+static SAVES_SINCE_TRIM: AtomicUsize = AtomicUsize::new(0);
+static LAST_TRIM_SECS: AtomicU64 = AtomicU64::new(0);
 
 fn cache_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     let dir = app
@@ -73,6 +81,28 @@ fn trim_cache_if_needed(dir: &PathBuf) -> Result<(), String> {
     Ok(())
 }
 
+/// Rate-limited trim_cache_if_needed: only after batch of saves or interval.
+fn maybe_trim_cache(dir: &PathBuf) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let saves = SAVES_SINCE_TRIM.fetch_add(1, Ordering::Relaxed) + 1;
+    let last = LAST_TRIM_SECS.load(Ordering::Relaxed);
+    let due_by_count = saves >= TRIM_EVERY_SAVES;
+    let due_by_time = now.saturating_sub(last) >= TRIM_MIN_INTERVAL_SECS;
+
+    if !due_by_count && !due_by_time {
+        return;
+    }
+
+    SAVES_SINCE_TRIM.store(0, Ordering::Relaxed);
+    LAST_TRIM_SECS.store(now, Ordering::Relaxed);
+    if let Err(e) = trim_cache_if_needed(dir) {
+        log::warn!("[Thumbnails] cache trim failed: {}", e);
+    }
+}
+
 #[tauri::command]
 pub fn get_cached_thumbnail(
     app: tauri::AppHandle,
@@ -121,7 +151,7 @@ pub fn save_cached_thumbnail(
         let _ = fs::remove_file(&tmp);
         e.to_string()
     })?;
-    trim_cache_if_needed(&dir)?;
+    maybe_trim_cache(&dir);
     Ok(())
 }
 

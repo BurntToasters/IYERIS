@@ -1,6 +1,7 @@
 import { twemojiImg } from './rendererUtils.js';
 import { devLog } from './shared.js';
 import { INDEX_REBUILD_DELAY_MS } from './rendererLocalConstants.js';
+import { isForeground, onActivityChange } from './rendererActivityState.js';
 
 const INDEX_STATUS_POLL_MS = 1500;
 
@@ -18,6 +19,7 @@ export function createIndexerController(config: IndexerConfig) {
   let indexStatusInterval: NodeJS.Timeout | null = null;
   let consecutiveErrors = 0;
   let pollInFlight = false;
+  let pausedForBackground = false;
   const MAX_CONSECUTIVE_ERRORS = 10;
 
   function startIndexStatusPolling() {
@@ -25,6 +27,8 @@ export function createIndexerController(config: IndexerConfig) {
     consecutiveErrors = 0;
     const runPoll = async () => {
       if (pollInFlight) return;
+      // Skip backend poll in bg.
+      if (!isForeground()) return;
       pollInFlight = true;
       try {
         const status = await updateIndexStatus();
@@ -41,6 +45,19 @@ export function createIndexerController(config: IndexerConfig) {
     }, INDEX_STATUS_POLL_MS);
     void runPoll();
   }
+
+  // Suspend poll timer in bg, resume on return if active. Native build gated in Rust.
+  const cleanupActivity = onActivityChange((foreground) => {
+    if (!foreground) {
+      if (indexStatusInterval) {
+        pausedForBackground = true;
+        stopIndexStatusPolling();
+      }
+    } else if (pausedForBackground) {
+      pausedForBackground = false;
+      startIndexStatusPolling();
+    }
+  });
 
   function stopIndexStatusPolling() {
     if (indexStatusInterval) {
@@ -122,5 +139,6 @@ export function createIndexerController(config: IndexerConfig) {
     stopIndexStatusPolling,
     updateIndexStatus,
     rebuildIndex,
+    destroy: cleanupActivity,
   };
 }

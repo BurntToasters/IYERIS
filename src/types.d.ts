@@ -467,11 +467,7 @@ export interface UndoBatchRenameAction {
 }
 
 export type UndoAction =
-  | UndoCreateAction
-  | UndoRenameAction
-  | UndoMoveAction
-  | UndoTrashAction
-  | UndoBatchRenameAction;
+  UndoCreateAction | UndoRenameAction | UndoMoveAction | UndoTrashAction | UndoBatchRenameAction;
 
 export interface UpdateInfo {
   version: string;
@@ -515,13 +511,7 @@ export interface FileOperationProgress {
 }
 
 export type OperationKind =
-  | 'copy'
-  | 'move'
-  | 'delete'
-  | 'duplicate'
-  | 'compress'
-  | 'extract'
-  | 'checksum';
+  'copy' | 'move' | 'delete' | 'duplicate' | 'compress' | 'extract' | 'checksum';
 
 export type OperationStatus = 'queued' | 'active' | 'done' | 'failed' | 'cancelling';
 

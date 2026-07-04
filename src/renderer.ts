@@ -44,6 +44,7 @@ import { createRecentFilesController } from './rendererRecentFiles.js';
 import { createSidebarController } from './rendererSidebar.js';
 import { isOneOf } from './constants.js';
 import { renderSkeleton, clearSkeleton } from './rendererSkeleton.js';
+import { isForeground, markDirtyRefresh } from './rendererActivityState.js';
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
 let utilityDrawerController: ReturnType<typeof createUtilityDrawerController> | null = null;
@@ -1449,7 +1450,7 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
       itemCount: result.contents?.length ?? 0,
       viewMode,
     });
-    updateDiskSpace();
+
     window.tauriAPI
       .watchDirectory(path)
       .then((watching) => {
@@ -1461,9 +1462,12 @@ async function navigateTo(path: string, skipHistoryUpdate = false, trigger = 'di
           error: getErrorMessage(error),
         });
       });
-    if (currentSettings.enableGitStatus) {
-      fetchGitStatusAsync(path);
-      updateGitBranch(path);
+    if (isForeground()) {
+      updateDiskSpace();
+      if (currentSettings.enableGitStatus) {
+        fetchGitStatusAsync(path);
+        updateGitBranch(path);
+      }
     }
     devLog('Navigate', `[${navigationId}] success`, {
       path,
@@ -1971,6 +1975,12 @@ function goUp() {
 function refresh(reason = 'unspecified') {
   if (!currentPath) {
     devLog('Refresh', 'Skipped refresh (no current path)', { reason });
+    return;
+  }
+
+  if (!isForeground()) {
+    markDirtyRefresh(reason);
+    devLog('Refresh', 'Deferred refresh (window backgrounded)', { reason, currentPath });
     return;
   }
   if (isNavigating) {

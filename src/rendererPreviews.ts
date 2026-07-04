@@ -21,6 +21,7 @@ import {
   ARCHIVE_EXTENSIONS,
 } from './fileTypes.js';
 import { isListableArchivePath } from './archiveFormatCapabilities.js';
+import { isForeground, onActivityChange } from './rendererActivityState.js';
 
 import { loadMarked } from './rendererMarkdown.js';
 
@@ -31,8 +32,19 @@ export function createPreviewController(deps: PreviewDeps) {
 
   let isPreviewPanelVisible = false;
   let previewRequestId = 0;
+  let pendingBackgroundPreview: FileItem | null = null;
 
   let activePdfViewer: PdfViewerHandle | null = null;
+
+  // On foreground: load preview deferred while backgrounded.
+  const cleanupPreviewActivity = onActivityChange((foreground) => {
+    if (!foreground) return;
+    const pending = pendingBackgroundPreview;
+    pendingBackgroundPreview = null;
+    if (pending && isPreviewPanelVisible) {
+      updatePreview(pending);
+    }
+  });
 
   const loadingHtml = (label: string) =>
     `<div class="preview-loading"><div class="spinner"></div><p>Loading ${label}...</p></div>`;
@@ -239,6 +251,13 @@ export function createPreviewController(deps: PreviewDeps) {
       showEmptyPreview();
       return;
     }
+
+    // Cleanup still ran; skip new heavy decode in bg. Listener flushes on return.
+    if (!isForeground()) {
+      pendingBackgroundPreview = file;
+      return;
+    }
+    pendingBackgroundPreview = null;
 
     try {
       const ext = deps.getFileExtension(file.name);
@@ -974,6 +993,7 @@ export function createPreviewController(deps: PreviewDeps) {
     clearPreview,
     togglePreviewPanel,
     isPreviewVisible,
+    destroy: cleanupPreviewActivity,
     showQuickLook: quicklook.showQuickLook,
     showQuickLookForFile: quicklook.showQuickLookForFile,
     closeQuickLook: quicklook.closeQuickLook,

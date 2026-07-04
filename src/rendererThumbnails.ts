@@ -3,11 +3,14 @@ import { ignoreError } from './shared.js';
 import { encodeFileUrl } from './rendererUtils.js';
 import { generatePdfThumbnailPdfJs } from './rendererPdfViewer.js';
 import { ANIMATED_IMAGE_EXTENSIONS } from './fileTypes.js';
+import { isForeground, onActivityChange } from './rendererActivityState.js';
 import {
   THUMBNAIL_TIMEOUT_MS,
   DEFAULT_MAX_THUMBNAIL_SIZE_MB,
   DEFAULT_MAX_PREVIEW_SIZE_MB,
 } from './rendererLocalConstants.js';
+
+const MEDIA_THUMBNAIL_TYPES = new Set(['video', 'audio', 'pdf', 'office']);
 
 const THUMBNAIL_ROOT_MARGIN = '100px';
 const THUMBNAIL_CACHE_MAX = 100;
@@ -29,6 +32,48 @@ export function createThumbnailController(deps: ThumbnailDeps) {
   const inflightThumbnails = new Set<string>();
 
   const thumbnailObservers = new Map<string, IntersectionObserver>();
+
+  const activeMediaCleanups = new Set<() => void>();
+  let paused = false;
+
+  function pauseThumbnails(): void {
+    if (paused) return;
+    paused = true;
+
+    pendingThumbnailLoads.length = 0;
+    inflightThumbnails.clear();
+    for (const cleanup of Array.from(activeMediaCleanups)) {
+      try {
+        cleanup();
+      } catch (error) {
+        ignoreError(error);
+      }
+    }
+    activeMediaCleanups.clear();
+  }
+
+  function resumeThumbnails(): void {
+    if (!paused) return;
+    paused = false;
+    // Re-drive observers for unrendered thumbnails in view.
+    thumbnailObservers.forEach((observer, rootId) => {
+      const root = document.getElementById(rootId);
+      if (!root) return;
+      root.querySelectorAll<HTMLElement>('.file-item.has-thumbnail').forEach((fileItem) => {
+        if (fileItem.querySelector('img.file-thumbnail')) return;
+        observer.unobserve(fileItem);
+        observer.observe(fileItem);
+      });
+    });
+  }
+
+  const cleanupActivity = onActivityChange((foreground) => {
+    if (foreground) {
+      resumeThumbnails();
+    } else {
+      pauseThumbnails();
+    }
+  });
 
   function enqueueThumbnailLoad(loadFn: () => Promise<void>): boolean {
     const execute = async () => {
@@ -73,6 +118,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
       (entries) => {
         entries.forEach((entry) => {
           if (entry.isIntersecting) {
+            if (paused || !isForeground()) return;
             const fileItem = entry.target as HTMLElement;
             const path = fileItem.dataset.path;
             const item = path ? deps.getFileByPath(path) : undefined;
@@ -113,10 +159,31 @@ export function createThumbnailController(deps: ThumbnailDeps) {
       video.muted = true;
       video.preload = 'metadata';
 
+      let settled = false;
+      let timeout: ReturnType<typeof setTimeout> | null = null;
+
       const cleanup = () => {
+        if (timeout) {
+          clearTimeout(timeout);
+          timeout = null;
+        }
+        video.onloadedmetadata = null;
+        video.onseeked = null;
+        video.onerror = null;
         video.src = '';
         video.load();
+        activeMediaCleanups.delete(abort);
       };
+
+      const finish = (settle: () => void) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        settle();
+      };
+
+      const abort = () => finish(() => reject(new Error('Video thumbnail aborted')));
+      activeMediaCleanups.add(abort);
 
       video.onloadedmetadata = () => {
         video.currentTime = Math.min(1, video.duration * 0.1);
@@ -143,27 +210,21 @@ export function createThumbnailController(deps: ThumbnailDeps) {
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
             const dataUrl = canvas.toDataURL('image/jpeg', getThumbnailQuality());
-            cleanup();
-            resolve(dataUrl);
+            finish(() => resolve(dataUrl));
           } else {
-            cleanup();
-            reject(new Error('Could not get canvas context'));
+            finish(() => reject(new Error('Could not get canvas context')));
           }
         } catch (err) {
-          cleanup();
-          reject(err);
+          finish(() => reject(err));
         }
       };
 
-      video.onerror = () => {
-        cleanup();
-        reject(new Error('Failed to load video'));
-      };
+      video.onerror = () => finish(() => reject(new Error('Failed to load video')));
 
-      setTimeout(() => {
-        cleanup();
-        reject(new Error('Video thumbnail timeout'));
-      }, THUMBNAIL_TIMEOUT_MS);
+      timeout = setTimeout(
+        () => finish(() => reject(new Error('Video thumbnail timeout'))),
+        THUMBNAIL_TIMEOUT_MS
+      );
 
       video.src = videoUrl;
     });
@@ -183,17 +244,31 @@ export function createThumbnailController(deps: ThumbnailDeps) {
       ctx.scale(dpr, dpr);
 
       const audioContext = new AudioContext();
+      const abortController = new AbortController();
       let settled = false;
 
       const timeout = setTimeout(() => {
         if (!settled) {
           settled = true;
+          activeMediaCleanups.delete(abort);
+          abortController.abort();
           audioContext.close();
           reject(new Error('Audio waveform timeout'));
         }
       }, THUMBNAIL_TIMEOUT_MS);
 
-      fetch(audioUrl)
+      const abort = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        activeMediaCleanups.delete(abort);
+        abortController.abort();
+        audioContext.close();
+        reject(new Error('Audio waveform aborted'));
+      };
+      activeMediaCleanups.add(abort);
+
+      fetch(audioUrl, { signal: abortController.signal })
         .then((response) => response.arrayBuffer())
         .then((arrayBuffer) => audioContext.decodeAudioData(arrayBuffer))
         .then((audioBuffer) => {
@@ -246,6 +321,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
 
           settled = true;
           clearTimeout(timeout);
+          activeMediaCleanups.delete(abort);
           audioContext.close();
           resolve(canvas.toDataURL('image/jpeg', getThumbnailQuality()));
         })
@@ -253,6 +329,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           if (settled) return;
           settled = true;
           clearTimeout(timeout);
+          activeMediaCleanups.delete(abort);
           audioContext.close();
           reject(error);
         });
@@ -352,6 +429,12 @@ export function createThumbnailController(deps: ThumbnailDeps) {
         const fileUrl = encodeFileUrl(item.path);
 
         if (!document.body.contains(fileItem)) {
+          return;
+        }
+
+        // Defensive: no heavy media decode in bg. Keep has-thumbnail so resume re-drives.
+        if (MEDIA_THUMBNAIL_TYPES.has(thumbnailType) && !isForeground()) {
+          if (iconDiv) iconDiv.innerHTML = deps.getFileIcon(item.name);
           return;
         }
 
@@ -492,6 +575,9 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     observeThumbnailItem,
     loadThumbnail,
     updateThumbnailCacheSize,
+    pauseThumbnails,
+    resumeThumbnails,
+    destroy: cleanupActivity,
     getThumbnailForPath: (path: string) => thumbnailCache.get(path),
     clearThumbnailCache: () => {
       thumbnailCache.clear();
