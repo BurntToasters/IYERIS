@@ -356,8 +356,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       }
 
       const setDragDataResult = window.tauriAPI.setDragData(selectedPaths) as
-        | Promise<unknown>
-        | undefined;
+        Promise<unknown> | undefined;
       if (setDragDataResult && typeof setDragDataResult.catch === 'function') {
         setDragDataResult.catch(ignoreError);
       }

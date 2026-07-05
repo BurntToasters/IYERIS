@@ -512,8 +512,7 @@ describe('createDiskSpaceController', () => {
       vi.useFakeTimers();
       let currentPath = '/home/user/Documents';
       let resolveFirst:
-        | ((value: { success: boolean; total: number; free: number }) => void)
-        | null = null;
+        ((value: { success: boolean; total: number; free: number }) => void) | null = null;
       const firstResult = new Promise<{ success: boolean; total: number; free: number }>(
         (resolve) => {
           resolveFirst = resolve;

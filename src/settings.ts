@@ -101,7 +101,7 @@ export function createDefaultSettings(): Settings {
     nativeMenuEnabled: true,
     operationPanelCollapsed: false,
     utilityDrawerCollapsed: true,
-    enableAutoChecksum: true,
+    enableAutoChecksum: false,
     defaultChecksumAlgorithm: 'sha256',
     navTransitionDuration: 200,
     operationAnimationDuration: 100,

@@ -377,10 +377,7 @@ export function createDragDropController(config: DragDropConfig) {
     }
     try {
       const conflictBehavior = (config.getCurrentSettings().fileConflictBehavior || 'ask') as
-        | 'rename'
-        | 'ask'
-        | 'skip'
-        | 'overwrite';
+        'rename' | 'ask' | 'skip' | 'overwrite';
       const result =
         operation === 'copy'
           ? operationId

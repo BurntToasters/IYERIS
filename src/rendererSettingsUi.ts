@@ -176,10 +176,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     const state: SettingsFormState = {};
     Object.entries(SETTINGS_INPUT_KEYS).forEach(([inputId, key]) => {
       const input = document.getElementById(inputId) as
-        | HTMLInputElement
-        | HTMLSelectElement
-        | HTMLTextAreaElement
-        | null;
+        HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | null;
       if (!input) return;
       const value = settings[key];
       if (input instanceof HTMLInputElement && input.type === 'checkbox') {
@@ -327,9 +324,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
         const label = item.querySelector('label')?.textContent?.trim();
         if (!label) return;
         const input = item.querySelector('input, select') as
-          | HTMLInputElement
-          | HTMLSelectElement
-          | null;
+          HTMLInputElement | HTMLSelectElement | null;
         if (!input) return;
         let value: string;
         if (input instanceof HTMLInputElement && input.type === 'checkbox') {

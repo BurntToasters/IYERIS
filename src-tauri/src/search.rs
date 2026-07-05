@@ -442,12 +442,15 @@ pub async fn cancel_search(operation_id: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn search_index(
+    app: tauri::AppHandle,
     query: String,
     _operation_id: Option<String>,
 ) -> Result<Vec<SearchResult>, String> {
     if !indexer::is_enabled() {
         return Err("Indexer is disabled".to_string());
     }
+    // Lazy build on first search; poller reflects progress.
+    indexer::ensure_index_built(&app);
     let results = tokio::task::spawn_blocking(move || indexer::search_in_index(&query))
         .await
         .map_err(|e| e.to_string())?;
