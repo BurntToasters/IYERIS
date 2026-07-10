@@ -80,7 +80,10 @@ pub fn save_settings(app: tauri::AppHandle, settings: String) -> Result<(), Stri
     drop(_lock);
 
     if enable_indexer && !indexer_was_enabled {
+        // Explicit enable: load + build now (launch stays lazy).
+        crate::indexer::set_enabled(true, None);
         crate::indexer::initialize_index(&app);
+        crate::indexer::ensure_index_built(&app);
     } else if !enable_indexer {
         crate::indexer::set_enabled(false, Some(&app));
     } else if enable_indexer {

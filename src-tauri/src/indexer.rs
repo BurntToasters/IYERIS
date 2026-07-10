@@ -9,8 +9,11 @@ use std::time::UNIX_EPOCH;
 use tauri::Manager;
 use walkdir::WalkDir;
 
-const MAX_INDEX_SIZE: usize = 200_000;
-const MAX_SCAN_DEPTH: usize = 50;
+const MAX_INDEX_SIZE: usize = 50_000;
+const MAX_SCAN_DEPTH: usize = 20;
+// Yield CPU every N entries so bg build can't peg a core.
+const SCAN_YIELD_EVERY: usize = 256;
+const SCAN_YIELD_MS: u64 = 2;
 
 static FILE_INDEX: std::sync::LazyLock<Arc<RwLock<FileIndex>>> =
     std::sync::LazyLock::new(|| Arc::new(RwLock::new(FileIndex::default())));
@@ -24,6 +27,9 @@ static BUILD_MUTEX: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(||
 #[serde(rename_all = "camelCase")]
 pub struct IndexEntry {
     pub name: String,
+    // Lowercased name for search; not persisted, repopulated on load/build.
+    #[serde(skip)]
+    pub name_lower: String,
     pub path: String,
     pub is_directory: bool,
     pub is_file: bool,
@@ -148,9 +154,7 @@ fn get_index_locations() -> Vec<PathBuf> {
             if movies.exists() {
                 locations.push(movies);
             }
-            if Path::new("/Applications").exists() {
-                locations.push(PathBuf::from("/Applications"));
-            }
+            // Skip /Applications + /Volumes: deep .app trees, external mounts. Opt-in later.
         }
 
         #[cfg(target_os = "linux")]
@@ -174,22 +178,19 @@ fn get_index_locations() -> Vec<PathBuf> {
         }
     }
 
-    #[cfg(target_os = "macos")]
-    {
-        if let Ok(entries) = fs::read_dir("/Volumes") {
-            for entry in entries.filter_map(|e| {
-                e.map_err(|err| log::warn!("[Indexer] /Volumes entry error: {}", err))
-                    .ok()
-            }) {
-                let p = entry.path();
-                if p.to_string_lossy() != "/Volumes/Macintosh HD" {
-                    locations.push(p);
-                }
-            }
+    locations
+}
+
+fn name_lower_of(name: &str) -> String {
+    name.to_lowercase()
+}
+
+fn populate_name_lower(entries: &mut [IndexEntry]) {
+    for entry in entries.iter_mut() {
+        if entry.name_lower.is_empty() {
+            entry.name_lower = name_lower_of(&entry.name);
         }
     }
-
-    locations
 }
 
 fn build_index_sync() -> Vec<IndexEntry> {
@@ -197,6 +198,7 @@ fn build_index_sync() -> Vec<IndexEntry> {
     let excl_files = exclude_files();
     let locations = get_index_locations();
     let mut entries = Vec::new();
+    let mut scanned = 0usize;
 
     for location in &locations {
         if is_build_cancelled() {
@@ -217,6 +219,15 @@ fn build_index_sync() -> Vec<IndexEntry> {
                 break;
             }
 
+            // Throttle: sleep every SCAN_YIELD_EVERY entries; re-check cancel.
+            scanned += 1;
+            if scanned.is_multiple_of(SCAN_YIELD_EVERY) {
+                if is_build_cancelled() {
+                    break;
+                }
+                std::thread::sleep(std::time::Duration::from_millis(SCAN_YIELD_MS));
+            }
+
             let path = entry.path();
             let meta = match entry.metadata() {
                 Ok(m) => m,
@@ -235,8 +246,10 @@ fn build_index_sync() -> Vec<IndexEntry> {
                 .map(|d| d.as_secs_f64() * 1000.0)
                 .unwrap_or(0.0);
 
+            let name_lower = name_lower_of(&name);
             entries.push(IndexEntry {
                 name,
+                name_lower,
                 path: path.to_string_lossy().to_string(),
                 is_directory: meta.is_dir(),
                 is_file: meta.is_file(),
@@ -359,6 +372,7 @@ pub fn initialize_index(app: &tauri::AppHandle) {
     if let Some(data) = load_index_from_disk(&idx_path) {
         if let Ok(mut index) = FILE_INDEX.write() {
             index.entries = data.index;
+            populate_name_lower(&mut index.entries);
             index.last_built = data.last_index_time.map(|t| {
                 chrono::DateTime::from_timestamp_millis(t as i64)
                     .map(|dt| dt.to_rfc3339())
@@ -368,18 +382,25 @@ pub fn initialize_index(app: &tauri::AppHandle) {
         }
     }
 
+    // No auto-build: post-launch fs walk looks like idle CPU spike.
+    // Built lazily on first search (ensure_index_built) or explicit rebuild.
+}
+
+/// Build once in bg if enabled but empty. No-op if populated or building.
+pub fn ensure_index_built(app: &tauri::AppHandle) {
+    if !INDEXER_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
+    let (empty, building) = match FILE_INDEX.read() {
+        Ok(idx) => (idx.entries.is_empty(), idx.is_building),
+        Err(_) => return,
+    };
+    if !empty || building {
+        return;
+    }
     let app_handle = app.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(3));
-
-        let needs_rebuild = FILE_INDEX
-            .read()
-            .map(|idx| idx.entries.is_empty())
-            .unwrap_or(true);
-
-        if needs_rebuild {
-            run_index_build(&app_handle);
-        }
+        run_index_build(&app_handle);
     });
 }
 
@@ -429,7 +450,7 @@ pub fn search_in_index(query: &str) -> Vec<IndexEntry> {
     index
         .entries
         .iter()
-        .filter(|e| e.name.to_lowercase().contains(&query_lower))
+        .filter(|e| e.name_lower.contains(&query_lower))
         .take(10_000)
         .cloned()
         .collect()

@@ -3,6 +3,7 @@ import { formatFileSize } from './rendererFileIcons.js';
 import { isWindowsPath } from './rendererUtils.js';
 import { ignoreError, escapeHtml } from './shared.js';
 import { DASHBOARD_WIDGET_KEYS } from './constants.js';
+import { isForeground } from './rendererActivityState.js';
 
 type UtilityDrawerConfig = {
   getCurrentSettings: () => Settings;
@@ -13,7 +14,7 @@ type UtilityDrawerConfig = {
 };
 
 export function createUtilityDrawerController(config: UtilityDrawerConfig) {
-  const AUTO_CHECKSUM_MAX_BYTES = 50 * 1024 * 1024;
+  const AUTO_CHECKSUM_MAX_BYTES = 10 * 1024 * 1024;
   let activeItemPath: string | null = null;
   let activeItemSize: number | null = null;
   let isDirectory = false;
@@ -829,6 +830,11 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
   // Checksum triggers
   function triggerAutoChecksum(filePath = activeItemPath): void {
     if (!filePath) return;
+    const settings = config.getCurrentSettings();
+    // Opt-in; only when drawer open + focused, so passive selection skips hashing.
+    if (settings.enableAutoChecksum === false) return;
+    if (settings.utilityDrawerCollapsed) return;
+    if (!isForeground()) return;
     if (activeItemSize == null || activeItemSize >= AUTO_CHECKSUM_MAX_BYTES) return;
     const algo = checksumAlgoSelect?.value || 'sha256';
     calculateHash(filePath, algo);

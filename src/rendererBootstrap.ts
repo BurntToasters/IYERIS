@@ -3,6 +3,12 @@ import { hexToRgb } from './rendererThemeEditor.js';
 import { twemojiImg } from './rendererUtils.js';
 import { getById, clearHtml } from './rendererDom.js';
 import { ignoreError, setDevMode, devLog } from './shared.js';
+import {
+  initActivityState,
+  isForeground,
+  onActivityChange,
+  takeDirtyRefreshReason,
+} from './rendererActivityState.js';
 
 type BootstrapConfig = {
   loadSettings: () => Promise<void>;
@@ -106,15 +112,28 @@ export function createBootstrapController(config: BootstrapConfig) {
     });
   }
 
+  let pendingDrivesReload = false;
+
   async function init() {
     initializeStaticIcons();
 
-    window.addEventListener('focus', () => {
-      document.body.classList.remove('window-inactive');
+    const cleanupActivity = await initActivityState();
+    config.getIpcCleanupFunctions().push(cleanupActivity);
+
+    // On foreground: flush coalesced work (one refresh + deferred drive reload).
+    const cleanupActivityFlush = onActivityChange((foreground) => {
+      if (!foreground) return;
+      if (pendingDrivesReload) {
+        pendingDrivesReload = false;
+        void config.loadDrives();
+      }
+      const reason = takeDirtyRefreshReason();
+      if (reason && config.getCurrentPath()) {
+        config.refresh(`foreground:${reason}`);
+      }
     });
-    window.addEventListener('blur', () => {
-      document.body.classList.add('window-inactive');
-    });
+    config.getIpcCleanupFunctions().push(cleanupActivityFlush);
+
     const [platform, mas, flatpak, msStore, appVersion, devMode] = await Promise.all([
       window.tauriAPI.getPlatform().catch(() => 'unknown'),
       window.tauriAPI.isMas().catch(() => false),
@@ -287,10 +306,16 @@ export function createBootstrapController(config: BootstrapConfig) {
       const cleanupSystemResumed = window.tauriAPI.onSystemResumed(() => {
         devLog('System', 'system-resumed event received');
         config.clearDiskSpaceCache();
+        // refresh() self-gates + coalesces in bg.
         if (config.getCurrentPath()) {
           config.refresh('system-resumed');
         }
-        void config.loadDrives();
+        // Drive reload not free (disk probing); defer to foreground.
+        if (isForeground()) {
+          void config.loadDrives();
+        } else {
+          pendingDrivesReload = true;
+        }
       });
       config.getIpcCleanupFunctions().push(cleanupSystemResumed);
 

@@ -15,7 +15,8 @@ type GitStatusDeps = {
   showToast?: (message: string, title: string, type: 'success' | 'error' | 'info') => void;
 };
 
-const GIT_STATUS_CACHE_TTL_MS = 3000;
+// Decoration only; short TTL re-shells `git` while navigating. 15s = fresh enough.
+const GIT_STATUS_CACHE_TTL_MS = 15000;
 const GIT_STATUS_CACHE_MAX = 500;
 
 export function createGitStatusController(deps: GitStatusDeps) {
