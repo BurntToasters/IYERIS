@@ -27,6 +27,7 @@
 
 - **Optimization:** Major optimizations have been done to IYERIS.
   - Post 3.0.0 release, I have noticed higher energy usage and CPU/Memory for IYERIS; this isn't unexpected since I did add a lot more features and tweaked a bunch of things, so nows the time to do some cleanup!
+- **PKG:** Updated packages.
 
 ## Changes in `v3.0.0:`
 
