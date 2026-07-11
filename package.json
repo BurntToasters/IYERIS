@@ -119,7 +119,7 @@
     "release:finalize:hard": "npm run release:finalize",
     "release:win": "npm run release:prepare && npm run release:draft && npm run rust:target:win && npm run build:win && npm run release:sign:gpg && npm run release:finalize",
     "release:windows": "npm run release:win",
-    "release:mac": "npm run release:prepare && npm run release:wait-draft && npm run rust:targets:mac && npm run build:mac:universal && npm run build:mac:zip && npm run release:sign:gpg && npm run release:finalize",
+    "release:mac": "npm run release:prepare && npm run release:wait-draft && npm run rust:target:mac && npm run build:mac:universal && npm run build:mac:zip && npm run release:sign:gpg && npm run release:finalize",
     "release:mac:ssh": "npm run mac:ssh:keychain && npm run release:mac",
     "release:linux": "npm run release:linux:x64",
     "release:linux:x64": "npm run release:prepare && npm run release:wait-draft && npm run rust:target:linux:x64 && npm run build:linux:x64 && npm run flatpak:clean && npm run flatpak:bundle && npm run release:sign:gpg && npm run release:finalize",
