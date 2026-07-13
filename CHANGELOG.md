@@ -33,7 +33,7 @@
 
 ### Version 3 - Its Here!!
 
-Hello everyone! From IYERIS V1 -> V2 we saw a dramatic back and front end change. From a basic skeleton UI, to a full working electron version of IYERIS in V1, to a much more lightweight Tauri V2 version in V2 with better UI/UX, to now an even better and professional UI in V3 using Lucide Icons instead of twemoji. These drastic UI changes and more new features (see below) have constituted a major version instead of the previous `v2.2.0` beta version number I was previously using. It may not be a complete feature list since it's a beta, but it's a good portion of what to expect in the final release!
+Hello everyone! From IYERIS V1 -> V2 we saw a dramatic back and front end change. From a basic skeleton UI, to a full working electron version of IYERIS in V1, to a much more lightweight Tauri V2 version in V2 with better UI/UX, to now an even better and professional UI in V3 using Lucide Icons instead of twemoji. These drastic UI changes and more new features (see below) have constituted a major version instead of the previous `v2.2.0` beta version number I was previously using.
 
 - **Codebase:** Pending settings changes now flush on tab hide, `pagehide`, and unload so debounced toggles are less likely to be lost on abrupt exit.
 - **Security:** Migrated 7z support from unmaintained `sevenz-rust` to `sevenz-rust2`, including updated third-party license credits.
