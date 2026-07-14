@@ -44,6 +44,66 @@ const SENSITIVE_READ_FILE_NAMES: &[&str] = &[
 ];
 const SENSITIVE_READ_EXTENSIONS: &[&str] = &["pem", "key", "pfx", "p12"];
 
+#[cfg(target_os = "windows")]
+fn resolve_windows_shortcut_on_com_thread(path: &Path) -> Result<String, String> {
+    use windows::{
+        core::{Interface, HSTRING},
+        Win32::{
+            System::Com::{
+                CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile,
+                CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, STGM_READ,
+            },
+            UI::Shell::{IShellLinkW, ShellLink, SLGP_RAWPATH},
+        },
+    };
+
+    // This function always runs on a new thread, so it owns the COM apartment.
+    unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
+        .ok()
+        .map_err(|error| format!("Failed to initialize Windows COM: {error}"))?;
+
+    let result = (|| unsafe {
+        let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)
+            .map_err(|error| format!("Failed to create Windows shortcut reader: {error}"))?;
+        let persist_file: IPersistFile = shell_link
+            .cast()
+            .map_err(|error| format!("Failed to load Windows shortcut reader: {error}"))?;
+        let shortcut_path = HSTRING::from(path.to_string_lossy().as_ref());
+        persist_file
+            .Load(&shortcut_path, STGM_READ)
+            .map_err(|error| format!("Failed to load shortcut: {error}"))?;
+
+        // Windows supports extended-length paths up to 32,767 UTF-16 code units.
+        let mut target = vec![0u16; 32_768];
+        shell_link
+            .GetPath(&mut target, std::ptr::null_mut(), SLGP_RAWPATH.0 as u32)
+            .map_err(|error| format!("Failed to read shortcut target: {error}"))?;
+        let length = target
+            .iter()
+            .position(|&unit| unit == 0)
+            .unwrap_or(target.len());
+        let target = String::from_utf16_lossy(&target[..length]);
+        if target.is_empty() {
+            return Err("Shortcut target path is empty.".to_string());
+        }
+        Ok(target)
+    })();
+
+    unsafe { CoUninitialize() };
+    result
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_windows_shortcut(path: &Path) -> Result<String, String> {
+    let path = path.to_path_buf();
+    std::thread::Builder::new()
+        .name("iyeris-shortcut-reader".to_string())
+        .spawn(move || resolve_windows_shortcut_on_com_thread(&path))
+        .map_err(|error| format!("Failed to start shortcut reader: {error}"))?
+        .join()
+        .map_err(|_| "Shortcut reader thread panicked.".to_string())?
+}
+
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ItemProperties {
@@ -1124,32 +1184,7 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
             .map(|ext| ext.eq_ignore_ascii_case("lnk"))
             .unwrap_or(false);
         let target = if shortcut {
-            let escaped = path.to_string_lossy().replace('\'', "''");
-            let script = format!(
-                "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); if($s.TargetPath) {{ Write-Output $s.TargetPath }}",
-                escaped
-            );
-            {
-                let mut cmd = Command::new("powershell");
-                cmd.args(["-NoProfile", "-Command", &script]);
-                #[cfg(target_os = "windows")]
-                {
-                    use std::os::windows::process::CommandExt;
-                    cmd.creation_flags(0x08000000);
-                }
-                cmd.output().ok().and_then(|o| {
-                    if o.status.success() {
-                        let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                        if t.is_empty() {
-                            None
-                        } else {
-                            Some(t)
-                        }
-                    } else {
-                        None
-                    }
-                })
-            }
+            resolve_windows_shortcut(&path).ok()
         } else {
             None
         };
@@ -1784,29 +1819,7 @@ pub async fn resolve_shortcut(shortcut_path: String) -> Result<String, String> {
 
     #[cfg(target_os = "windows")]
     {
-        let escaped_path = path.to_string_lossy().replace('\'', "''");
-        let script = format!(
-            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); if($s.TargetPath) {{ Write-Output $s.TargetPath }}",
-            escaped_path
-        );
-        let output = {
-            let mut cmd = Command::new("powershell");
-            cmd.args(["-NoProfile", "-Command", &script]);
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000);
-            cmd.output()
-        }
-        .map_err(|e| format!("Failed to resolve shortcut: {}", e))?;
-
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-
-        let target = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if target.is_empty() {
-            return Err("Shortcut target path is empty.".to_string());
-        }
-        Ok(target)
+        resolve_windows_shortcut(&path)
     }
 
     #[cfg(not(target_os = "windows"))]
