@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -328,9 +329,23 @@ pub async fn open_file(file_path: String) -> Result<(), String> {
     log::debug!("[FileOps] open_file: {}", file_path);
     match parse_open_target(&file_path)? {
         OpenTarget::FilePath(path) => {
+            #[cfg(target_os = "macos")]
+            return crate::native_macos::open_path(&path);
+
+            #[cfg(target_os = "windows")]
+            return crate::native_windows::open_path(&path);
+
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             open::that(&path).map_err(|e| format!("Failed to open file: {}", e))
         }
         OpenTarget::External(url) => {
+            #[cfg(target_os = "macos")]
+            return crate::native_macos::open_url(&url);
+
+            #[cfg(target_os = "windows")]
+            return crate::native_windows::open_uri(&url);
+
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             open::that(url).map_err(|e| format!("Failed to open URL: {}", e))
         }
     }
@@ -401,15 +416,14 @@ pub async fn trash_item(item_path: String) -> Result<(), String> {
 pub async fn open_trash() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        open::that(std::path::Path::new(&format!(
+        crate::native_macos::open_path(std::path::Path::new(&format!(
             "{}/.Trash",
             std::env::var("HOME").unwrap_or_default()
-        )))
-        .map_err(|e| e.to_string())?;
+        )))?;
     }
     #[cfg(target_os = "windows")]
     {
-        open::that("shell:RecycleBinFolder").map_err(|e| e.to_string())?;
+        crate::native_windows::open_uri("shell:RecycleBinFolder")?;
     }
     #[cfg(target_os = "linux")]
     {
@@ -1273,57 +1287,29 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
         return Err("Refusing to change attributes on a symlink".to_string());
     }
 
-    if let Some(is_read_only) = read_only {
-        let mut perms = fs::metadata(&path)
-            .map_err(|e| format!("Failed to read metadata: {}", e))?
-            .permissions();
-        perms.set_readonly(is_read_only);
-        fs::set_permissions(&path, perms)
-            .map_err(|e| format!("Failed to update readonly attribute: {}", e))?;
-    }
-
     #[cfg(target_os = "windows")]
-    if let Some(is_hidden) = hidden {
-        let hidden_flag = if is_hidden { "+h" } else { "-h" };
-        let path_str = path.to_string_lossy().to_string();
-        let output = {
-            let mut cmd = Command::new("attrib");
-            cmd.args([hidden_flag, &path_str]);
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000);
-            cmd.output()
-        }
-        .map_err(|e| format!("Failed to update hidden attribute: {}", e))?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    if let Some(is_system) = system {
-        let system_flag = if is_system { "+s" } else { "-s" };
-        let path_str = path.to_string_lossy().to_string();
-        let output = {
-            let mut cmd = Command::new("attrib");
-            cmd.args([system_flag, &path_str]);
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000);
-            cmd.output()
-        }
-        .map_err(|e| format!("Failed to update system attribute: {}", e))?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
+    {
+        crate::native_windows::update_file_attributes(&path, read_only, hidden, system)
     }
 
     #[cfg(not(target_os = "windows"))]
-    if hidden.is_some() || system.is_some() {
-        return Err(
-            "Hidden and System attribute updates are only supported on Windows.".to_string(),
-        );
-    }
+    {
+        if let Some(is_read_only) = read_only {
+            let mut perms = fs::metadata(&path)
+                .map_err(|e| format!("Failed to read metadata: {}", e))?
+                .permissions();
+            perms.set_readonly(is_read_only);
+            fs::set_permissions(&path, perms)
+                .map_err(|e| format!("Failed to update readonly attribute: {}", e))?;
+        }
 
-    Ok(())
+        if hidden.is_some() || system.is_some() {
+            return Err(
+                "Hidden and System attribute updates are only supported on Windows.".to_string(),
+            );
+        }
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -2194,15 +2180,10 @@ mod tests {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 fn run_command_capture(command: &str, args: &[&str]) -> Option<String> {
     let mut cmd = Command::new(command);
     cmd.args(args);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
-    }
     let output = cmd.output().ok()?;
     if !output.status.success() {
         return None;
@@ -2366,7 +2347,7 @@ fn get_system_clipboard_files_internal() -> Vec<String> {
 
     #[cfg(target_os = "macos")]
     {
-        run_command_capture("pbpaste", &[])
+        crate::native_macos::clipboard_text()
             .map(|output| parse_clipboard_paths(&output))
             .unwrap_or_default()
     }
@@ -2452,17 +2433,7 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        let mut cmd = Command::new("pbcopy");
-        cmd.stdin(std::process::Stdio::piped());
-        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-        if let Some(mut stdin) = child.stdin.take() {
-            use std::io::Write;
-            stdin
-                .write_all(text.as_bytes())
-                .map_err(|e| e.to_string())?;
-        }
-        child.wait().map_err(|e| e.to_string())?;
-        Ok(())
+        crate::native_macos::set_clipboard_text(&text)
     }
 
     #[cfg(target_os = "linux")]

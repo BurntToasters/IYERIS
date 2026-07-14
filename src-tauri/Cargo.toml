@@ -19,7 +19,6 @@ tempfile = "3"
 tauri = { version = "2", features = ["tray-icon", "protocol-asset", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-base64 = "0.22"
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "process", "io-util", "fs"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"
@@ -46,18 +45,23 @@ glob = "0.3"
 regex = "1"
 shell-words = "1"
 chrono = { version = "0.4", features = ["serde"] }
-open = "5"
 trash = "5"
 directories = "6"
 fs2 = "0.4"
 log = "0.4"
 env_logger = "0.11"
 
+[target.'cfg(not(any(target_os = "windows", target_os = "macos")))'.dependencies]
+open = "5"
+
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["block2", "NSPasteboard", "NSRunningApplication", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSProcessInfo", "NSString", "NSURL", "NSUserDefaults"] }
 core-foundation = "0.9"
 
 [target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.55"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
     "Win32_Graphics_Gdi",
@@ -69,9 +73,11 @@ windows = { version = "0.58", features = [
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
     "Win32_System_Ole",
+    "Win32_System_Registry",
     "Win32_System_SystemInformation",
     "Win32_UI_Input_KeyboardAndMouse",
     "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
     "Win32_UI_WindowsAndMessaging",
 ] }
 raw-window-handle = "0.6"
