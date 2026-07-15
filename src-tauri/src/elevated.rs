@@ -254,6 +254,34 @@ fn run_windows_file_operations(
 /// hostile $PATH shadowing) lets an attacker get a free root shell when
 /// the user clicks "Restart as Admin." (M1)
 #[cfg(target_os = "linux")]
+fn verify_root_owned_nonwritable_chain(path: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+
+    for candidate in path.ancestors() {
+        let metadata = std::fs::symlink_metadata(candidate).map_err(|error| {
+            format!(
+                "Cannot inspect elevated executable path component {}: {}",
+                candidate.display(),
+                error
+            )
+        })?;
+        if metadata.uid() != 0 {
+            return Err(format!(
+                "Refusing to elevate executable through non-root-owned path component: {}",
+                candidate.display()
+            ));
+        }
+        if metadata.mode() & 0o022 != 0 {
+            return Err(format!(
+                "Refusing to elevate executable through group/world-writable path component: {}",
+                candidate.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
 fn verify_trusted_exe_path(exe: &std::path::Path) -> Result<std::path::PathBuf, String> {
     let canonical = exe
         .canonicalize()
@@ -272,6 +300,7 @@ fn verify_trusted_exe_path(exe: &std::path::Path) -> Result<std::path::PathBuf, 
     ];
     let s = canonical.to_string_lossy();
     if TRUSTED_PREFIXES.iter().any(|p| s.starts_with(p)) {
+        verify_root_owned_nonwritable_chain(&canonical)?;
         Ok(canonical)
     } else {
         Err(format!(
@@ -331,6 +360,7 @@ pub async fn restart_as_admin() -> Result<(), String> {
     log::info!("[Elevated] restart_as_admin requested");
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::ffi::OsStrExt;
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
         use windows::{
             core::{HSTRING, PCWSTR},
@@ -340,7 +370,11 @@ pub async fn restart_as_admin() -> Result<(), String> {
             },
         };
         let verb = HSTRING::from("runas");
-        let executable = HSTRING::from(exe.to_string_lossy().as_ref());
+        let executable: Vec<u16> = exe
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
         let result = unsafe {
             ShellExecuteW(
                 HWND::default(),
@@ -708,6 +742,19 @@ mod tests {
     fn shell_escape_handles_apostrophes() {
         assert_eq!(shell_escape("foo's"), "foo'\\''s");
         assert_eq!(shell_escape("plain"), "plain");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn elevation_rejects_user_owned_executable_chain() {
+        use std::os::unix::fs::MetadataExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let executable = temp.path().join("iyeris");
+        std::fs::write(&executable, b"test").unwrap();
+        if std::fs::metadata(&executable).unwrap().uid() != 0 {
+            assert!(verify_root_owned_nonwritable_chain(&executable).is_err());
+        }
     }
 
     #[cfg(target_os = "macos")]

@@ -1,6 +1,6 @@
 {
   "name": "iyeris",
-  "version": "3.0.2-beta.2",
+  "version": "3.0.2",
   "private": true,
   "type": "module",
   "description": "A beautiful cross-platform file explorer built with Tauri, featuring a simple yet advanced modern design.",
@@ -117,6 +117,7 @@
     "release:prepare": "npm run rust:update && npm ci && npm run sync-version && cargo check --manifest-path src-tauri/Cargo.toml -q && npm run dist:clean-release-artifacts && node scripts/update-metainfo.js",
     "release:draft": "dotenv -e .env -- node scripts/ensure-draft-release.cjs",
     "release:wait-draft": "dotenv -e .env -- node scripts/ensure-draft-release.cjs --wait",
+    "release:verify-draft": "dotenv -e .env -- node scripts/verify-release-draft.cjs",
     "release:finalize": "dotenv -e .env -- node scripts/post-release-assets.js && git fetch origin && git reset --hard @{u} && git clean -fd",
     "release:finalize:hard": "npm run release:finalize",
     "release:win": "npm run release:prepare && npm run release:draft && npm run rust:target:win && npm run build:win && npm run release:sign:gpg && npm run release:finalize",
@@ -127,6 +128,7 @@
     "release:linux:x64": "npm run release:prepare && npm run release:wait-draft && npm run rust:target:linux:x64 && npm run build:linux:x64 && npm run flatpak:clean && npm run flatpak:bundle && npm run release:sign:gpg && npm run release:finalize",
     "release:linux:arm64": "npm run release:prepare && npm run release:wait-draft && npm run rust:target:linux:arm64 && npm run build:linux:arm64 && npm run release:sign:gpg && npm run release:finalize",
     "release:sign:gpg": "dotenv -e .env -- node scripts/gpg-sign.js",
+    "release:sign:gpg:stage": "dotenv -e .env -- node scripts/gpg-sign.js --stage-only",
     "setup:deb": "sudo apt update && sudo apt install -y build-essential curl wget file libgtk-3-dev libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev libsoup-3.0-dev libglib2.0-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf rpm flatpak flatpak-builder && sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo && rustup toolchain install stable --profile minimal && rustup default stable",
     "setup:flatpak": "sudo flatpak install -y flathub org.gnome.Platform//49 org.gnome.Sdk//49 org.freedesktop.Sdk.Extension.node22//25.08 org.freedesktop.Sdk.Extension.rust-stable//25.08",
     "gitprune": "node build/git-prune-local-branches.js",
