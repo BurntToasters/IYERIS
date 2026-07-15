@@ -12,6 +12,7 @@ const requireMacSigning = rawArgs.includes('--require-macos-signing');
 const requireMacNotarization = rawArgs.includes('--require-macos-notarization');
 const requireTauriSigning = rawArgs.includes('--require-tauri-signing');
 const requireWindowsSigning = rawArgs.includes('--require-windows-signing');
+const skipWindowsCodeSigning = process.env.SKIP_WIN_CODESIGN?.trim() === '1';
 
 for (const arg of rawArgs) {
   if (
@@ -97,6 +98,14 @@ function assertWindowsSigningConfigured() {
     console.error('[tauri-build] --require-windows-signing cannot be combined with --no-bundle.');
     process.exit(1);
   }
+  if (process.platform !== 'win32') {
+    console.error('[tauri-build] Authenticode release builds must run on Windows.');
+    process.exit(1);
+  }
+  if (skipWindowsCodeSigning) {
+    console.warn('[tauri-build] SKIP_WIN_CODESIGN=1; producing unsigned Windows artifacts.');
+    return;
+  }
 
   const requiredVars = [
     'AZURE_CLIENT_ID',
@@ -114,14 +123,10 @@ function assertWindowsSigningConfigured() {
     );
     process.exit(1);
   }
-  if (process.platform !== 'win32') {
-    console.error('[tauri-build] Authenticode release builds must run on Windows.');
-    process.exit(1);
-  }
 }
 
 function verifyWindowsArtifacts() {
-  if (!requireWindowsSigning) return;
+  if (!requireWindowsSigning || skipWindowsCodeSigning) return;
 
   const target = getArgValue('--target');
   const root = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
