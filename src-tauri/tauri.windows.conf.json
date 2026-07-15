@@ -1,0 +1,18 @@
+{
+  "bundle": {
+    "windows": {
+      "signCommand": {
+        "cmd": "powershell.exe",
+        "args": [
+          "-NoProfile",
+          "-NonInteractive",
+          "-ExecutionPolicy",
+          "Bypass",
+          "-Command",
+          "param([string]$TargetFile) & $env:TAURI_WINDOWS_SIGNING_SCRIPT -FilePath $TargetFile",
+          "%1"
+        ]
+      }
+    }
+  }
+}

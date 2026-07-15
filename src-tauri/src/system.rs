@@ -1,6 +1,4 @@
 use std::fs;
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 use std::path::Path;
 #[cfg(target_os = "linux")]
 use std::path::PathBuf;
@@ -36,14 +34,6 @@ fn was_recently_focused() -> bool {
 
 #[cfg(target_os = "linux")]
 const DESKTOP_EXEC_FIELD_REGEX: &str = "%[fFuUdDnNickvm]";
-
-#[cfg(target_os = "windows")]
-fn is_valid_windows_filetype(value: &str) -> bool {
-    !value.is_empty()
-        && value
-            .chars()
-            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
-}
 
 #[cfg(target_os = "windows")]
 fn is_valid_windows_extension(value: &str) -> bool {
@@ -338,58 +328,13 @@ fn collect_windows_open_with_apps(path: &Path) -> Vec<(String, String)> {
         .unwrap_or_default();
 
     let mut apps: Vec<(String, String)> = Vec::new();
-    if !ext.is_empty() {
-        if let Ok(assoc_output) = {
-            use std::os::windows::process::CommandExt;
-            Command::new("cmd")
-                .args(["/C", "assoc", &ext])
-                .creation_flags(0x08000000)
-                .output()
-        } {
-            if assoc_output.status.success() {
-                let assoc_text = String::from_utf8_lossy(&assoc_output.stdout)
-                    .trim()
-                    .to_string();
-                if let Some(file_type) = assoc_text.split('=').nth(1).map(|value| value.trim()) {
-                    if is_valid_windows_filetype(file_type) {
-                        if let Ok(ftype_output) = {
-                            use std::os::windows::process::CommandExt;
-                            Command::new("cmd")
-                                .args(["/C", "ftype", file_type])
-                                .creation_flags(0x08000000)
-                                .output()
-                        } {
-                            if ftype_output.status.success() {
-                                let ftype_text = String::from_utf8_lossy(&ftype_output.stdout)
-                                    .trim()
-                                    .to_string();
-                                if let Some(command) = ftype_text.split('=').nth(1) {
-                                    let command = command.trim();
-                                    let executable = if command.starts_with('"') {
-                                        command
-                                            .trim_start_matches('"')
-                                            .split('"')
-                                            .next()
-                                            .unwrap_or("")
-                                            .to_string()
-                                    } else {
-                                        command.split_whitespace().next().unwrap_or("").to_string()
-                                    };
-                                    if !executable.is_empty() {
-                                        let name = Path::new(&executable)
-                                            .file_stem()
-                                            .and_then(|value| value.to_str())
-                                            .unwrap_or("Default Application")
-                                            .to_string();
-                                        apps.push((executable, name));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+    if let Some(executable) = crate::native_windows::associated_executable(&ext) {
+        let name = Path::new(&executable)
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .unwrap_or("Default Application")
+            .to_string();
+        apps.push((executable, name));
     }
 
     for (id, name) in [
@@ -433,56 +378,23 @@ pub fn get_system_accent_color() -> Result<serde_json::Value, String> {
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        let accent = (|| -> Option<String> {
-            let output = std::process::Command::new("reg")
-                .args([
-                    "query",
-                    "HKCU\\SOFTWARE\\Microsoft\\Windows\\DWM",
-                    "/v",
-                    "ColorizationColor",
-                ])
-                .creation_flags(0x08000000)
-                .output()
-                .ok()?;
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if let Some(pos) = line.find("0x") {
-                    if let Ok(val) = u32::from_str_radix(line[pos + 2..].trim(), 16) {
-                        let r = (val >> 16) & 0xFF;
-                        let g = (val >> 8) & 0xFF;
-                        let b = val & 0xFF;
-                        return Some(format!("{:02X}{:02X}{:02X}", r, g, b));
-                    }
-                }
-            }
-            None
-        })()
+        let accent = crate::native_windows::read_user_dword(
+            r"SOFTWARE\Microsoft\Windows\DWM",
+            "ColorizationColor",
+        )
+        .map(|value| {
+            let r = (value >> 16) & 0xFF;
+            let g = (value >> 8) & 0xFF;
+            let b = value & 0xFF;
+            format!("{r:02X}{g:02X}{b:02X}")
+        })
         .unwrap_or_else(|| "0078D4".into());
 
-        let is_dark = (|| -> Option<bool> {
-            let output = std::process::Command::new("reg")
-                .args([
-                    "query",
-                    "HKCU\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
-                    "/v",
-                    "AppsUseLightTheme",
-                ])
-                .creation_flags(0x08000000)
-                .output()
-                .ok()?;
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            for line in stdout.lines() {
-                if line.contains("0x0") {
-                    return Some(true);
-                }
-                if line.contains("0x1") {
-                    return Some(false);
-                }
-            }
-            None
-        })()
-        .unwrap_or(false);
+        let is_dark = crate::native_windows::read_user_dword(
+            r"SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize",
+            "AppsUseLightTheme",
+        )
+        .is_some_and(|value| value == 0);
 
         Ok(serde_json::json!({
             "accentColor": accent,
@@ -560,46 +472,19 @@ pub fn get_system_accent_color() -> Result<serde_json::Value, String> {
 
 #[cfg(target_os = "macos")]
 fn is_dark_mode() -> bool {
-    std::process::Command::new("defaults")
-        .args(["read", "-globalDomain", "AppleInterfaceStyle"])
-        .output()
-        .map(|out| String::from_utf8_lossy(&out.stdout).contains("Dark"))
-        .unwrap_or(false)
+    crate::native_macos::is_dark_mode()
 }
 
 #[tauri::command]
 pub fn get_system_text_scale() -> f64 {
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        let output = std::process::Command::new("reg")
-            .args([
-                "query",
-                "HKCU\\SOFTWARE\\Microsoft\\Accessibility",
-                "/v",
-                "TextScaleFactor",
-            ])
-            .creation_flags(0x08000000)
-            .output();
-        if let Ok(out) = output {
-            let stdout = String::from_utf8_lossy(&out.stdout);
-            for line in stdout.lines() {
-                if let Some(pos) = line.find("0x") {
-                    if let Ok(val) = u32::from_str_radix(line[pos + 2..].trim(), 16) {
-                        return (val as f64) / 100.0;
-                    }
-                }
-                if line.contains("REG_DWORD") {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
-                    if let Some(last) = parts.last() {
-                        if let Ok(val) = last.parse::<u32>() {
-                            return (val as f64) / 100.0;
-                        }
-                    }
-                }
-            }
-        }
-        1.0
+        crate::native_windows::read_user_dword(
+            r"SOFTWARE\Microsoft\Accessibility",
+            "TextScaleFactor",
+        )
+        .map(|value| value as f64 / 100.0)
+        .unwrap_or(1.0)
     }
 
     #[cfg(target_os = "linux")]
@@ -712,21 +597,7 @@ pub fn is_ms_store() -> bool {
 pub fn is_msi() -> bool {
     #[cfg(target_os = "windows")]
     {
-        let output = {
-            use std::os::windows::process::CommandExt;
-            std::process::Command::new("reg")
-                .args(["query", "HKCU\\Software\\IYERIS", "/v", "InstalledViaMsi"])
-                .creation_flags(0x08000000)
-                .output()
-        };
-
-        if let Ok(result) = output {
-            if result.status.success() {
-                let stdout = String::from_utf8_lossy(&result.stdout);
-                return stdout.contains("InstalledViaMsi") && stdout.contains("0x1");
-            }
-        }
-        false
+        crate::native_windows::read_user_dword(r"Software\IYERIS", "InstalledViaMsi") == Some(1)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -812,59 +683,22 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        let mac_terminals = ["iTerm", "Warp", "Alacritty", "kitty", "Hyper", "Terminal"];
-        let preferred = std::env::var("TERM_PROGRAM")
-            .unwrap_or_default()
-            .to_lowercase();
-        let ordered: Vec<&str> = if !preferred.is_empty() {
-            let mut v: Vec<&str> = Vec::with_capacity(mac_terminals.len());
-            for t in &mac_terminals {
-                if preferred.contains(&t.to_lowercase()) {
-                    v.insert(0, t);
-                } else {
-                    v.push(t);
-                }
-            }
-            v
-        } else {
-            mac_terminals.to_vec()
-        };
-
-        for app_name in &ordered {
-            let status = std::process::Command::new("open")
-                .args(["-a", app_name, "--", path.to_str().unwrap_or(".")])
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::null())
-                .status();
-            if let Ok(s) = status {
-                if s.success() {
-                    return Ok(());
-                }
-            }
-        }
-        return Err("No terminal emulator found".into());
+        return crate::native_macos::open_terminal(&path);
     }
 
     #[cfg(target_os = "windows")]
     {
-        let has_wt = std::process::Command::new("where")
-            .arg("wt")
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status()
-            .map(|s| s.success())
-            .unwrap_or(false);
-
-        if has_wt {
-            std::process::Command::new("wt")
-                .args(["-d", path.to_str().unwrap_or(".")])
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        } else {
+        let terminal = std::process::Command::new("wt")
+            .args(["-d", path.to_str().unwrap_or(".")])
+            .spawn();
+        if terminal.is_err() {
             // Pass the path via current_dir so it is never embedded in a shell
             // command string — avoids %VAR% expansion in folder names. (W1)
             use std::os::windows::process::CommandExt;
-            std::process::Command::new("cmd")
+            let command_processor = std::env::var_os("ComSpec")
+                .filter(|value| std::path::Path::new(value).is_absolute())
+                .unwrap_or_else(|| std::ffi::OsString::from(r"C:\Windows\System32\cmd.exe"));
+            std::process::Command::new(command_processor)
                 .current_dir(&path)
                 .creation_flags(0x00000010) // CREATE_NEW_CONSOLE
                 .spawn()
@@ -912,18 +746,9 @@ pub async fn open_terminal(dir_path: String) -> Result<(), String> {
                 vec![format!("--working-directory={}", dir_path)],
             ),
             ("sakura", vec![format!("--working-directory={}", dir_path)]),
-            (
-                "xterm",
-                vec![
-                    "-e".into(),
-                    "sh".into(),
-                    "-lc".into(),
-                    format!(
-                        "cd '{}' && exec \"$SHELL\"",
-                        path.to_string_lossy().replace('\'', "'\\''")
-                    ),
-                ],
-            ),
+            // xterm inherits the working directory and starts the user's shell.
+            // No shell command string is needed.
+            ("xterm", vec![]),
         ];
 
         let in_flatpak =
@@ -1068,6 +893,13 @@ pub fn open_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
         .path()
         .app_log_dir()
         .map_err(|e: tauri::Error| e.to_string())?;
+    #[cfg(target_os = "macos")]
+    return crate::native_macos::open_path(&log_dir);
+
+    #[cfg(target_os = "windows")]
+    return crate::native_windows::open_path(&log_dir);
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     open::that(&log_dir).map_err(|e| e.to_string())
 }
 
@@ -1151,13 +983,7 @@ pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        for path in &validated_paths {
-            std::process::Command::new("open")
-                .arg("-R")
-                .arg(path.as_os_str())
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
+        crate::native_macos::reveal_items(&validated_paths)?;
     }
 
     #[cfg(target_os = "linux")]
@@ -1173,13 +999,7 @@ pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
-        for path in &validated_paths {
-            std::process::Command::new("explorer")
-                .arg("/select,")
-                .arg(path.as_os_str())
-                .spawn()
-                .map_err(|e| e.to_string())?;
-        }
+        crate::native_windows::reveal_items(&validated_paths)?;
     }
 
     Ok(())
@@ -1211,8 +1031,9 @@ pub async fn check_full_disk_access() -> Result<bool, String> {
 pub async fn request_full_disk_access() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        open::that("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
-            .map_err(|e| e.to_string())?;
+        crate::native_macos::open_url(
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles",
+        )?;
     }
     Ok(())
 }
@@ -1222,77 +1043,10 @@ pub async fn get_open_with_apps(file_path: String) -> Result<Vec<serde_json::Val
     #[cfg(target_os = "macos")]
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
-        let blocking = tokio::task::spawn_blocking(move || {
-            let jxa_code = r#"ObjC.import('AppKit');
-ObjC.import('Foundation');
-const env = $.NSProcessInfo.processInfo.environment;
-const filePath = ObjC.unwrap(env.objectForKey('FILE_PATH'));
-const fileUrl = $.NSURL.fileURLWithPath(filePath);
-const apps = $.NSWorkspace.sharedWorkspace.urlsForApplicationsToOpenURL(fileUrl);
-const fm = $.NSFileManager.defaultManager;
-const result = [];
-for (let i = 0; i < apps.count; i++) {
-  const appUrl = apps.objectAtIndex(i);
-  const appPath = ObjC.unwrap(appUrl.path);
-  const displayName = ObjC.unwrap(fm.displayNameAtPath(appPath));
-  result.push({ id: appPath, name: displayName });
-}
-JSON.stringify(result);"#;
-            let jxa_output = std::process::Command::new("osascript")
-                .args(["-l", "JavaScript", "-e", jxa_code])
-                .env("FILE_PATH", path.to_string_lossy().as_ref())
-                .output();
-            if let Ok(output) = jxa_output {
-                if output.status.success() {
-                    return Ok(output);
-                }
-            }
-
-            let swift_code = r#"import AppKit; import Foundation;
-let url = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FILE_PATH"]!);
-let apps = NSWorkspace.shared.urlsForApplications(toOpen: url);
-var result: [[String: String]] = [];
-for app in apps {
-    let name = FileManager.default.displayName(atPath: app.path);
-    result.append(["id": app.path, "name": name]);
-}
-let data = try! JSONSerialization.data(withJSONObject: result);
-print(String(data: data, encoding: .utf8)!)"#;
-            std::process::Command::new("swift")
-                .args(["-e", swift_code])
-                .env("FILE_PATH", path.to_string_lossy().as_ref())
-                .output()
-        });
-        let output = tokio::time::timeout(std::time::Duration::from_secs(8), blocking)
-            .await
-            .map_err(|_| "Timed out querying available applications".to_string())?
-            .map_err(|e| e.to_string())?
-            .map_err(|e| e.to_string())?;
-
-        if output.status.success() {
-            let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if let Ok(apps) = serde_json::from_str::<Vec<serde_json::Value>>(&stdout) {
-                if !apps.is_empty() {
-                    return Ok(apps);
-                }
-            }
-        }
-        let fallback_apps: Vec<(&str, &str)> = vec![
-            ("/System/Applications/TextEdit.app", "TextEdit"),
-            ("/System/Applications/Preview.app", "Preview"),
-            ("/Applications/Safari.app", "Safari"),
-            ("/System/Applications/Utilities/Terminal.app", "Terminal"),
-            (
-                "/System/Applications/QuickTime Player.app",
-                "QuickTime Player",
-            ),
-        ];
-        let available: Vec<serde_json::Value> = fallback_apps
+        Ok(crate::native_macos::applications_for_path(&path)
             .into_iter()
-            .filter(|(path, _)| std::path::Path::new(path).exists())
             .map(|(id, name)| serde_json::json!({ "id": id, "name": name }))
-            .collect();
-        Ok(available)
+            .collect())
     }
 
     #[cfg(target_os = "windows")]
@@ -1332,7 +1086,7 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
         if app_id.trim().is_empty() || app_id == "default" {
-            return open::that(&path).map_err(|e| e.to_string());
+            return crate::native_macos::open_path(&path);
         }
         let app_path = crate::validate_existing_path(&app_id, "Application")?;
         let is_app_bundle = app_path
@@ -1367,20 +1121,14 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
                     .to_string(),
             );
         }
-        std::process::Command::new("open")
-            .arg("-a")
-            .arg(canonical_app.as_os_str())
-            .arg(path.as_os_str())
-            .spawn()
-            .map_err(|e| e.to_string())?;
-        Ok(())
+        crate::native_macos::open_path_with_app(&path, &canonical_app)
     }
 
     #[cfg(target_os = "windows")]
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
         if app_id.is_empty() || app_id == "default" {
-            return open::that(&path).map_err(|e| e.to_string());
+            return crate::native_windows::open_path(&path);
         }
 
         let allowed_apps = collect_windows_open_with_apps(&path);
@@ -1487,14 +1235,15 @@ fn app_exe_string() -> Result<String, String> {
 }
 
 /// H1: reject the current exe path for native-integration installation if it
-/// contains shell metacharacters or quote characters. The installation writes
-/// the path verbatim into an AppleScript / Bash / Registry template, and a
+/// contains shell metacharacters or quote characters. The macOS and Linux
+/// installations write the path into shell-backed integration templates, and a
 /// path containing `"`, `$`, `\\`, etc. would either break the template or
 /// (worse) make the registered entry a shell-injection primitive that fires
 /// on every right-click. Today the install path is a vendor-controlled
 /// .app / .exe / AppImage and never contains these characters, but if a
 /// future Tauri release ever generates one with weird path encoding we want
 /// to refuse rather than silently writing a broken/exploitable workflow.
+#[cfg(not(target_os = "windows"))]
 fn validate_native_integration_exe_path(exe: &str) -> Result<(), String> {
     for ch in exe.chars() {
         if matches!(
@@ -1514,12 +1263,9 @@ fn validate_native_integration_exe_path(exe: &str) -> Result<(), String> {
 pub async fn get_native_integration_status() -> Result<serde_json::Value, String> {
     #[cfg(target_os = "windows")]
     {
-        let installed = Command::new("reg")
-            .args(["query", r"HKCU\Software\Classes\Directory\shell\IYERIS"])
-            .creation_flags(0x08000000)
-            .output()
-            .map(|out| out.status.success())
-            .unwrap_or(false);
+        let installed = crate::native_windows::user_key_exists(
+            r"Software\Classes\Directory\shell\IYERIS",
+        );
         Ok(serde_json::json!({
             "supported": true,
             "installed": installed,
@@ -1575,56 +1321,13 @@ pub async fn get_native_integration_status() -> Result<serde_json::Value, String
 #[tauri::command]
 pub async fn install_native_integration() -> Result<(), String> {
     let exe = app_exe_string()?;
+
+    #[cfg(not(target_os = "windows"))]
     validate_native_integration_exe_path(&exe)?; // H1
 
     #[cfg(target_os = "windows")]
     {
-        // The exe path is passed verbatim — `reg add /d` stores its argument
-        // literally and does NOT unescape backslashes, so any escaping here
-        // (e.g. doubling `\`) ends up stored in the registry and produces a
-        // broken `C:\\Users\\...` command that Explorer cannot resolve. H1
-        // already guarantees the path contains no shell metacharacters or
-        // quote chars, so it is safe to embed as-is inside the surrounding
-        // double quotes.
-        let command = format!("\"{}\" \"%1\"", exe);
-        // Per-verb icon: show the app's own icon next to the menu entry.
-        let icon = format!("\"{}\",0", exe);
-        let pairs = [
-            (r"HKCU\Software\Classes\*\shell\IYERIS", "Open in IYERIS"),
-            (
-                r"HKCU\Software\Classes\Directory\shell\IYERIS",
-                "Open in IYERIS",
-            ),
-        ];
-
-        fn run_reg(args: &[&str]) -> Result<(), String> {
-            let status = Command::new("reg")
-                .args(args)
-                .creation_flags(0x08000000)
-                .status()
-                .map_err(|e| format!("Failed to run reg: {}", e))?;
-            if !status.success() {
-                return Err(format!(
-                    "reg exited with status {} while writing context-menu entry",
-                    status.code().unwrap_or(-1)
-                ));
-            }
-            Ok(())
-        }
-
-        for (key, label) in pairs {
-            run_reg(&["add", key, "/ve", "/d", label, "/f"])?;
-            run_reg(&["add", key, "/v", "Icon", "/d", &icon, "/f"])?;
-            run_reg(&[
-                "add",
-                &format!(r"{}\command", key),
-                "/ve",
-                "/d",
-                &command,
-                "/f",
-            ])?;
-        }
-        Ok(())
+        crate::native_windows::install_context_menu(Path::new(&exe))
     }
 
     #[cfg(target_os = "macos")]
@@ -1706,16 +1409,7 @@ pub async fn install_native_integration() -> Result<(), String> {
 pub async fn uninstall_native_integration() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
-        for key in [
-            r"HKCU\Software\Classes\*\shell\IYERIS",
-            r"HKCU\Software\Classes\Directory\shell\IYERIS",
-        ] {
-            let _ = Command::new("reg")
-                .args(["delete", key, "/f"])
-                .creation_flags(0x08000000)
-                .status();
-        }
-        Ok(())
+        crate::native_windows::uninstall_context_menu()
     }
 
     #[cfg(target_os = "macos")]
