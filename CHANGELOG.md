@@ -70,10 +70,10 @@ Hello everyone! From IYERIS V1 -> V2 we saw a dramatic back and front end change
   - Updated Tauri API and CLI packages to `v2.11.0`.
   - Upgraded packages and overall codebase dependencies.
 
-## Click below for the full `v2` Changelog
+## Click below for the full `v3` Changelog
 
 <details>
-  <summary>FULL V2 CHANGELOG</summary>
+  <summary>FULL V3 CHANGELOG</summary>
 
 Nothing yet!
 
