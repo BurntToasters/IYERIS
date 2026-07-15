@@ -9,7 +9,7 @@
           "-ExecutionPolicy",
           "Bypass",
           "-File",
-          "scripts/windows-artifact-sign.ps1",
+          "../scripts/windows-artifact-sign.ps1",
           "-FilePath",
           "%1"
         ]

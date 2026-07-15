@@ -9,6 +9,11 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
+if ($env:SKIP_WIN_CODESIGN -eq '1') {
+  Write-Host 'SKIP_WIN_CODESIGN=1; skipping Authenticode verification.'
+  exit 0
+}
+
 if ($env:OS -ne 'Windows_NT') {
   throw 'Authenticode verification must run on Windows.'
 }

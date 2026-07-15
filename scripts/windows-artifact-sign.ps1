@@ -3,6 +3,10 @@
 param([Parameter(Mandatory = $true)][string]$FilePath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+if ($env:SKIP_WIN_CODESIGN -eq '1') {
+  Write-Host "SKIP_WIN_CODESIGN=1; leaving Windows artifact unsigned: $FilePath"
+  exit 0
+}
 if ($env:OS -ne 'Windows_NT') { throw 'Azure Artifact Signing must run on Windows.' }
 
 $required = @('AZURE_CLIENT_ID','AZURE_TENANT_ID','AZURE_CLIENT_SECRET','AZURE_ARTIFACT_SIGNING_ENDPOINT','AZURE_ARTIFACT_SIGNING_ACCOUNT','AZURE_ARTIFACT_SIGNING_PROFILE','AZURE_ARTIFACT_SIGNING_PUBLISHER')
