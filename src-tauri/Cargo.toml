@@ -90,6 +90,6 @@ unsafe_code = "warn"
 
 [profile.release]
 panic = "abort"
-codegen-units = 1
-lto = true
+codegen-units = 16
+lto = "thin"
 strip = true
