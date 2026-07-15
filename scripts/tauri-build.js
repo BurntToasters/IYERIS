@@ -118,10 +118,6 @@ function assertWindowsSigningConfigured() {
     console.error('[tauri-build] Authenticode release builds must run on Windows.');
     process.exit(1);
   }
-
-  process.env.TAURI_WINDOWS_SIGNING_SCRIPT = fileURLToPath(
-    new URL('./windows-artifact-sign.ps1', import.meta.url)
-  );
 }
 
 function verifyWindowsArtifacts() {
