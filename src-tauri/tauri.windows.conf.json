@@ -8,8 +8,9 @@
           "-NonInteractive",
           "-ExecutionPolicy",
           "Bypass",
-          "-Command",
-          "param([string]$TargetFile) & $env:TAURI_WINDOWS_SIGNING_SCRIPT -FilePath $TargetFile",
+          "-File",
+          "scripts/windows-artifact-sign.ps1",
+          "-FilePath",
           "%1"
         ]
       }
