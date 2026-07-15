@@ -1,5 +1,5 @@
 import { execFileSync, execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -125,14 +125,50 @@ function assertWindowsSigningConfigured() {
   }
 }
 
+function getWindowsTargetReleaseDir() {
+  const target = getArgValue('--target');
+  const root = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
+  return target
+    ? path.join(root, 'src-tauri', 'target', target, 'release')
+    : path.join(root, 'src-tauri', 'target', 'release');
+}
+
+function signFinalWindowsRuntimeArtifacts() {
+  if (!requireWindowsSigning || skipWindowsCodeSigning) return;
+
+  const targetReleaseDir = getWindowsTargetReleaseDir();
+  const signScript = fileURLToPath(new URL('./windows-artifact-sign.ps1', import.meta.url));
+  const runtimeExecutables = readdirSync(targetReleaseDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.exe'))
+    .map((entry) => path.join(targetReleaseDir, entry.name));
+
+  if (runtimeExecutables.length === 0) {
+    throw new Error(`No final Windows runtime executables found under ${targetReleaseDir}`);
+  }
+
+  for (const executable of runtimeExecutables) {
+    console.log(`[tauri-build] Finalizing Authenticode signature: ${executable}`);
+    execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        signScript,
+        '-FilePath',
+        executable,
+      ],
+      { stdio: 'inherit', env: process.env }
+    );
+  }
+}
+
 function verifyWindowsArtifacts() {
   if (!requireWindowsSigning || skipWindowsCodeSigning) return;
 
-  const target = getArgValue('--target');
-  const root = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
-  const targetReleaseDir = target
-    ? path.join(root, 'src-tauri', 'target', target, 'release')
-    : path.join(root, 'src-tauri', 'target', 'release');
+  const targetReleaseDir = getWindowsTargetReleaseDir();
   const verifyScript = fileURLToPath(new URL('./verify-windows-authenticode.ps1', import.meta.url));
 
   execFileSync(
@@ -285,4 +321,5 @@ stripMsiBundleForPrereleaseWindows();
 const tauriBuildArgs = args.join(' ').trim();
 const tauriBuildCommand = tauriBuildArgs ? `npx tauri build ${tauriBuildArgs}` : 'npx tauri build';
 execSync(tauriBuildCommand, { stdio: 'inherit' });
+signFinalWindowsRuntimeArtifacts();
 verifyWindowsArtifacts();
