@@ -1,5 +1,7 @@
-import { execSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { execFileSync, execSync } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const isPrerelease = /-(?:beta|alpha|rc)(?:[.-]?\d+)?/i.test(pkg.version);
@@ -9,12 +11,15 @@ const args = [];
 const requireMacSigning = rawArgs.includes('--require-macos-signing');
 const requireMacNotarization = rawArgs.includes('--require-macos-notarization');
 const requireTauriSigning = rawArgs.includes('--require-tauri-signing');
+const requireWindowsSigning = rawArgs.includes('--require-windows-signing');
+const skipWindowsCodeSigning = process.env.SKIP_WIN_CODESIGN?.trim() === '1';
 
 for (const arg of rawArgs) {
   if (
     arg === '--require-macos-signing' ||
     arg === '--require-macos-notarization' ||
-    arg === '--require-tauri-signing'
+    arg === '--require-tauri-signing' ||
+    arg === '--require-windows-signing'
   ) {
     continue;
   }
@@ -81,6 +86,105 @@ function assertTauriSigningConfigured() {
     );
     process.exit(1);
   }
+}
+
+function assertWindowsSigningConfigured() {
+  if (!requireWindowsSigning) return;
+  if (!isWindowsBuildTarget()) {
+    console.error('[tauri-build] --require-windows-signing requires a Windows build target.');
+    process.exit(1);
+  }
+  if (hasNoBundleFlag()) {
+    console.error('[tauri-build] --require-windows-signing cannot be combined with --no-bundle.');
+    process.exit(1);
+  }
+  if (process.platform !== 'win32') {
+    console.error('[tauri-build] Authenticode release builds must run on Windows.');
+    process.exit(1);
+  }
+  if (skipWindowsCodeSigning) {
+    console.warn('[tauri-build] SKIP_WIN_CODESIGN=1; producing unsigned Windows artifacts.');
+    return;
+  }
+
+  const requiredVars = [
+    'AZURE_CLIENT_ID',
+    'AZURE_TENANT_ID',
+    'AZURE_CLIENT_SECRET',
+    'AZURE_ARTIFACT_SIGNING_ENDPOINT',
+    'AZURE_ARTIFACT_SIGNING_ACCOUNT',
+    'AZURE_ARTIFACT_SIGNING_PROFILE',
+    'AZURE_ARTIFACT_SIGNING_PUBLISHER',
+  ];
+  const missingVars = requiredVars.filter((name) => !hasEnvValue(name));
+  if (missingVars.length > 0) {
+    console.error(
+      `[tauri-build] Missing required Azure Artifact Signing env vars: ${missingVars.join(', ')}`
+    );
+    process.exit(1);
+  }
+}
+
+function getWindowsTargetReleaseDir() {
+  const target = getArgValue('--target');
+  const root = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
+  return target
+    ? path.join(root, 'src-tauri', 'target', target, 'release')
+    : path.join(root, 'src-tauri', 'target', 'release');
+}
+
+function signFinalWindowsRuntimeArtifacts() {
+  if (!requireWindowsSigning || skipWindowsCodeSigning) return;
+
+  const targetReleaseDir = getWindowsTargetReleaseDir();
+  const signScript = fileURLToPath(new URL('./windows-artifact-sign.ps1', import.meta.url));
+  const runtimeExecutables = readdirSync(targetReleaseDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.exe'))
+    .map((entry) => path.join(targetReleaseDir, entry.name));
+
+  if (runtimeExecutables.length === 0) {
+    throw new Error(`No final Windows runtime executables found under ${targetReleaseDir}`);
+  }
+
+  for (const executable of runtimeExecutables) {
+    console.log(`[tauri-build] Finalizing Authenticode signature: ${executable}`);
+    execFileSync(
+      'powershell.exe',
+      [
+        '-NoProfile',
+        '-NonInteractive',
+        '-ExecutionPolicy',
+        'Bypass',
+        '-File',
+        signScript,
+        '-FilePath',
+        executable,
+      ],
+      { stdio: 'inherit', env: process.env }
+    );
+  }
+}
+
+function verifyWindowsArtifacts() {
+  if (!requireWindowsSigning || skipWindowsCodeSigning) return;
+
+  const targetReleaseDir = getWindowsTargetReleaseDir();
+  const verifyScript = fileURLToPath(new URL('./verify-windows-authenticode.ps1', import.meta.url));
+
+  execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      verifyScript,
+      '-TargetReleaseDir',
+      targetReleaseDir,
+    ],
+    { stdio: 'inherit', env: process.env }
+  );
 }
 
 function setBundlesArg(value) {
@@ -211,8 +315,11 @@ if (isMacBuildTarget()) {
 }
 
 assertTauriSigningConfigured();
+assertWindowsSigningConfigured();
 stripMsiBundleForPrereleaseWindows();
 
 const tauriBuildArgs = args.join(' ').trim();
 const tauriBuildCommand = tauriBuildArgs ? `npx tauri build ${tauriBuildArgs}` : 'npx tauri build';
 execSync(tauriBuildCommand, { stdio: 'inherit' });
+signFinalWindowsRuntimeArtifacts();
+verifyWindowsArtifacts();

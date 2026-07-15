@@ -1,40 +1,5 @@
+#[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
-
-/// Escape a string for safe embedding in a PowerShell single-quoted literal.
-/// PowerShell single-quoted strings only interpret '' as an escaped single quote.
-/// We also reject characters that could break out of the quoting context.
-#[cfg(target_os = "windows")]
-fn ps_escape(s: &str) -> String {
-    if s.contains('\0') || s.contains('\n') || s.contains('\r') {
-        log::warn!("[Elevated] ps_escape: path contains null/newline characters");
-    }
-    s.replace('\'', "''").replace(['\0', '\n', '\r'], "")
-}
-
-#[cfg(target_os = "windows")]
-fn elevated_windows_copy_command(src: &str, dest: &str) -> String {
-    use std::path::Path;
-    let src_path = Path::new(src);
-    if src_path.is_dir() {
-        format!(
-            "robocopy '{}' '{}' /E /SL /COPY:DAT /DCOPY:DAT /R:0 /W:0 /NFL /NDL /NJH /NJS /NC /NS; if ($LASTEXITCODE -ge 8) {{ exit $LASTEXITCODE }} else {{ exit 0 }}",
-            ps_escape(src),
-            ps_escape(dest)
-        )
-    } else {
-        let parent = src_path.parent().and_then(|p| p.to_str()).unwrap_or(".");
-        let name = src_path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .unwrap_or("");
-        format!(
-            "robocopy '{}' '{}' '{}' /SL /COPY:DAT /R:0 /W:0 /NFL /NDL /NJH /NJS /NC /NS; if ($LASTEXITCODE -ge 8) {{ exit $LASTEXITCODE }} else {{ exit 0 }}",
-            ps_escape(parent),
-            ps_escape(dest),
-            ps_escape(name)
-        )
-    }
-}
 
 /// Escape a string for safe embedding in a POSIX shell single-quoted context.
 /// The only character that needs escaping in single quotes is the single quote itself.
@@ -55,16 +20,6 @@ fn osa_escape(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace(['\0', '\n', '\r'], "")
-}
-
-#[cfg(target_os = "windows")]
-fn ps_encoded_command(script: &str) -> String {
-    use base64::{engine::general_purpose, Engine as _};
-    let bytes: Vec<u8> = script
-        .encode_utf16()
-        .flat_map(|unit| unit.to_le_bytes())
-        .collect();
-    general_purpose::STANDARD.encode(bytes)
 }
 
 fn validate_elevated_path(path: &str, label: &str) -> Result<(), String> {
@@ -107,9 +62,8 @@ fn validate_elevated_path(path: &str, label: &str) -> Result<(), String> {
 fn resolve_elevated_source_before_exec(source: &str, op: &str) -> Result<String, String> {
     validate_elevated_path(source, "Source")?;
     let path = crate::validate_existing_path(source, "Source")?;
-    std::fs::symlink_metadata(&path).map_err(|e| {
-        format!("Source path no longer accessible before elevation: {}", e)
-    })?;
+    std::fs::symlink_metadata(&path)
+        .map_err(|e| format!("Source path no longer accessible before elevation: {}", e))?;
     if op == "delete" {
         crate::ensure_not_root_path(&path, "delete")?;
         return Ok(source.to_string());
@@ -128,7 +82,10 @@ fn resolve_elevated_dest_before_exec(dest: &str) -> Result<String, String> {
         .parent()
         .ok_or_else(|| "Destination has no parent directory".to_string())?;
     let parent_meta = std::fs::symlink_metadata(parent).map_err(|e| {
-        format!("Destination parent no longer accessible before elevation: {}", e)
+        format!(
+            "Destination parent no longer accessible before elevation: {}",
+            e
+        )
     })?;
     if parent_meta.file_type().is_symlink() {
         return Err(
@@ -161,11 +118,169 @@ fn resolve_elevated_paths_before_exec(
     Ok((source, dest))
 }
 
+/// Run privileged Windows file operations through the native Shell API.
+///
+/// `IFileOperation` owns the UAC prompt and performs copy/move/delete directly,
+/// avoiding shell command construction and encoded PowerShell launchers. The
+/// latter look indistinguishable from common malware loaders to heuristic AV.
+#[cfg(target_os = "windows")]
+fn run_windows_file_operations(
+    op: &str,
+    items: &[(String, Option<String>)],
+    destination_is_folder: bool,
+) -> Result<(), String> {
+    use std::path::Path;
+    use windows::{
+        core::{HSTRING, PCWSTR},
+        Win32::{
+            System::Com::{
+                CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
+                COINIT_APARTMENTTHREADED,
+            },
+            UI::Shell::{
+                FileOperation, IFileOperation, IShellItem, SHCreateItemFromParsingName,
+                FOFX_EARLYFAILURE, FOFX_REQUIREELEVATION, FOFX_SHOWELEVATIONPROMPT,
+                FOF_NOCONFIRMATION, FOF_NOCONFIRMMKDIR, FOF_NOERRORUI, FOF_SILENT,
+            },
+        },
+    };
+
+    fn destination_parts(
+        dest: &str,
+        destination_is_folder: bool,
+    ) -> Result<(String, Option<String>), String> {
+        let path = Path::new(dest);
+        if destination_is_folder || path.is_dir() {
+            return Ok((dest.to_string(), None));
+        }
+
+        let parent = path
+            .parent()
+            .ok_or_else(|| format!("Destination has no parent directory: {dest}"))?;
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .ok_or_else(|| format!("Destination has no valid file name: {dest}"))?;
+        Ok((parent.to_string_lossy().to_string(), Some(name.to_string())))
+    }
+
+    unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
+        .ok()
+        .map_err(|error| format!("Failed to initialize Windows COM: {error}"))?;
+
+    let result = (|| unsafe {
+        let file_operation: IFileOperation =
+            CoCreateInstance(&FileOperation, None, CLSCTX_INPROC_SERVER)
+                .map_err(|error| format!("Failed to create Windows file operation: {error}"))?;
+
+        file_operation
+            .SetOperationFlags(
+                FOF_NOCONFIRMATION
+                    | FOF_NOCONFIRMMKDIR
+                    | FOF_SILENT
+                    | FOF_NOERRORUI
+                    | FOFX_SHOWELEVATIONPROMPT
+                    | FOFX_REQUIREELEVATION
+                    | FOFX_EARLYFAILURE,
+            )
+            .map_err(|error| format!("Failed to configure Windows file operation: {error}"))?;
+
+        for (source, dest) in items {
+            let source_path = HSTRING::from(source.as_str());
+            let source_item: IShellItem = SHCreateItemFromParsingName(&source_path, None)
+                .map_err(|error| format!("Failed to open source path {source}: {error}"))?;
+
+            match op {
+                "delete" => file_operation
+                    .DeleteItem(&source_item, None)
+                    .map_err(|error| format!("Failed to queue delete for {source}: {error}"))?,
+                "copy" | "move" => {
+                    let dest = dest
+                        .as_deref()
+                        .ok_or_else(|| format!("Destination required for {op}"))?;
+                    let (destination_folder, new_name) =
+                        destination_parts(dest, destination_is_folder)?;
+                    let destination_path = HSTRING::from(destination_folder.as_str());
+                    let destination_item: IShellItem =
+                        SHCreateItemFromParsingName(&destination_path, None).map_err(|error| {
+                            format!(
+                                "Failed to open destination folder {destination_folder}: {error}"
+                            )
+                        })?;
+                    let new_name = new_name.map(HSTRING::from);
+                    let new_name = new_name
+                        .as_ref()
+                        .map_or(PCWSTR::null(), |value| PCWSTR(value.as_ptr()));
+
+                    if op == "copy" {
+                        file_operation
+                            .CopyItem(&source_item, &destination_item, new_name, None)
+                            .map_err(|error| {
+                                format!("Failed to queue copy for {source}: {error}")
+                            })?;
+                    } else {
+                        file_operation
+                            .MoveItem(&source_item, &destination_item, new_name, None)
+                            .map_err(|error| {
+                                format!("Failed to queue move for {source}: {error}")
+                            })?;
+                    }
+                }
+                _ => return Err(format!("Unknown operation: {op}")),
+            }
+        }
+
+        file_operation
+            .PerformOperations()
+            .map_err(|error| format!("Elevated Windows file operation failed: {error}"))?;
+        if file_operation
+            .GetAnyOperationsAborted()
+            .map_err(|error| format!("Failed to read Windows file operation status: {error}"))?
+            .as_bool()
+        {
+            return Err("Elevated Windows file operation was cancelled or aborted".to_string());
+        }
+
+        Ok(())
+    })();
+
+    unsafe { CoUninitialize() };
+    result
+}
+
 /// Linux: verify the current_exe lives under a trusted system path before
-/// re-launching it via pkexec/osascript/powershell. Without this check, a
+/// re-launching it through the platform elevation API. Without this check, a
 /// writable install location (snap extraction dir, sideloaded AppImage,
 /// hostile $PATH shadowing) lets an attacker get a free root shell when
 /// the user clicks "Restart as Admin." (M1)
+#[cfg(target_os = "linux")]
+fn verify_root_owned_nonwritable_chain(path: &std::path::Path) -> Result<(), String> {
+    use std::os::unix::fs::MetadataExt;
+
+    for candidate in path.ancestors() {
+        let metadata = std::fs::symlink_metadata(candidate).map_err(|error| {
+            format!(
+                "Cannot inspect elevated executable path component {}: {}",
+                candidate.display(),
+                error
+            )
+        })?;
+        if metadata.uid() != 0 {
+            return Err(format!(
+                "Refusing to elevate executable through non-root-owned path component: {}",
+                candidate.display()
+            ));
+        }
+        if metadata.mode() & 0o022 != 0 {
+            return Err(format!(
+                "Refusing to elevate executable through group/world-writable path component: {}",
+                candidate.display()
+            ));
+        }
+    }
+    Ok(())
+}
+
 #[cfg(target_os = "linux")]
 fn verify_trusted_exe_path(exe: &std::path::Path) -> Result<std::path::PathBuf, String> {
     let canonical = exe
@@ -185,6 +300,7 @@ fn verify_trusted_exe_path(exe: &std::path::Path) -> Result<std::path::PathBuf, 
     ];
     let s = canonical.to_string_lossy();
     if TRUSTED_PREFIXES.iter().any(|p| s.starts_with(p)) {
+        verify_root_owned_nonwritable_chain(&canonical)?;
         Ok(canonical)
     } else {
         Err(format!(
@@ -244,22 +360,36 @@ pub async fn restart_as_admin() -> Result<(), String> {
     log::info!("[Elevated] restart_as_admin requested");
     #[cfg(target_os = "windows")]
     {
+        use std::os::windows::ffi::OsStrExt;
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        #[allow(unsafe_code)]
-        // creation_flags is the platform-correct way to suppress the console window
-        {
-            use std::os::windows::process::CommandExt;
-            Command::new("powershell")
-                .args([
-                    "-Command",
-                    &format!(
-                        "Start-Process '{}' -Verb RunAs",
-                        ps_escape(&exe.display().to_string())
-                    ),
-                ])
-                .creation_flags(0x08000000)
-                .spawn()
-                .map_err(|e| format!("Failed to restart as admin: {}", e))?;
+        use windows::{
+            core::{HSTRING, PCWSTR},
+            Win32::{
+                Foundation::HWND,
+                UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
+            },
+        };
+        let verb = HSTRING::from("runas");
+        let executable: Vec<u16> = exe
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let result = unsafe {
+            ShellExecuteW(
+                HWND::default(),
+                PCWSTR(verb.as_ptr()),
+                PCWSTR(executable.as_ptr()),
+                PCWSTR::null(),
+                PCWSTR::null(),
+                SW_SHOWNORMAL,
+            )
+        };
+        let status = result.0 as isize;
+        if status <= 32 {
+            return Err(format!(
+                "Failed to restart as admin (ShellExecuteW status {status})"
+            ));
         }
     }
 
@@ -303,54 +433,19 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
     let op = op.to_string();
 
     tokio::task::spawn_blocking(move || {
-        let (source, dest) =
-            resolve_elevated_paths_before_exec(&op, &source, dest.as_deref())?;
+        let (source, dest) = resolve_elevated_paths_before_exec(&op, &source, dest.as_deref())?;
+        #[cfg(any(target_os = "macos", target_os = "linux"))]
         let dest_str = match op.as_str() {
-            "copy" | "move" => {
-                Some(dest.as_deref().ok_or_else(|| format!("Destination required for {}", op))?)
-            }
+            "copy" | "move" => Some(
+                dest.as_deref()
+                    .ok_or_else(|| format!("Destination required for {}", op))?,
+            ),
             _ => None,
         };
 
         #[cfg(target_os = "windows")]
         {
-            let script = match op.as_str() {
-                "copy" => elevated_windows_copy_command(&source, dest_str.unwrap_or_default()),
-                "move" => format!(
-                    "Move-Item -LiteralPath '{}' -Destination '{}' -Force",
-                    ps_escape(&source),
-                    ps_escape(dest_str.unwrap_or_default())
-                ),
-                "delete" => format!(
-                    "Remove-Item -LiteralPath '{}' -Recurse -Force",
-                    ps_escape(&source)
-                ),
-                _ => return Err(format!("Unknown operation: {}", op)),
-            };
-
-            let encoded = ps_encoded_command(&script);
-
-            let output = {
-                use std::os::windows::process::CommandExt;
-                Command::new("powershell")
-                    .args([
-                        "-Command",
-                        &format!(
-                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
-                            encoded
-                        ),
-                    ])
-                    .creation_flags(0x08000000)
-                    .output()
-                    .map_err(|e| e.to_string())?
-            };
-
-            if !output.status.success() {
-                return Err(format!(
-                    "Elevated operation failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
-            }
+            run_windows_file_operations(&op, &[(source.clone(), dest.clone())], false)?;
         }
 
         #[cfg(target_os = "macos")]
@@ -375,10 +470,7 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
                     shell_escape(&source),
                     shell_escape(dest_str.unwrap_or_default())
                 ),
-                "delete" => format!(
-                    "/bin/rm -rf -- '{}'",
-                    shell_escape(&source)
-                ),
+                "delete" => format!("/bin/rm -rf -- '{}'", shell_escape(&source)),
                 _ => return Err(format!("Unknown operation: {}", op)),
             };
 
@@ -386,10 +478,7 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
             let output = Command::new("osascript")
                 .args([
                     "-e",
-                    &format!(
-                        "do shell script \"{}\" with administrator privileges",
-                        osa
-                    ),
+                    &format!("do shell script \"{}\" with administrator privileges", osa),
                 ])
                 .output()
                 .map_err(|e| e.to_string())?;
@@ -519,46 +608,7 @@ async fn run_elevated_batch_op(
 
         #[cfg(target_os = "windows")]
         {
-            let mut lines = Vec::new();
-            for (src, dst) in &resolved_items {
-                let line = match op.as_str() {
-                    "copy" => elevated_windows_copy_command(src, dst.as_deref().unwrap_or("")),
-                    "move" => format!(
-                        "Move-Item -LiteralPath '{}' -Destination '{}' -Force",
-                        ps_escape(src),
-                        ps_escape(dst.as_deref().unwrap_or(""))
-                    ),
-                    "delete" => format!(
-                        "Remove-Item -LiteralPath '{}' -Recurse -Force",
-                        ps_escape(src)
-                    ),
-                    _ => return Err(format!("Unknown operation: {}", op)),
-                };
-                lines.push(line);
-            }
-            let script = lines.join("\n");
-            let encoded = ps_encoded_command(&script);
-
-            let output = {
-                use std::os::windows::process::CommandExt;
-                Command::new("powershell")
-                    .args([
-                        "-Command",
-                        &format!(
-                            "$p = Start-Process powershell -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-EncodedCommand','{}' -Verb RunAs -Wait -PassThru; exit $p.ExitCode",
-                            encoded
-                        ),
-                    ])
-                    .creation_flags(0x08000000)
-                    .output()
-                    .map_err(|e| e.to_string())?
-            };
-            if !output.status.success() {
-                return Err(format!(
-                    "Elevated operation failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
-            }
+            run_windows_file_operations(&op, &resolved_items, true)?;
         }
 
         #[cfg(target_os = "macos")]
@@ -576,10 +626,7 @@ async fn run_elevated_batch_op(
                         shell_escape(src),
                         shell_escape(dst.as_deref().unwrap_or(""))
                     ),
-                    "delete" => format!(
-                        "/bin/rm -rf -- '{}'",
-                        shell_escape(src)
-                    ),
+                    "delete" => format!("/bin/rm -rf -- '{}'", shell_escape(src)),
                     _ => return Err(format!("Unknown operation: {}", op)),
                 };
                 lines.push(line);
@@ -589,10 +636,7 @@ async fn run_elevated_batch_op(
             let output = Command::new("osascript")
                 .args([
                     "-e",
-                    &format!(
-                        "do shell script \"{}\" with administrator privileges",
-                        osa
-                    ),
+                    &format!("do shell script \"{}\" with administrator privileges", osa),
                 ])
                 .output()
                 .map_err(|e| e.to_string())?;
@@ -606,31 +650,36 @@ async fn run_elevated_batch_op(
 
         #[cfg(target_os = "linux")]
         {
-            let mut lines = vec!["#!/bin/sh".to_string(), "set -e".to_string()];
-            for (src, dst) in &resolved_items {
-                let line = match op.as_str() {
-                    "copy" => format!(
-                        "cp -RP -- '{}' '{}'",
-                        shell_escape(src),
-                        shell_escape(dst.as_deref().unwrap_or(""))
-                    ),
-                    "move" => format!(
-                        "mv -- '{}' '{}'",
-                        shell_escape(src),
-                        shell_escape(dst.as_deref().unwrap_or(""))
-                    ),
-                    "delete" => format!(
-                        "rm -rf -- '{}'",
-                        shell_escape(src)
-                    ),
-                    _ => return Err(format!("Unknown operation: {}", op)),
-                };
-                lines.push(line);
+            // cp/mv accept multiple sources followed by one destination; rm
+            // accepts multiple paths. Build argv directly so elevation never
+            // interprets a generated shell program.
+            let (command, leading_args): (&str, &[&str]) = match op.as_str() {
+                "copy" => ("cp", &["-RP", "--"]),
+                "move" => ("mv", &["--"]),
+                "delete" => ("rm", &["-rf", "--"]),
+                _ => return Err(format!("Unknown operation: {}", op)),
+            };
+            let mut args = vec!["--", command];
+            args.extend_from_slice(leading_args);
+            for (source, _) in &resolved_items {
+                args.push(source.as_str());
             }
-            let script_content = lines.join("\n");
+            if matches!(op.as_str(), "copy" | "move") {
+                let destination = resolved_items
+                    .first()
+                    .and_then(|(_, destination)| destination.as_deref())
+                    .ok_or_else(|| format!("Destination required for {}", op))?;
+                if resolved_items
+                    .iter()
+                    .any(|(_, candidate)| candidate.as_deref() != Some(destination))
+                {
+                    return Err("Batch operation contains inconsistent destinations".to_string());
+                }
+                args.push(destination);
+            }
 
             let output = Command::new("pkexec")
-                .args(["--", "sh", "-c", &script_content])
+                .args(args)
                 .output()
                 .map_err(|e| e.to_string())?;
             if !output.status.success() {
@@ -693,6 +742,19 @@ mod tests {
     fn shell_escape_handles_apostrophes() {
         assert_eq!(shell_escape("foo's"), "foo'\\''s");
         assert_eq!(shell_escape("plain"), "plain");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn elevation_rejects_user_owned_executable_chain() {
+        use std::os::unix::fs::MetadataExt;
+
+        let temp = tempfile::tempdir().unwrap();
+        let executable = temp.path().join("iyeris");
+        std::fs::write(&executable, b"test").unwrap();
+        if std::fs::metadata(&executable).unwrap().uid() != 0 {
+            assert!(verify_root_owned_nonwritable_chain(&executable).is_err());
+        }
     }
 
     #[cfg(target_os = "macos")]

@@ -27,6 +27,7 @@ function createInitialResults() {
     lint: { status: 'pending' },
     lintTest: { status: 'pending' },
     format: { status: 'pending' },
+    nativePolicy: { status: 'pending' },
     test: { status: 'pending', passed: null, failed: null, files: null },
     rustCheck: { status: 'pending' },
     rustClippy: { status: 'pending' },
@@ -123,6 +124,9 @@ ${colors.reset}`);
     `${colors.bold}Format:${colors.reset}     ${results.format.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
   );
   console.log(
+    `${colors.bold}Native Policy:${colors.reset} ${results.nativePolicy.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
+  );
+  console.log(
     `${colors.bold}Tests:${colors.reset}      ${results.test.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset} (${results.test.passed ?? 'n/a'} passed${results.test.failed > 0 ? `, ${results.test.failed} failed` : ''}${results.test.files ? `, ${results.test.files} files` : ''})`
   );
   console.log(
@@ -154,6 +158,7 @@ function main() {
   runCommand('lint', npm, ['run', 'lint:prod'], null, results);
   runCommand('lintTest', npm, ['run', 'lint:test'], null, results);
   runCommand('format', npm, ['run', 'format:check'], null, results);
+  runCommand('nativePolicy', npm, ['run', 'check:native-process-policy'], null, results);
   runCommand('test', npm, ['run', 'test:cov'], parseTest, results);
   runCommand(
     'rustCheck',

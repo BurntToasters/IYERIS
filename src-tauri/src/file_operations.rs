@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
+#[cfg(target_os = "linux")]
 use std::process::Command;
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -43,6 +44,71 @@ const SENSITIVE_READ_FILE_NAMES: &[&str] = &[
     "login.keychain",
 ];
 const SENSITIVE_READ_EXTENSIONS: &[&str] = &["pem", "key", "pfx", "p12"];
+
+#[cfg(target_os = "windows")]
+fn resolve_windows_shortcut_on_com_thread(path: &Path) -> Result<String, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::{
+        core::{Interface, PCWSTR},
+        Win32::{
+            System::Com::{
+                CoCreateInstance, CoInitializeEx, CoUninitialize, IPersistFile,
+                CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, STGM_READ,
+            },
+            UI::Shell::{IShellLinkW, ShellLink, SLGP_RAWPATH},
+        },
+    };
+
+    // This function always runs on a new thread, so it owns the COM apartment.
+    unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }
+        .ok()
+        .map_err(|error| format!("Failed to initialize Windows COM: {error}"))?;
+
+    let result = (|| unsafe {
+        let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)
+            .map_err(|error| format!("Failed to create Windows shortcut reader: {error}"))?;
+        let persist_file: IPersistFile = shell_link
+            .cast()
+            .map_err(|error| format!("Failed to load Windows shortcut reader: {error}"))?;
+        let shortcut_path: Vec<u16> = path
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        persist_file
+            .Load(PCWSTR(shortcut_path.as_ptr()), STGM_READ)
+            .map_err(|error| format!("Failed to load shortcut: {error}"))?;
+
+        // Windows supports extended-length paths up to 32,767 UTF-16 code units.
+        let mut target = vec![0u16; 32_768];
+        shell_link
+            .GetPath(&mut target, std::ptr::null_mut(), SLGP_RAWPATH.0 as u32)
+            .map_err(|error| format!("Failed to read shortcut target: {error}"))?;
+        let length = target
+            .iter()
+            .position(|&unit| unit == 0)
+            .unwrap_or(target.len());
+        let target = String::from_utf16_lossy(&target[..length]);
+        if target.is_empty() {
+            return Err("Shortcut target path is empty.".to_string());
+        }
+        Ok(target)
+    })();
+
+    unsafe { CoUninitialize() };
+    result
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_windows_shortcut(path: &Path) -> Result<String, String> {
+    let path = path.to_path_buf();
+    std::thread::Builder::new()
+        .name("iyeris-shortcut-reader".to_string())
+        .spawn(move || resolve_windows_shortcut_on_com_thread(&path))
+        .map_err(|error| format!("Failed to start shortcut reader: {error}"))?
+        .join()
+        .map_err(|_| "Shortcut reader thread panicked.".to_string())?
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -268,9 +334,23 @@ pub async fn open_file(file_path: String) -> Result<(), String> {
     log::debug!("[FileOps] open_file: {}", file_path);
     match parse_open_target(&file_path)? {
         OpenTarget::FilePath(path) => {
+            #[cfg(target_os = "macos")]
+            return crate::native_macos::open_path(&path);
+
+            #[cfg(target_os = "windows")]
+            return crate::native_windows::open_path(&path);
+
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             open::that(&path).map_err(|e| format!("Failed to open file: {}", e))
         }
         OpenTarget::External(url) => {
+            #[cfg(target_os = "macos")]
+            return crate::native_macos::open_url(&url);
+
+            #[cfg(target_os = "windows")]
+            return crate::native_windows::open_uri(&url);
+
+            #[cfg(not(any(target_os = "macos", target_os = "windows")))]
             open::that(url).map_err(|e| format!("Failed to open URL: {}", e))
         }
     }
@@ -341,15 +421,14 @@ pub async fn trash_item(item_path: String) -> Result<(), String> {
 pub async fn open_trash() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
-        open::that(std::path::Path::new(&format!(
+        crate::native_macos::open_path(std::path::Path::new(&format!(
             "{}/.Trash",
             std::env::var("HOME").unwrap_or_default()
-        )))
-        .map_err(|e| e.to_string())?;
+        )))?;
     }
     #[cfg(target_os = "windows")]
     {
-        open::that("shell:RecycleBinFolder").map_err(|e| e.to_string())?;
+        crate::native_windows::open_uri("shell:RecycleBinFolder")?;
     }
     #[cfg(target_os = "linux")]
     {
@@ -1124,32 +1203,7 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
             .map(|ext| ext.eq_ignore_ascii_case("lnk"))
             .unwrap_or(false);
         let target = if shortcut {
-            let escaped = path.to_string_lossy().replace('\'', "''");
-            let script = format!(
-                "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); if($s.TargetPath) {{ Write-Output $s.TargetPath }}",
-                escaped
-            );
-            {
-                let mut cmd = Command::new("powershell");
-                cmd.args(["-NoProfile", "-Command", &script]);
-                #[cfg(target_os = "windows")]
-                {
-                    use std::os::windows::process::CommandExt;
-                    cmd.creation_flags(0x08000000);
-                }
-                cmd.output().ok().and_then(|o| {
-                    if o.status.success() {
-                        let t = String::from_utf8_lossy(&o.stdout).trim().to_string();
-                        if t.is_empty() {
-                            None
-                        } else {
-                            Some(t)
-                        }
-                    } else {
-                        None
-                    }
-                })
-            }
+            resolve_windows_shortcut(&path).ok()
         } else {
             None
         };
@@ -1238,57 +1292,29 @@ pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Resu
         return Err("Refusing to change attributes on a symlink".to_string());
     }
 
-    if let Some(is_read_only) = read_only {
-        let mut perms = fs::metadata(&path)
-            .map_err(|e| format!("Failed to read metadata: {}", e))?
-            .permissions();
-        perms.set_readonly(is_read_only);
-        fs::set_permissions(&path, perms)
-            .map_err(|e| format!("Failed to update readonly attribute: {}", e))?;
-    }
-
     #[cfg(target_os = "windows")]
-    if let Some(is_hidden) = hidden {
-        let hidden_flag = if is_hidden { "+h" } else { "-h" };
-        let path_str = path.to_string_lossy().to_string();
-        let output = {
-            let mut cmd = Command::new("attrib");
-            cmd.args([hidden_flag, &path_str]);
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000);
-            cmd.output()
-        }
-        .map_err(|e| format!("Failed to update hidden attribute: {}", e))?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    if let Some(is_system) = system {
-        let system_flag = if is_system { "+s" } else { "-s" };
-        let path_str = path.to_string_lossy().to_string();
-        let output = {
-            let mut cmd = Command::new("attrib");
-            cmd.args([system_flag, &path_str]);
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000);
-            cmd.output()
-        }
-        .map_err(|e| format!("Failed to update system attribute: {}", e))?;
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
+    {
+        crate::native_windows::update_file_attributes(&path, read_only, hidden, system)
     }
 
     #[cfg(not(target_os = "windows"))]
-    if hidden.is_some() || system.is_some() {
-        return Err(
-            "Hidden and System attribute updates are only supported on Windows.".to_string(),
-        );
-    }
+    {
+        if let Some(is_read_only) = read_only {
+            let mut perms = fs::metadata(&path)
+                .map_err(|e| format!("Failed to read metadata: {}", e))?
+                .permissions();
+            perms.set_readonly(is_read_only);
+            fs::set_permissions(&path, perms)
+                .map_err(|e| format!("Failed to update readonly attribute: {}", e))?;
+        }
 
-    Ok(())
+        if hidden.is_some() || system.is_some() {
+            return Err(
+                "Hidden and System attribute updates are only supported on Windows.".to_string(),
+            );
+        }
+        Ok(())
+    }
 }
 
 #[tauri::command]
@@ -1784,29 +1810,7 @@ pub async fn resolve_shortcut(shortcut_path: String) -> Result<String, String> {
 
     #[cfg(target_os = "windows")]
     {
-        let escaped_path = path.to_string_lossy().replace('\'', "''");
-        let script = format!(
-            "$s=(New-Object -ComObject WScript.Shell).CreateShortcut('{}'); if($s.TargetPath) {{ Write-Output $s.TargetPath }}",
-            escaped_path
-        );
-        let output = {
-            let mut cmd = Command::new("powershell");
-            cmd.args(["-NoProfile", "-Command", &script]);
-            use std::os::windows::process::CommandExt;
-            cmd.creation_flags(0x08000000);
-            cmd.output()
-        }
-        .map_err(|e| format!("Failed to resolve shortcut: {}", e))?;
-
-        if !output.status.success() {
-            return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
-        }
-
-        let target = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if target.is_empty() {
-            return Err("Shortcut target path is empty.".to_string());
-        }
-        Ok(target)
+        resolve_windows_shortcut(&path)
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -2036,6 +2040,31 @@ mod tests {
     }
 
     #[test]
+    fn preferred_drop_effect_distinguishes_explorer_cut_and_copy() {
+        assert_eq!(
+            clipboard_operation_from_preferred_drop_effect(Some(1)),
+            Some("copy")
+        );
+        assert_eq!(
+            clipboard_operation_from_preferred_drop_effect(Some(2)),
+            Some("cut")
+        );
+    }
+
+    #[test]
+    fn preferred_drop_effect_ignores_unknown_or_missing_values() {
+        assert_eq!(clipboard_operation_from_preferred_drop_effect(None), None);
+        assert_eq!(
+            clipboard_operation_from_preferred_drop_effect(Some(0)),
+            None
+        );
+        assert_eq!(
+            clipboard_operation_from_preferred_drop_effect(Some(4)),
+            None
+        );
+    }
+
+    #[test]
     fn preview_read_guard_rejects_sensitive_paths() {
         assert!(ensure_safe_preview_read_path(Path::new("/home/me/.ssh/id_rsa")).is_err());
         assert!(ensure_safe_preview_read_path(Path::new("/home/me/.aws/config")).is_err());
@@ -2181,15 +2210,10 @@ mod tests {
     }
 }
 
-#[cfg(not(target_os = "windows"))]
+#[cfg(target_os = "linux")]
 fn run_command_capture(command: &str, args: &[&str]) -> Option<String> {
     let mut cmd = Command::new(command);
     cmd.args(args);
-    #[cfg(target_os = "windows")]
-    {
-        use std::os::windows::process::CommandExt;
-        cmd.creation_flags(0x08000000);
-    }
     let output = cmd.output().ok()?;
     if !output.status.success() {
         return None;
@@ -2198,27 +2222,29 @@ fn run_command_capture(command: &str, args: &[&str]) -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
-fn get_windows_system_clipboard_files() -> Vec<String> {
+fn get_windows_system_clipboard_files() -> (Vec<String>, Option<&'static str>) {
+    use windows::Win32::Foundation::HGLOBAL;
     use windows::Win32::System::DataExchange::*;
+    use windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
     use windows::Win32::System::Ole::CF_HDROP;
-    use windows::Win32::UI::Shell::DragQueryFileW;
+    use windows::Win32::UI::Shell::{DragQueryFileW, CFSTR_PREFERREDDROPEFFECT};
 
     unsafe {
         if OpenClipboard(None).is_err() {
-            return Vec::new();
+            return (Vec::new(), None);
         }
 
         let result = (|| {
             let handle = GetClipboardData(CF_HDROP.0 as u32);
             let handle = match handle {
                 Ok(h) => h,
-                Err(_) => return Vec::new(),
+                Err(_) => return (Vec::new(), None),
             };
 
             let hdrop = windows::Win32::UI::Shell::HDROP(handle.0);
             let count = DragQueryFileW(hdrop, 0xFFFFFFFF, None);
             if count == 0 {
-                return Vec::new();
+                return (Vec::new(), None);
             }
 
             let mut paths = Vec::with_capacity(count as usize);
@@ -2232,11 +2258,41 @@ fn get_windows_system_clipboard_files() -> Vec<String> {
                 let path = String::from_utf16_lossy(&buf[..len as usize]);
                 paths.push(path);
             }
-            paths
+            let preferred_effect = RegisterClipboardFormatW(CFSTR_PREFERREDDROPEFFECT);
+            let operation = if preferred_effect == 0 {
+                None
+            } else {
+                GetClipboardData(preferred_effect).ok().and_then(|handle| {
+                    let global = HGLOBAL(handle.0);
+                    if GlobalSize(global) < std::mem::size_of::<u32>() {
+                        return None;
+                    }
+                    let pointer = GlobalLock(global);
+                    if pointer.is_null() {
+                        return None;
+                    }
+                    let effect = std::ptr::read_unaligned(pointer.cast::<u32>());
+                    let _ = GlobalUnlock(global);
+                    clipboard_operation_from_preferred_drop_effect(Some(effect))
+                })
+            };
+            (paths, operation)
         })();
 
         let _ = CloseClipboard();
         result
+    }
+}
+
+#[cfg_attr(not(target_os = "windows"), allow(dead_code))]
+fn clipboard_operation_from_preferred_drop_effect(effect: Option<u32>) -> Option<&'static str> {
+    const DROP_EFFECT_COPY: u32 = 1;
+    const DROP_EFFECT_MOVE: u32 = 2;
+
+    match effect {
+        Some(value) if value & DROP_EFFECT_MOVE != 0 => Some("cut"),
+        Some(value) if value & DROP_EFFECT_COPY != 0 => Some("copy"),
+        _ => None,
     }
 }
 
@@ -2341,21 +2397,28 @@ fn write_windows_system_clipboard_text(text: &str) -> Result<(), String> {
     }
 }
 
-fn get_system_clipboard_files_internal() -> Vec<String> {
+fn get_system_clipboard_files_internal() -> (Vec<String>, Option<&'static str>) {
     #[cfg(target_os = "windows")]
     {
-        let files = get_windows_system_clipboard_files();
+        let (files, operation) = get_windows_system_clipboard_files();
         if !files.is_empty() {
-            return files;
+            return (files, operation);
         }
-        get_windows_system_clipboard_text_paths()
+        (get_windows_system_clipboard_text_paths(), None)
     }
 
     #[cfg(target_os = "macos")]
     {
-        run_command_capture("pbpaste", &[])
-            .map(|output| parse_clipboard_paths(&output))
-            .unwrap_or_default()
+        let files = crate::native_macos::clipboard_file_paths();
+        if !files.is_empty() {
+            return (files, None);
+        }
+        (
+            crate::native_macos::clipboard_text()
+                .map(|output| parse_clipboard_paths(&output))
+                .unwrap_or_default(),
+            None,
+        )
     }
 
     #[cfg(target_os = "linux")]
@@ -2364,12 +2427,12 @@ fn get_system_clipboard_files_internal() -> Vec<String> {
             .or_else(|| run_command_capture("xclip", &["-selection", "clipboard", "-o"]))
             .or_else(|| run_command_capture("xsel", &["--clipboard", "--output"]))
             .unwrap_or_default();
-        parse_clipboard_paths(&text)
+        (parse_clipboard_paths(&text), None)
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
-        Vec::new()
+        (Vec::new(), None)
     }
 }
 
@@ -2394,15 +2457,17 @@ pub fn get_system_clipboard_data(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<serde_json::Value, String> {
     log::debug!("[Clipboard] get_system_clipboard_data");
-    let system_paths = get_system_clipboard_files_internal();
+    let (system_paths, system_operation) = get_system_clipboard_files_internal();
     if !system_paths.is_empty() {
         let cb = state.clipboard.lock().map_err(|e| e.to_string())?;
-        let operation = if cb.operation.as_deref() == Some("cut")
-            && clipboard_paths_match(&cb.paths, &system_paths)
-        {
-            "cut"
-        } else {
-            "copy"
+        let operation = match system_operation {
+            Some(operation) => operation,
+            None if cb.operation.as_deref() == Some("cut")
+                && clipboard_paths_match(&cb.paths, &system_paths) =>
+            {
+                "cut"
+            }
+            None => "copy",
         };
         return Ok(serde_json::json!({
             "operation": operation,
@@ -2418,7 +2483,7 @@ pub fn get_system_clipboard_files(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<String>, String> {
     log::debug!("[Clipboard] get_system_clipboard_files");
-    let system_paths = get_system_clipboard_files_internal();
+    let (system_paths, _) = get_system_clipboard_files_internal();
     if !system_paths.is_empty() {
         return Ok(system_paths);
     }
@@ -2439,17 +2504,7 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
 
     #[cfg(target_os = "macos")]
     {
-        let mut cmd = Command::new("pbcopy");
-        cmd.stdin(std::process::Stdio::piped());
-        let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-        if let Some(mut stdin) = child.stdin.take() {
-            use std::io::Write;
-            stdin
-                .write_all(text.as_bytes())
-                .map_err(|e| e.to_string())?;
-        }
-        child.wait().map_err(|e| e.to_string())?;
-        Ok(())
+        crate::native_macos::set_clipboard_text(&text)
     }
 
     #[cfg(target_os = "linux")]
