@@ -16,6 +16,7 @@ if ($missing.Count) { throw "Missing Azure Artifact Signing environment variable
 $resolved = (Resolve-Path -LiteralPath $FilePath).Path
 if ([IO.Path]::GetExtension($resolved).ToLowerInvariant() -in @('.appx','.msix','.appxbundle','.msixbundle')) { throw "Microsoft Store package signing is intentionally excluded: $resolved" }
 . (Join-Path $PSScriptRoot 'artifact-signing-tools.ps1')
+Import-BundledPowerShellSecurityModule
 $tools = Get-ArtifactSigningTools
 
 $metadataPath = Join-Path ([IO.Path]::GetTempPath()) "artifact-signing-$PID-$([Guid]::NewGuid().ToString('N')).json"

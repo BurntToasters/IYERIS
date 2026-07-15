@@ -21,6 +21,9 @@ if ([string]::IsNullOrWhiteSpace($env:AZURE_ARTIFACT_SIGNING_PUBLISHER)) {
   throw 'AZURE_ARTIFACT_SIGNING_PUBLISHER is required for Authenticode verification.'
 }
 
+. (Join-Path $PSScriptRoot 'artifact-signing-tools.ps1')
+Import-BundledPowerShellSecurityModule
+
 $releaseDir = (Resolve-Path -LiteralPath $TargetReleaseDir).Path
 $files = @()
 $files += Get-ChildItem -LiteralPath $releaseDir -File -Filter '*.exe'
