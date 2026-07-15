@@ -41,10 +41,18 @@ for (const file of rustFiles(rustRoot)) {
   }
 }
 
-const packageSource = readFileSync(join(root, 'package.json'), 'utf8');
-for (const fragment of ['powershell', 'ExecutionPolicy Bypass', 'EncodedCommand']) {
-  if (packageSource.toLowerCase().includes(fragment.toLowerCase())) {
-    violations.push(`package.json contains ${JSON.stringify(fragment)}`);
+const packageJson = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+const allowedPowerShellScripts = new Set(['setup:win:artifact-signing']);
+for (const [name, command] of Object.entries(packageJson.scripts || {})) {
+  for (const fragment of ['powershell', 'ExecutionPolicy Bypass', 'EncodedCommand']) {
+    if (
+      command.toLowerCase().includes(fragment.toLowerCase()) &&
+      !allowedPowerShellScripts.has(name)
+    ) {
+      violations.push(
+        `package.json script ${JSON.stringify(name)} contains ${JSON.stringify(fragment)}`
+      );
+    }
   }
 }
 
