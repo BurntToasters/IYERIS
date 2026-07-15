@@ -1,5 +1,7 @@
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 const isPrerelease = /-(?:beta|alpha|rc)(?:[.-]?\d+)?/i.test(pkg.version);
@@ -9,12 +11,14 @@ const args = [];
 const requireMacSigning = rawArgs.includes('--require-macos-signing');
 const requireMacNotarization = rawArgs.includes('--require-macos-notarization');
 const requireTauriSigning = rawArgs.includes('--require-tauri-signing');
+const requireWindowsSigning = rawArgs.includes('--require-windows-signing');
 
 for (const arg of rawArgs) {
   if (
     arg === '--require-macos-signing' ||
     arg === '--require-macos-notarization' ||
-    arg === '--require-tauri-signing'
+    arg === '--require-tauri-signing' ||
+    arg === '--require-windows-signing'
   ) {
     continue;
   }
@@ -81,6 +85,69 @@ function assertTauriSigningConfigured() {
     );
     process.exit(1);
   }
+}
+
+function assertWindowsSigningConfigured() {
+  if (!requireWindowsSigning) return;
+  if (!isWindowsBuildTarget()) {
+    console.error('[tauri-build] --require-windows-signing requires a Windows build target.');
+    process.exit(1);
+  }
+  if (hasNoBundleFlag()) {
+    console.error('[tauri-build] --require-windows-signing cannot be combined with --no-bundle.');
+    process.exit(1);
+  }
+
+  const requiredVars = [
+    'AZURE_CLIENT_ID',
+    'AZURE_TENANT_ID',
+    'AZURE_CLIENT_SECRET',
+    'AZURE_ARTIFACT_SIGNING_ENDPOINT',
+    'AZURE_ARTIFACT_SIGNING_ACCOUNT',
+    'AZURE_ARTIFACT_SIGNING_PROFILE',
+    'AZURE_ARTIFACT_SIGNING_PUBLISHER',
+  ];
+  const missingVars = requiredVars.filter((name) => !hasEnvValue(name));
+  if (missingVars.length > 0) {
+    console.error(
+      `[tauri-build] Missing required Azure Artifact Signing env vars: ${missingVars.join(', ')}`
+    );
+    process.exit(1);
+  }
+  if (process.platform !== 'win32') {
+    console.error('[tauri-build] Authenticode release builds must run on Windows.');
+    process.exit(1);
+  }
+
+  process.env.TAURI_WINDOWS_SIGNING_SCRIPT = fileURLToPath(
+    new URL('./windows-artifact-sign.ps1', import.meta.url)
+  );
+}
+
+function verifyWindowsArtifacts() {
+  if (!requireWindowsSigning) return;
+
+  const target = getArgValue('--target');
+  const root = path.dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
+  const targetReleaseDir = target
+    ? path.join(root, 'src-tauri', 'target', target, 'release')
+    : path.join(root, 'src-tauri', 'target', 'release');
+  const verifyScript = fileURLToPath(new URL('./verify-windows-authenticode.ps1', import.meta.url));
+
+  execFileSync(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-ExecutionPolicy',
+      'Bypass',
+      '-File',
+      verifyScript,
+      '-TargetReleaseDir',
+      targetReleaseDir,
+    ],
+    { stdio: 'inherit', env: process.env }
+  );
 }
 
 function setBundlesArg(value) {
@@ -211,8 +278,10 @@ if (isMacBuildTarget()) {
 }
 
 assertTauriSigningConfigured();
+assertWindowsSigningConfigured();
 stripMsiBundleForPrereleaseWindows();
 
 const tauriBuildArgs = args.join(' ').trim();
 const tauriBuildCommand = tauriBuildArgs ? `npx tauri build ${tauriBuildArgs}` : 'npx tauri build';
 execSync(tauriBuildCommand, { stdio: 'inherit' });
+verifyWindowsArtifacts();
