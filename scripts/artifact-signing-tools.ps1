@@ -1,5 +1,13 @@
 Set-StrictMode -Version Latest
 
+function Import-BundledPowerShellSecurityModule {
+  $moduleManifest = Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1'
+  if (-not (Test-Path -LiteralPath $moduleManifest -PathType Leaf)) {
+    throw "The bundled Microsoft.PowerShell.Security module was not found: $moduleManifest"
+  }
+  Import-Module -Name $moduleManifest -Force -ErrorAction Stop
+}
+
 function Get-ArtifactSigningTools {
   $signToolOverride = $env:AZURE_ARTIFACT_SIGNING_SIGNTOOL_PATH
   $dlibOverride = $env:AZURE_ARTIFACT_SIGNING_DLIB_PATH
