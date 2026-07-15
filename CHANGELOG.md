@@ -25,7 +25,7 @@
 
 ## Changes in `v3.0.2-beta.2:`
 
-- **NEW - Windows code signing:** WOO HOO!! Windows Codesigning is here [Experimental]
+- **NEW - Windows code signing:** WOO HOO!! Windows Codesigning is here!
   - After a good while of not having it, Windows Binaries are now signed by Azure Artifact Signing!
 
 ## Changes in `v3.0.2-beta.1:`
