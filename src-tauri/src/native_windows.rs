@@ -1,3 +1,4 @@
+use std::os::windows::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use windows::{
     core::{HSTRING, PCWSTR, PWSTR},
@@ -19,8 +20,14 @@ use windows::{
 };
 use winreg::{enums::HKEY_CURRENT_USER, RegKey};
 
-fn open_shell_target(target: &str) -> Result<(), String> {
-    let target = HSTRING::from(target);
+fn wide_path(path: &Path) -> Vec<u16> {
+    path.as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect()
+}
+
+fn open_shell_target_wide(target: &[u16]) -> Result<(), String> {
     let result = unsafe {
         ShellExecuteW(
             HWND::default(),
@@ -42,11 +49,12 @@ fn open_shell_target(target: &str) -> Result<(), String> {
 }
 
 pub fn open_path(path: &Path) -> Result<(), String> {
-    open_shell_target(path.to_string_lossy().as_ref())
+    open_shell_target_wide(&wide_path(path))
 }
 
 pub fn open_uri(uri: &str) -> Result<(), String> {
-    open_shell_target(uri)
+    let uri = HSTRING::from(uri);
+    open_shell_target_wide(uri.as_wide())
 }
 
 pub fn read_user_dword(key: &str, value: &str) -> Option<u32> {
@@ -89,7 +97,7 @@ pub fn update_file_attributes(
     hidden: Option<bool>,
     system: Option<bool>,
 ) -> Result<(), String> {
-    let path = HSTRING::from(path.to_string_lossy().as_ref());
+    let path = wide_path(path);
     let current = unsafe { GetFileAttributesW(PCWSTR(path.as_ptr())) };
     if current == INVALID_FILE_ATTRIBUTES {
         return Err(format!(
@@ -127,7 +135,7 @@ pub fn reveal_items(paths: &[PathBuf]) -> Result<(), String> {
 
         let result = (|| {
             for path in paths {
-                let path = HSTRING::from(path.to_string_lossy().as_ref());
+                let path = wide_path(&path);
                 let item = unsafe { ILCreateFromPathW(PCWSTR(path.as_ptr())) };
                 if item.is_null() {
                     return Err("Windows could not resolve item for Explorer".to_string());
@@ -164,9 +172,12 @@ pub fn reveal_items(paths: &[PathBuf]) -> Result<(), String> {
 }
 
 pub fn install_context_menu(executable: &Path) -> Result<(), String> {
-    let executable = executable.to_string_lossy();
-    let command = format!("\"{executable}\" \"%1\"");
-    let icon = format!("\"{executable}\",0");
+    let mut command = std::ffi::OsString::from("\"");
+    command.push(executable.as_os_str());
+    command.push("\" \"%1\"");
+    let mut icon = std::ffi::OsString::from("\"");
+    icon.push(executable.as_os_str());
+    icon.push("\",0");
     let root = RegKey::predef(HKEY_CURRENT_USER);
 
     for key_path in [
@@ -178,13 +189,13 @@ pub fn install_context_menu(executable: &Path) -> Result<(), String> {
             .map_err(|error| format!("Failed to create context-menu key: {error}"))?;
         key.set_value("", &"Open in IYERIS")
             .map_err(|error| format!("Failed to set context-menu label: {error}"))?;
-        key.set_value("Icon", &icon.as_str())
+        key.set_value("Icon", &icon)
             .map_err(|error| format!("Failed to set context-menu icon: {error}"))?;
         let (command_key, _) = key
             .create_subkey("command")
             .map_err(|error| format!("Failed to create context-menu command: {error}"))?;
         command_key
-            .set_value("", &command.as_str())
+            .set_value("", &command)
             .map_err(|error| format!("Failed to set context-menu command: {error}"))?;
     }
     Ok(())
@@ -203,4 +214,22 @@ pub fn uninstall_context_menu() -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wide_path;
+    use std::ffi::OsString;
+    use std::os::windows::ffi::OsStringExt;
+    use std::path::PathBuf;
+
+    #[test]
+    fn wide_path_preserves_unpaired_surrogates() {
+        let original = [b'C' as u16, b':' as u16, b'\\' as u16, 0xD800, b'x' as u16];
+        let path = PathBuf::from(OsString::from_wide(&original));
+        let mut expected = original.to_vec();
+        expected.push(0);
+
+        assert_eq!(wide_path(&path), expected);
+    }
 }

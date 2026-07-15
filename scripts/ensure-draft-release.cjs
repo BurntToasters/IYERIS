@@ -216,7 +216,9 @@ async function ensureDraftRelease() {
         prerelease: IS_PRERELEASE,
       }
     );
-    console.log('   Created draft release: ' + (release.name || TAG_NAME) + ' (id ' + release.id + ')');
+    console.log(
+      '   Created draft release: ' + (release.name || TAG_NAME) + ' (id ' + release.id + ')'
+    );
     return release;
   } catch (error) {
     // Another concurrent run may have created it (422 already_exists) - re-fetch.
@@ -281,14 +283,9 @@ async function waitForDraftRelease() {
 
 async function main() {
   if (!GH_TOKEN) {
-    if (WAIT_MODE) {
-      console.warn('⚠ WARN: GH_TOKEN not set - cannot check for the draft release. Skipping wait.');
-    } else {
-      console.warn('⚠ WARN: GH_TOKEN not set - cannot pre-create draft release. Skipping.');
-      console.warn('   (electron-builder will create the draft itself, but the duplicate-draft');
-      console.warn('    race may reoccur without a pre-created draft.)');
-    }
-    return;
+    throw new Error(
+      `GH_TOKEN is required to ${WAIT_MODE ? 'wait for' : 'create or reuse'} the release draft.`
+    );
   }
 
   if (WAIT_MODE) {

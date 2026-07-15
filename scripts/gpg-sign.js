@@ -19,6 +19,7 @@ const IS_PRERELEASE = /-(?:beta|alpha|rc)(?:[.-]?\d+)?/i.test(VERSION);
 const GPG_KEY_ID = process.env.GPG_KEY_ID;
 const GPG_PASSPHRASE = process.env.GPG_PASSPHRASE;
 const GH_TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+const STAGE_ONLY = process.argv.includes('--stage-only');
 const REPO_OWNER = process.env.GH_REPO_OWNER || 'BurntToasters';
 const REPO_NAME = process.env.GH_REPO_NAME || 'IYERIS';
 const TAG_DOWNLOAD_BASE_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${encodeURIComponent(TAG)}`;
@@ -27,8 +28,8 @@ const RELEASE_DOWNLOAD_BASE_URL = (
 ).replace(/\/+$/, '');
 const RELEASE_NOTES = process.env.RELEASE_NOTES || '';
 const RELEASE_PUB_DATE = process.env.RELEASE_PUB_DATE || new Date().toISOString();
-const ALLOW_ASSET_REPLACE = !/^(0|false|no|off)$/i.test(
-  String(process.env.ALLOW_ASSET_REPLACE || 'true').trim()
+const ALLOW_ASSET_REPLACE = /^(1|true|yes|on)$/i.test(
+  String(process.env.ALLOW_ASSET_REPLACE || 'false').trim()
 );
 const REQUIRED_LINUX_TARGETS = (process.env.REQUIRED_LINUX_TARGETS || '').trim();
 const REQUIRE_LINUX_AARCH64 = /^(1|true|yes|on)$/i.test(
@@ -41,6 +42,7 @@ const ENFORCE_LINUX_X64_PACKAGE_SET = !/^(0|false|no|off)$/i.test(
 const ext = (e) => (n) => n.toLowerCase().endsWith(e);
 const rx = (r) => (n) => r.test(n);
 const isPerTargetManifest = rx(/^latest-[a-z0-9-]+-[a-z0-9_]+\.json$/i);
+const isBetaChannelManifest = rx(/^latest-[a-z0-9]+-beta-[a-z0-9_]+\.json$/i);
 const isChecksumTextName = rx(/^SHA256SUMS(?:-[a-z0-9_]+(?:-[a-z0-9_]+)?)?\.txt$/i);
 
 const ARTIFACT_RULES = [
@@ -736,7 +738,8 @@ async function uploadAssetWithReplace(release, filePath) {
     const assets = await listReleaseAssets(release.id);
     const existing = assets.find((a) => a?.name === fileName && typeof a.id === 'number');
     if (!existing) throw err;
-    if (!release.draft && !ALLOW_ASSET_REPLACE) {
+    const betaManifestSync = isBetaChannelManifest(fileName);
+    if (!release.draft && !ALLOW_ASSET_REPLACE && !betaManifestSync) {
       throw new Error(
         `Refusing to replace existing asset "${fileName}" on published release ${TAG}. Set ALLOW_ASSET_REPLACE=true to override.`
       );
@@ -769,6 +772,11 @@ async function syncBetaManifestsToLatestStable(uploadedFiles, currentReleaseId) 
 
 async function main() {
   console.log(`\nIYERIS ${VERSION} — release pipeline\n`);
+  if (!GH_TOKEN && !STAGE_ONLY) {
+    throw new Error(
+      'GH_TOKEN is required to upload release assets. Use the explicit staging-only command when no upload is intended.'
+    );
+  }
   console.log('[1/5] Checking GPG...');
   if (!GPG_KEY_ID) {
     console.error('GPG_KEY_ID is required.');
@@ -798,8 +806,8 @@ async function main() {
     console.log(`  + ${path.basename(checksumFile)}.asc`);
   }
 
-  if (!GH_TOKEN) {
-    console.log('\n[5/5] GH_TOKEN not set — skipping GitHub upload.');
+  if (STAGE_ONLY) {
+    console.log('\n[5/5] Staging-only mode — skipping GitHub upload.');
     console.log(`Artifacts staged in: ${releaseDir}\n`);
     return;
   }

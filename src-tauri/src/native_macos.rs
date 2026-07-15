@@ -1,12 +1,30 @@
 use objc2::rc::autoreleasepool;
+use objc2::runtime::{AnyObject, ProtocolObject};
+use objc2::ClassType;
 use objc2_app_kit::{
-    NSPasteboard, NSPasteboardTypeString, NSWorkspace, NSWorkspaceOpenConfiguration,
+    NSPasteboard, NSPasteboardTypeString, NSPasteboardURLReadingFileURLsOnlyKey, NSWorkspace,
+    NSWorkspaceLaunchOptions,
 };
-use objc2_foundation::{NSArray, NSProcessInfo, NSString, NSUserDefaults, NSURL};
+use objc2_foundation::{
+    NSArray, NSCopying, NSDictionary, NSNumber, NSProcessInfo, NSString, NSUserDefaults, NSURL,
+};
+use std::ffi::{c_char, CString};
+use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
+use std::ptr::NonNull;
 
 fn file_url(path: &Path) -> objc2::rc::Retained<NSURL> {
-    NSURL::fileURLWithPath(&NSString::from_str(&path.to_string_lossy()))
+    let representation = CString::new(path.as_os_str().as_bytes())
+        .expect("filesystem paths cannot contain NUL bytes");
+    let pointer = NonNull::new(representation.as_ptr() as *mut c_char)
+        .expect("CString always has a non-null pointer");
+    unsafe {
+        NSURL::fileURLWithFileSystemRepresentation_isDirectory_relativeToURL(
+            pointer,
+            path.is_dir(),
+            None,
+        )
+    }
 }
 
 pub fn open_path(path: &Path) -> Result<(), String> {
@@ -62,18 +80,30 @@ pub fn applications_for_path(path: &Path) -> Vec<(String, String)> {
     })
 }
 
+#[allow(deprecated)]
 pub fn open_path_with_app(path: &Path, app_path: &Path) -> Result<(), String> {
     autoreleasepool(|_| {
         let urls = NSArray::from_retained_slice(&[file_url(path)]);
-        let configuration = NSWorkspaceOpenConfiguration::configuration();
-        NSWorkspace::sharedWorkspace()
-            .openURLs_withApplicationAtURL_configuration_completionHandler(
-                &urls,
-                &file_url(app_path),
-                &configuration,
-                None,
-            );
-        Ok(())
+        let configuration: objc2::rc::Retained<NSDictionary<NSString, AnyObject>> =
+            NSDictionary::dictionary();
+        unsafe {
+            NSWorkspace::sharedWorkspace()
+                .openURLs_withApplicationAtURL_options_configuration_error(
+                    &urls,
+                    &file_url(app_path),
+                    NSWorkspaceLaunchOptions::Default,
+                    &configuration,
+                )
+        }
+        .map(|_| ())
+        .map_err(|error| {
+            format!(
+                "macOS could not open {} with {}: {}",
+                path.display(),
+                app_path.display(),
+                error.localizedDescription()
+            )
+        })
     })
 }
 
@@ -133,6 +163,32 @@ pub fn clipboard_text() -> Option<String> {
     })
 }
 
+pub fn clipboard_file_paths() -> Vec<String> {
+    autoreleasepool(|_| {
+        let classes = NSArray::from_slice(&[NSURL::class()]);
+        let file_urls_only = NSNumber::new_bool(true);
+        let key: &ProtocolObject<dyn NSCopying> =
+            ProtocolObject::from_ref(unsafe { NSPasteboardURLReadingFileURLsOnlyKey });
+        let typed_options = unsafe {
+            NSDictionary::<NSString, NSNumber>::dictionaryWithObject_forKey(&file_urls_only, key)
+        };
+        let options = unsafe { typed_options.cast_unchecked::<NSString, AnyObject>() };
+        let Some(objects) = (unsafe {
+            NSPasteboard::generalPasteboard().readObjectsForClasses_options(&classes, Some(options))
+        }) else {
+            return Vec::new();
+        };
+
+        objects
+            .iter()
+            .filter_map(|object| object.downcast::<NSURL>().ok())
+            .filter(|url| url.isFileURL())
+            .filter_map(|url| url.path())
+            .map(|path| path.to_string())
+            .collect()
+    })
+}
+
 pub fn set_clipboard_text(text: &str) -> Result<(), String> {
     autoreleasepool(|_| {
         let pasteboard = NSPasteboard::generalPasteboard();
@@ -144,4 +200,22 @@ pub fn set_clipboard_text(text: &str) -> Result<(), String> {
             Err("Failed to write macOS pasteboard".to_string())
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::file_url;
+    use std::ffi::{CStr, OsStr};
+    use std::os::unix::ffi::OsStrExt;
+    use std::path::Path;
+
+    #[test]
+    fn file_url_preserves_non_utf8_filesystem_representation() {
+        let bytes = b"/tmp/iyeris-non-utf8-\xFF";
+        let path = Path::new(OsStr::from_bytes(bytes));
+        let url = file_url(path);
+        let representation = unsafe { CStr::from_ptr(url.fileSystemRepresentation().as_ptr()) };
+
+        assert_eq!(representation.to_bytes(), bytes);
+    }
 }
