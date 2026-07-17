@@ -3,6 +3,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { isDirectExecution } from './direct-execution.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -74,7 +75,7 @@ function run({ now = new Date() } = {}) {
   return { updated: true, version, date: dateStr };
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+if (isDirectExecution(import.meta.url)) {
   try {
     const result = run();
     if (result.updated)
