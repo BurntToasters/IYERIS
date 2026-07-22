@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { execSync, spawnSync } from 'child_process';
 import https from 'https';
 import { fileURLToPath } from 'url';
+import { verifyReleaseSession } from './release-session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -83,6 +84,24 @@ const isSignable = (name) => SIGN_RULES.some((r) => r(name));
 const isPrereleaseBlockedArtifact = (name) => IS_PRERELEASE && /\.msi(?:\.sig|\.asc)?$/i.test(name);
 
 const SEARCH_DIRS = [path.join(root, 'src-tauri', 'target'), path.join(root, 'dist')];
+
+function readBuildSession() {
+  try {
+    return verifyReleaseSession(root);
+  } catch (error) {
+    throw new Error(
+      `Release build session is missing or invalid. Run npm run release:prepare before building: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+}
+
+function wasBuiltInSession(filePath, session) {
+  try {
+    return fs.statSync(filePath).mtimeMs >= session.startedAt - 2000;
+  } catch {
+    return false;
+  }
+}
 
 function artifactMatchesVersion(name) {
   if (isPerTargetManifest(name)) return true;
@@ -493,10 +512,15 @@ function normalizePreStagedArtifacts(staged) {
 
 function collectArtifacts() {
   fs.mkdirSync(releaseDir, { recursive: true });
+  const buildSession = readBuildSession();
   const discovered = SEARCH_DIRS.flatMap((d) => walk(d));
   const found = discovered.filter((f) => {
     const name = path.basename(f);
-    return artifactMatchesVersion(name) && !isPrereleaseBlockedArtifact(name);
+    return (
+      artifactMatchesVersion(name) &&
+      !isPrereleaseBlockedArtifact(name) &&
+      wasBuiltInSession(f, buildSession)
+    );
   });
   if (found.length > 0) {
     clearReleaseStaging();
@@ -532,12 +556,15 @@ function collectArtifacts() {
         !isChecksumTextName(n)
     )
     .map((n) => path.join(releaseDir, n));
-  if (staged.length === 0) {
+
+  const currentStaged = staged.filter((filePath) => wasBuiltInSession(filePath, buildSession));
+
+  if (currentStaged.length === 0) {
     console.error('No build artifacts found.');
     process.exit(1);
   }
-  console.log(`  Found ${staged.length} pre-staged artifact(s) in release/`);
-  const normalizedStaged = normalizePreStagedArtifacts(staged);
+  console.log(`  Found ${currentStaged.length} pre-staged artifact(s) in release/`);
+  const normalizedStaged = normalizePreStagedArtifacts(currentStaged);
   const manifests = generateUpdaterManifests(normalizedStaged);
   return Array.from(new Set([...normalizedStaged, ...manifests]));
 }
