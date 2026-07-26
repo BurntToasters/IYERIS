@@ -24,18 +24,6 @@ function copyIfExists(src, dest, { required = true } = {}) {
   return true;
 }
 
-function copyDirIfExists(src, dest, { required = true } = {}) {
-  if (!fs.existsSync(src)) {
-    const rel = path.relative(root, src);
-    const prefix = required ? 'ERROR' : 'WARN';
-    console[required ? 'error' : 'warn'](`  ! [${prefix}] Source dir not found: ${rel}`);
-    if (required) missingRequiredAssets += 1;
-    return false;
-  }
-  fs.cpSync(src, dest, { recursive: true, force: true });
-  return true;
-}
-
 console.log('Copying vendor assets to public/...');
 
 const hljsBase = path.dirname(require.resolve('@highlightjs/cdn-assets/package.json'));

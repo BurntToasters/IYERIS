@@ -108,7 +108,9 @@ function createConfig() {
   };
 
   const config = {
-    getFileGrid: () => fileGrid,
+    // Production accepts a missing grid, and one test below swaps in `() => null`
+    // to cover that path, so the annotation must allow it.
+    getFileGrid: (): HTMLElement | null => fileGrid,
     getFileItemData: vi.fn<(fileItem: HTMLElement) => FileItem | null>((fileItem: HTMLElement) => {
       const path = fileItem.dataset.path || '';
       return fileItems[path] ?? null;

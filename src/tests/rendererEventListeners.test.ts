@@ -154,7 +154,7 @@ function createMockConfig() {
     showToast: vi.fn(),
 
     applySettings: vi.fn(),
-    getSavedState: vi.fn(() => null),
+    getSavedState: vi.fn((): SettingsFormState | null => null),
     captureSettingsFormState: vi.fn(() => ({}) as SettingsFormState),
     buildSettingsFormStateFromSettings: vi.fn(() => ({}) as SettingsFormState),
     setSavedState: vi.fn(),
@@ -163,12 +163,12 @@ function createMockConfig() {
     updateCustomThemeUI: vi.fn(),
     syncShortcutBindingsFromSettings: vi.fn(),
     hideBreadcrumbMenu: vi.fn(),
-    getBreadcrumbMenuElement: vi.fn(() => null),
+    getBreadcrumbMenuElement: vi.fn((): HTMLElement | null => null),
     isBreadcrumbMenuOpen: vi.fn(() => false),
 
     isShortcutCaptureActive: vi.fn(() => false),
-    getFixedShortcutActionIdFromEvent: vi.fn(() => null),
-    getShortcutActionIdFromEvent: vi.fn(() => null),
+    getFixedShortcutActionIdFromEvent: vi.fn((): string | null => null),
+    getShortcutActionIdFromEvent: vi.fn((): string | null => null),
 
     createNewFile: vi.fn(),
     createNewFolder: vi.fn(),

@@ -26,7 +26,7 @@ function run({ now = new Date() } = {}) {
   try {
     pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
   } catch (error) {
-    throw new Error(`Failed to parse package.json: ${error?.message || error}`);
+    throw new Error(`Failed to parse package.json: ${error?.message || error}`, { cause: error });
   }
 
   const version = pkg.version;

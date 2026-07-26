@@ -531,6 +531,7 @@ const statusBarController = createStatusBarController({
   updateClipboardIndicator: () => clipboardController.updateClipboardIndicator(),
 });
 const { update: updateStatusBar } = statusBarController;
+ipcCleanupFunctions.push(() => statusBarController.dispose());
 
 const { loadRecentFiles, addToRecentFiles } = createRecentFilesController({
   getCurrentSettings: () => currentSettings,

@@ -9,7 +9,7 @@
  *      Previously setCurrentSettings was called before the save, leaving
  *      memory cleared even if the disk write failed.
  */
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createSettingsActionsController } from '../rendererSettingsActions';
 
 const NATIVE_IDS = [
@@ -62,9 +62,22 @@ function init(deps: ReturnType<typeof makeDeps>) {
 
 describe('rendererSettingsActions — regressions', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     buildDom();
     vi.clearAllMocks();
   });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * F5: settle pending promise chains on the fake clock instead of sleeping on
+   * the real one. advanceTimersByTimeAsync drains microtasks between timer
+   * callbacks, so this is an exact replacement for
+   * `await new Promise((r) => setTimeout(r, 0))` and cannot go flaky under load.
+   */
+  const settlePendingWork = (ms = 0) => vi.advanceTimersByTimeAsync(ms);
 
   // N5 -----------------------------------------------------------------------
   describe('N5 — native integration buttons must not stay disabled after IPC reject', () => {
@@ -79,7 +92,7 @@ describe('rendererSettingsActions — regressions', () => {
       init(deps);
 
       // Flush the automatic status check that fires on controller init.
-      await new Promise((r) => setTimeout(r, 0));
+      await settlePendingWork();
 
       const installBtn = document.getElementById(
         'native-integration-install-btn'
@@ -102,7 +115,7 @@ describe('rendererSettingsActions — regressions', () => {
         exportDiagnostics: vi.fn(),
       };
       init(makeDeps());
-      await new Promise((r) => setTimeout(r, 0));
+      await settlePendingWork();
 
       const statusText = document.getElementById('native-integration-status-text') as HTMLElement;
       expect(statusText.textContent).not.toBe('Checking integration status...');
@@ -121,7 +134,7 @@ describe('rendererSettingsActions — regressions', () => {
         exportDiagnostics: vi.fn(),
       };
       init(makeDeps());
-      await new Promise((r) => setTimeout(r, 0));
+      await settlePendingWork();
 
       const installBtn = document.getElementById(
         'native-integration-install-btn'
@@ -155,7 +168,7 @@ describe('rendererSettingsActions — regressions', () => {
       init(deps);
 
       document.getElementById('clear-search-history-btn')!.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await settlePendingWork();
 
       expect(deps.setCurrentSettings).not.toHaveBeenCalled();
       expect(deps.showToast).toHaveBeenCalledWith(
@@ -176,7 +189,7 @@ describe('rendererSettingsActions — regressions', () => {
       init(deps);
 
       document.getElementById('clear-search-history-btn')!.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await settlePendingWork();
 
       expect(deps.setCurrentSettings).toHaveBeenCalledWith(
         expect.objectContaining({ searchHistory: [] })
@@ -198,7 +211,7 @@ describe('rendererSettingsActions — regressions', () => {
       init(deps);
 
       document.getElementById('clear-bookmarks-btn')!.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await settlePendingWork();
 
       expect(deps.setCurrentSettings).not.toHaveBeenCalled();
       expect(deps.loadBookmarks).not.toHaveBeenCalled();
@@ -215,7 +228,7 @@ describe('rendererSettingsActions — regressions', () => {
       init(deps);
 
       document.getElementById('clear-bookmarks-btn')!.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await settlePendingWork();
 
       expect(deps.setCurrentSettings).toHaveBeenCalledWith(
         expect.objectContaining({ bookmarks: [] })

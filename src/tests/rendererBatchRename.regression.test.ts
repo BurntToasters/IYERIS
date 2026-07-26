@@ -8,7 +8,7 @@
  * N9: The Apply button must have an in-flight guard: a second click while the
  *     first batchRename IPC call is pending must be a no-op.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createBatchRenameController } from '../rendererBatchRename';
 
@@ -59,13 +59,28 @@ function createDeps(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/**
+ * F5: settle pending promise chains on the fake clock instead of sleeping on the
+ * real one. advanceTimersByTimeAsync also drains microtasks between timer
+ * callbacks, so it replaces `await new Promise((r) => setTimeout(r, 0))` exactly
+ * while staying deterministic on a loaded CI machine.
+ */
+async function settlePendingWork(ms = 0) {
+  await vi.advanceTimersByTimeAsync(ms);
+}
+
 describe('rendererBatchRename — regressions', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
     buildDom();
     (window as any).tauriAPI = {
       batchRename: vi.fn().mockResolvedValue({ success: true }),
     };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   // N1 -----------------------------------------------------------------------
@@ -145,7 +160,7 @@ describe('rendererBatchRename — regressions', () => {
       applyBtn.click(); // second click — must be ignored
 
       resolveRename({ success: true });
-      await new Promise((r) => setTimeout(r, 0));
+      await settlePendingWork();
 
       expect(batchRename).toHaveBeenCalledTimes(1);
     });
@@ -165,14 +180,14 @@ describe('rendererBatchRename — regressions', () => {
 
       const applyBtn = document.getElementById('batch-rename-apply')!;
       applyBtn.click();
-      await new Promise((r) => setTimeout(r, 0)); // first rename done
+      await settlePendingWork(); // first rename done
 
       // Re-open and try again (guard should be released after completion).
       ctrl.showBatchRenameModal();
       findInput.value = 'beta';
       findInput.dispatchEvent(new Event('input'));
       applyBtn.click();
-      await new Promise((r) => setTimeout(r, 0));
+      await settlePendingWork();
 
       expect(batchRename).toHaveBeenCalledTimes(2);
     });

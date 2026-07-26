@@ -90,7 +90,8 @@ function readBuildSession() {
     return verifyReleaseSession(root);
   } catch (error) {
     throw new Error(
-      `Release build session is missing or invalid. Run npm run release:prepare before building: ${error instanceof Error ? error.message : String(error)}`
+      `Release build session is missing or invalid. Run npm run release:prepare before building: ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
 }
@@ -114,7 +115,7 @@ function clearReleaseStaging() {
   if (!fs.existsSync(releaseDir)) return;
   for (const name of fs.readdirSync(releaseDir)) {
     const fullPath = path.join(releaseDir, name);
-    let isFile = false;
+    let isFile;
     try {
       isFile = fs.statSync(fullPath).isFile();
     } catch {
@@ -133,7 +134,7 @@ function clearPreStagedUpdaterManifests() {
   for (const name of fs.readdirSync(releaseDir)) {
     if (!isPerTargetManifest(name)) continue;
     const fullPath = path.join(releaseDir, name);
-    let isFile = false;
+    let isFile;
     try {
       isFile = fs.statSync(fullPath).isFile();
     } catch {
@@ -768,7 +769,8 @@ async function uploadAssetWithReplace(release, filePath) {
     const betaManifestSync = isBetaChannelManifest(fileName);
     if (!release.draft && !ALLOW_ASSET_REPLACE && !betaManifestSync) {
       throw new Error(
-        `Refusing to replace existing asset "${fileName}" on published release ${TAG}. Set ALLOW_ASSET_REPLACE=true to override.`
+        `Refusing to replace existing asset "${fileName}" on published release ${TAG}. Set ALLOW_ASSET_REPLACE=true to override.`,
+        { cause: err }
       );
     }
     await ghRequest('DELETE', `/repos/${REPO_OWNER}/${REPO_NAME}/releases/assets/${existing.id}`);
@@ -786,7 +788,8 @@ async function syncBetaManifestsToLatestStable(uploadedFiles, currentReleaseId) 
     latestStable = await ghRequest('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
   } catch (err) {
     throw new Error(
-      `Could not load latest stable release for beta manifest sync: ${err instanceof Error ? err.message : String(err)}`
+      `Could not load latest stable release for beta manifest sync: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err }
     );
   }
   if (!latestStable?.id || !latestStable?.upload_url) return;

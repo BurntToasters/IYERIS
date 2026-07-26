@@ -60,7 +60,49 @@ vi.mock('../settings.js', () => ({
 
 import { createSettingsUiController } from '../rendererSettingsUi';
 
-Element.prototype.scrollIntoView = vi.fn();
+// F4 (isolation): jsdom does not implement scrollIntoView, so the settings UI
+// needs a stand-in. Assigning it to Element.prototype at module scope left the
+// prototype permanently patched with no way back; install it per test and put
+// the prototype back afterwards instead.
+const originalScrollIntoView = Element.prototype.scrollIntoView;
+
+// F4 (isolation): initSettingsUi attaches a window 'keydown' listener (the
+// Ctrl+F settings-search shortcut) and production has no removal hook for it.
+// Record whatever the controller registers during a test and detach it after, so
+// handlers owned by an earlier test cannot fire during a later one.
+type WindowListenerRegistration = [string, EventListenerOrEventListenerObject, unknown];
+let trackedWindowListeners: WindowListenerRegistration[] = [];
+let addEventListenerSpy: { mockRestore: () => void } | null = null;
+
+beforeEach(() => {
+  Element.prototype.scrollIntoView = vi.fn();
+  trackedWindowListeners = [];
+  const nativeAddEventListener = window.addEventListener.bind(window);
+  addEventListenerSpy = vi
+    .spyOn(window, 'addEventListener')
+    .mockImplementation((...args: unknown[]) => {
+      trackedWindowListeners.push(args as unknown as WindowListenerRegistration);
+      (nativeAddEventListener as (...a: unknown[]) => void)(...args);
+    });
+});
+
+afterEach(() => {
+  addEventListenerSpy?.mockRestore();
+  addEventListenerSpy = null;
+  trackedWindowListeners.forEach(([type, handler, options]) => {
+    window.removeEventListener(
+      type,
+      handler,
+      options as boolean | EventListenerOptions | undefined
+    );
+  });
+  trackedWindowListeners = [];
+  if (originalScrollIntoView) {
+    Element.prototype.scrollIntoView = originalScrollIntoView;
+  } else {
+    delete (Element.prototype as { scrollIntoView?: unknown }).scrollIntoView;
+  }
+});
 
 function createDeps() {
   return {
@@ -1656,6 +1698,38 @@ describe('initSettingsUi – full integration', () => {
     const ctrl = makeController();
     ctrl.initSettingsUi();
     expect(() => ctrl.initSettingsUi()).not.toThrow();
+  });
+
+  it('the Ctrl+F window listener is tracked so it can be detached after the test', () => {
+    const modal = setUpSettingsModal(`
+      <input type="text" id="settings-search" />
+      <button id="settings-search-clear"></button>
+      <button id="settings-search-count"></button>
+    `);
+    modal.style.display = 'flex';
+
+    makeController().initSettingsUi();
+
+    const keydownRegistrations = trackedWindowListeners.filter(([type]) => type === 'keydown');
+    expect(keydownRegistrations.length).toBeGreaterThan(0);
+
+    const searchInput = document.getElementById('settings-search') as HTMLInputElement;
+    const focusSpy = vi.spyOn(searchInput, 'focus');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true }));
+    expect(focusSpy).toHaveBeenCalled();
+
+    // Detaching exactly what was tracked must silence the handler, which is what
+    // the file-level afterEach relies on.
+    keydownRegistrations.forEach(([type, handler, options]) => {
+      window.removeEventListener(
+        type,
+        handler,
+        options as boolean | EventListenerOptions | undefined
+      );
+    });
+    focusSpy.mockClear();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'f', ctrlKey: true }));
+    expect(focusSpy).not.toHaveBeenCalled();
   });
 });
 

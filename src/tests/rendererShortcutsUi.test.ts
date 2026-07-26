@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 vi.mock('../shared.js', () => ({
   escapeHtml: (t: unknown) => String(t ?? ''),
@@ -48,8 +48,28 @@ function makeDeps(overrides: Partial<Deps> = {}): Deps {
   };
 }
 
+// F4 (isolation): starting a shortcut capture attaches a capture-phase
+// window 'keydown' listener that is only removed by stopShortcutCapture().
+// Several tests below deliberately finish while capture is still active, so
+// every controller is created through makeController() and stopped in afterEach.
+// Otherwise those listeners stay live and swallow keydown events dispatched by
+// later tests.
+const liveControllers: { stopShortcutCapture: () => void }[] = [];
+
+function makeController(deps: Deps) {
+  const controller = createShortcutsUiController(deps);
+  liveControllers.push(controller);
+  return controller;
+}
+
 describe('rendererShortcutsUi', () => {
   beforeEach(() => {
+    document.body.innerHTML = '';
+  });
+
+  afterEach(() => {
+    liveControllers.forEach((controller) => controller.stopShortcutCapture());
+    liveControllers.length = 0;
     document.body.innerHTML = '';
   });
 
@@ -57,7 +77,7 @@ describe('rendererShortcutsUi', () => {
     it('renders sections with remappable and fixed shortcut items', () => {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
 
       const container = document.getElementById('shortcuts-modal-sections')!;
@@ -71,7 +91,7 @@ describe('rendererShortcutsUi', () => {
 
     it('does nothing without container', () => {
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
     });
 
@@ -80,7 +100,7 @@ describe('rendererShortcutsUi', () => {
       const deps = makeDeps({
         getShortcutBindings: () => ({ 'action-a': [], 'action-b': ['Ctrl', 'B'] }),
       });
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
       expect(document.getElementById('shortcuts-modal-sections')!.innerHTML).toContain(
         'Unassigned'
@@ -90,7 +110,7 @@ describe('rendererShortcutsUi', () => {
     it('disables reset button when binding matches default', () => {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
 
       const resetBtns = document.querySelectorAll('[data-shortcut-action="reset"]');
@@ -106,7 +126,7 @@ describe('rendererShortcutsUi', () => {
         getShortcutBindings: () => ({ 'action-a': ['Ctrl', 'Z'], 'action-b': ['Ctrl', 'B'] }),
         areBindingsEqual: (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b),
       });
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
 
       const items = document.querySelectorAll('[data-shortcut-id="action-a"]');
@@ -119,7 +139,7 @@ describe('rendererShortcutsUi', () => {
     it('includes Mac-specific refresh modifier', () => {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeDeps({ isMacPlatform: () => true });
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
 
       const container = document.getElementById('shortcuts-modal-sections')!;
@@ -129,7 +149,7 @@ describe('rendererShortcutsUi', () => {
     it('adds Redo category on non-Mac only', () => {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeDeps({ isMacPlatform: () => false });
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
       const container = document.getElementById('shortcuts-modal-sections')!;
       expect(container.innerHTML).toContain('Undo/Redo');
@@ -138,7 +158,7 @@ describe('rendererShortcutsUi', () => {
     it('omits Redo category on Mac', () => {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeDeps({ isMacPlatform: () => true });
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
       const container = document.getElementById('shortcuts-modal-sections')!;
       expect(container.innerHTML).not.toContain('Undo/Redo');
@@ -148,14 +168,14 @@ describe('rendererShortcutsUi', () => {
   describe('initShortcutsModal', () => {
     it('does nothing without container', () => {
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.initShortcutsModal();
     });
 
     it('delegates click to edit button', () => {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
       ctrl.initShortcutsModal();
 
@@ -171,7 +191,7 @@ describe('rendererShortcutsUi', () => {
         getShortcutBindings: () => ({ 'action-a': ['Ctrl', 'Z'], 'action-b': ['Ctrl', 'B'] }),
         areBindingsEqual: (a: any, b: any) => JSON.stringify(a) === JSON.stringify(b),
       });
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
       ctrl.initShortcutsModal();
 
@@ -187,7 +207,7 @@ describe('rendererShortcutsUi', () => {
     it('ignores click on disabled button', () => {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
       ctrl.initShortcutsModal();
 
@@ -202,7 +222,7 @@ describe('rendererShortcutsUi', () => {
     it('ignores click on non-button elements', () => {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"><span>text</span></div>';
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.initShortcutsModal();
 
       document.querySelector('span')!.click();
@@ -213,7 +233,7 @@ describe('rendererShortcutsUi', () => {
     function setupCapture() {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
       ctrl.initShortcutsModal();
       return { deps, ctrl };
@@ -227,6 +247,20 @@ describe('rendererShortcutsUi', () => {
       expect(editBtn.textContent).toBe('Press keys...');
       const item = editBtn.closest('[data-shortcut-id]')!;
       expect(item.classList.contains('is-recording')).toBe(true);
+    });
+
+    it('releases the window keydown listener when capture stops', () => {
+      const { deps, ctrl } = setupCapture();
+      (document.querySelector('[data-shortcut-action="edit"]') as HTMLButtonElement).click();
+      expect(ctrl.isShortcutCaptureActive()).toBe(true);
+
+      ctrl.stopShortcutCapture();
+      (deps.eventToBinding as ReturnType<typeof vi.fn>).mockClear();
+
+      // A stale capture listener would still consume this and try to rebind.
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'q', ctrlKey: true }));
+      expect(deps.eventToBinding).not.toHaveBeenCalled();
+      expect(deps.setShortcutBindings).not.toHaveBeenCalled();
     });
 
     it('stops capture on Escape', () => {
@@ -348,7 +382,7 @@ describe('rendererShortcutsUi', () => {
 
     it('stopShortcutCapture is safe when not capturing', () => {
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.stopShortcutCapture();
       expect(ctrl.isShortcutCaptureActive()).toBe(false);
     });
@@ -369,7 +403,7 @@ describe('rendererShortcutsUi', () => {
   describe('isShortcutCaptureActive', () => {
     it('returns false initially', () => {
       const deps = makeDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       expect(ctrl.isShortcutCaptureActive()).toBe(false);
     });
   });
@@ -407,7 +441,7 @@ describe('rendererShortcutsUi', () => {
     function setupMacCapture() {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeMacDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
       ctrl.initShortcutsModal();
       return { deps, ctrl };
@@ -459,7 +493,7 @@ describe('rendererShortcutsUi', () => {
     it('renders Mac modifier symbols in key labels', () => {
       document.body.innerHTML = '<div id="shortcuts-modal-sections"></div>';
       const deps = makeMacDeps();
-      const ctrl = createShortcutsUiController(deps);
+      const ctrl = makeController(deps);
       ctrl.renderShortcutsModal();
 
       const kbds = document.querySelectorAll('kbd');

@@ -257,7 +257,7 @@ function applyMacEnvCompatibility() {
 function assertSigningIdentityAvailable() {
   if (process.platform !== 'darwin' || !hasEnvValue('APPLE_SIGNING_IDENTITY')) return;
   const identity = process.env.APPLE_SIGNING_IDENTITY.trim();
-  let identitiesOutput = '';
+  let identitiesOutput;
 
   try {
     identitiesOutput = execSync('security find-identity -v -p codesigning', {
@@ -269,7 +269,8 @@ function assertSigningIdentityAvailable() {
     throw new Error(
       stderr
         ? `Unable to inspect keychain code-signing identities: ${stderr}`
-        : 'Unable to inspect keychain code-signing identities.'
+        : 'Unable to inspect keychain code-signing identities.',
+      { cause: error }
     );
   }
 

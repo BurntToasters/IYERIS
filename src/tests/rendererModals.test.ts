@@ -76,33 +76,72 @@ describe('rendererModals', () => {
       expect(document.activeElement).toBe(outer);
     });
 
+    // F6: these three asserted nothing at all. They now check the observable
+    // post-condition instead of merely not throwing.
     it('does not restore focus when restoreFocus is false', () => {
-      const outer = document.createElement('button');
+      const outer = makeFocusable(document.createElement('button'));
       outer.textContent = 'outer';
       document.body.appendChild(outer);
       outer.focus();
+      expect(document.activeElement).toBe(outer);
 
       const modal = document.createElement('div');
+      const inner = makeFocusable(document.createElement('button'));
+      inner.textContent = 'inner';
+      modal.appendChild(inner);
       document.body.appendChild(modal);
-      activateModal(modal, { restoreFocus: false });
 
+      activateModal(modal, { restoreFocus: false });
       deactivateModal(modal, { restoreFocus: false });
+
+      // Focus was never captured, so it must not be handed back to `outer`.
+      expect(document.activeElement).not.toBe(outer);
     });
   });
 
   describe('deactivateModal', () => {
     it('does nothing if passed a different modal', () => {
+      const outer = makeFocusable(document.createElement('button'));
+      document.body.appendChild(outer);
+      outer.focus();
+
       const modal1 = document.createElement('div');
+      const inner = makeFocusable(document.createElement('button'));
+      modal1.appendChild(inner);
       const modal2 = document.createElement('div');
       document.body.appendChild(modal1);
       document.body.appendChild(modal2);
 
       activateModal(modal1);
+      expect(document.activeElement).toBe(inner);
+      const modal1Tabindex = modal1.getAttribute('tabindex');
+
       deactivateModal(modal2);
+
+      // modal1 is still the active modal: its state and the focus are untouched.
+      expect(modal1.getAttribute('tabindex')).toBe(modal1Tabindex);
+      expect(document.activeElement).toBe(inner);
+
+      // Deactivating the real one still restores focus, proving it stayed tracked.
+      deactivateModal(modal1);
+      expect(document.activeElement).toBe(outer);
     });
 
     it('works with no argument', () => {
+      const outer = makeFocusable(document.createElement('button'));
+      document.body.appendChild(outer);
+      outer.focus();
+
+      const modal = document.createElement('div');
+      const inner = makeFocusable(document.createElement('button'));
+      modal.appendChild(inner);
+      document.body.appendChild(modal);
+
+      activateModal(modal);
+      expect(document.activeElement).toBe(inner);
+
       deactivateModal();
+      expect(document.activeElement).toBe(outer);
     });
   });
 
@@ -253,13 +292,42 @@ describe('rendererModals', () => {
       expect(result).toBe(true);
     });
 
-    it('uses all dialog types', async () => {
-      for (const type of ['info', 'warning', 'error', 'success', 'question'] as const) {
+    // F6: this used to loop every dialog type without checking that any of them
+    // changed the rendered icon, so a broken type->icon map would still pass.
+    it('renders the matching icon for every dialog type', async () => {
+      const iconByType = {
+        info: 'info',
+        warning: 'alert-triangle',
+        error: 'x',
+        success: 'check-circle',
+        question: 'help-circle',
+      } as const;
+
+      for (const [type, expectedIcon] of Object.entries(iconByType)) {
         setupDialogDom();
-        const promise = showDialog('T', 'M', type);
+        const promise = showDialog('T', 'M', type as keyof typeof iconByType);
+
+        const renderedIcon = document
+          .getElementById('dialog-icon')!
+          .querySelector('img')!
+          .getAttribute('alt');
+        expect(renderedIcon).toBe(expectedIcon);
+
         document.getElementById('dialog-ok')!.click();
-        await promise;
+        await expect(promise).resolves.toBe(true);
       }
+    });
+
+    it('falls back to the info icon for an unknown dialog type', async () => {
+      setupDialogDom();
+      const promise = showDialog('T', 'M', 'nonsense' as never);
+
+      expect(
+        document.getElementById('dialog-icon')!.querySelector('img')!.getAttribute('alt')
+      ).toBe('info');
+
+      document.getElementById('dialog-ok')!.click();
+      await expect(promise).resolves.toBe(true);
     });
 
     it('hides cancel button when showCancel is false', async () => {

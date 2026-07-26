@@ -1263,9 +1263,8 @@ fn validate_native_integration_exe_path(exe: &str) -> Result<(), String> {
 pub async fn get_native_integration_status() -> Result<serde_json::Value, String> {
     #[cfg(target_os = "windows")]
     {
-        let installed = crate::native_windows::user_key_exists(
-            r"Software\Classes\Directory\shell\IYERIS",
-        );
+        let installed =
+            crate::native_windows::user_key_exists(r"Software\Classes\Directory\shell\IYERIS");
         Ok(serde_json::json!({
             "supported": true,
             "installed": installed,

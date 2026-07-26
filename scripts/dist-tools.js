@@ -2,7 +2,6 @@
 
 import fs from 'fs';
 import path from 'path';
-import { verifyQualityGate } from './release-session.js';
 
 const FLATPAK_BUILD_DIR_PREFIX = 'flatpak-build';
 const TAURI_TARGET_DIR = path.join('src-tauri', 'target');
@@ -77,7 +76,9 @@ function cleanDirs(mode) {
       fs.rmSync(dir, { recursive: true, force: true, maxRetries: 8, retryDelay: 100 });
     } catch (error) {
       if (error?.code === 'ENOENT') continue;
-      throw new Error(`Failed to clean "${relativeDir}": ${error?.message || error}`);
+      throw new Error(`Failed to clean "${relativeDir}": ${error?.message || error}`, {
+        cause: error,
+      });
     }
   }
 }
