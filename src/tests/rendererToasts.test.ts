@@ -27,8 +27,14 @@ describe('createToastManager', () => {
     vi.useFakeTimers();
   });
 
+  // F4 (isolation): several tests below stub the global `document` to a bare
+  // object. Unstubbing inline at the end of a test body means a failed assertion
+  // leaves the stub installed, which breaks every later real-DOM test in this
+  // file. Teardown belongs here so it runs even when a test fails.
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.useRealTimers();
+    document.body.replaceChildren();
   });
 
   it('creates a manager with showToast method', () => {
@@ -55,8 +61,6 @@ describe('createToastManager', () => {
 
     manager.showToast('Hello', 'Title', 'success');
     expect(opts._container.appendChild).toHaveBeenCalledTimes(1);
-
-    vi.unstubAllGlobals();
   });
 
   it('queues toasts when at max visible', () => {
@@ -82,8 +86,6 @@ describe('createToastManager', () => {
 
     manager.showToast('Toast 4', '', 'info');
     expect(opts._container.appendChild).toHaveBeenCalledTimes(3);
-
-    vi.unstubAllGlobals();
   });
 
   it('uses correct role for error/warning types', () => {
@@ -105,8 +107,6 @@ describe('createToastManager', () => {
 
     manager.showToast('Error!', '', 'error');
     expect(mockElement.setAttribute).toHaveBeenCalledWith('role', 'alert');
-
-    vi.unstubAllGlobals();
   });
 
   it('auto-removes toast after duration', () => {
@@ -132,8 +132,6 @@ describe('createToastManager', () => {
 
     expect(mockElement.classList.add).toHaveBeenCalledWith('removing');
     expect(opts._container.removeChild).toHaveBeenCalled();
-
-    vi.unstubAllGlobals();
   });
 
   it('handles null container gracefully', () => {
@@ -154,8 +152,6 @@ describe('createToastManager', () => {
     });
 
     expect(() => manager.showToast('Test', '', 'info')).not.toThrow();
-
-    vi.unstubAllGlobals();
   });
 
   it('defaults to info type and empty title', () => {
@@ -177,8 +173,6 @@ describe('createToastManager', () => {
 
     manager.showToast('Just a message');
     expect(mockElement.setAttribute).toHaveBeenCalledWith('role', 'status');
-
-    vi.unstubAllGlobals();
   });
 
   it('renders action buttons and executes action callbacks', () => {

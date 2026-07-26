@@ -408,22 +408,98 @@ describe('rendererSupportUi', () => {
   });
 
   describe('initLicensesUi', () => {
-    it('registers click listeners on buttons', () => {
+    function setupLicensesUiDom() {
       // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
       document.body.innerHTML = `
         <button id="licenses-btn"></button>
         <button id="licenses-close"></button>
         <button id="close-licenses-btn"></button>
         <button id="copy-licenses-btn"></button>
-        <div id="licenses-content"></div>
         <div id="licenses-modal" style="display:none">
           <div id="licenses-content"></div>
+          <span id="total-deps"></span>
         </div>
       `;
+    }
 
+    // F6: this test used to call initLicensesUi() and assert nothing, so none of
+    // the registered handlers were ever proven to be wired. Each button is now
+    // clicked and checked against its observable effect.
+    it('wires the open button to show the modal', async () => {
+      setupLicensesUiDom();
+      const deps = makeDeps();
+      createSupportUiController(deps).initLicensesUi();
+
+      const modal = document.getElementById('licenses-modal') as HTMLElement;
+      document.getElementById('licenses-btn')!.click();
+      await vi.waitFor(() => {
+        expect(modal.style.display).toBe('flex');
+      });
+      expect(deps.activateModal).toHaveBeenCalledWith(modal);
+    });
+
+    it('wires both close buttons to hide the modal', () => {
+      for (const closeId of ['licenses-close', 'close-licenses-btn']) {
+        setupLicensesUiDom();
+        const deps = makeDeps();
+        createSupportUiController(deps).initLicensesUi();
+
+        const modal = document.getElementById('licenses-modal') as HTMLElement;
+        modal.style.display = 'flex';
+
+        document.getElementById(closeId)!.click();
+
+        expect(modal.style.display).toBe('none');
+        expect(deps.deactivateModal).toHaveBeenCalledWith(modal);
+      }
+    });
+
+    it('wires the backdrop to hide the modal, but not its children', () => {
+      setupLicensesUiDom();
+      const deps = makeDeps();
+      createSupportUiController(deps).initLicensesUi();
+
+      const modal = document.getElementById('licenses-modal') as HTMLElement;
+      modal.style.display = 'flex';
+
+      // A click inside the modal body must not dismiss it.
+      document.getElementById('licenses-content')!.click();
+      expect(modal.style.display).toBe('flex');
+
+      modal.click();
+      expect(modal.style.display).toBe('none');
+    });
+
+    it('wires the copy button to the system clipboard', async () => {
+      setupLicensesUiDom();
+      // The shared tauriAPI fixture only stubs getLicenses; copying needs its own.
+      const writeToSystemClipboard = vi.fn().mockResolvedValue(undefined);
+      (window as any).tauriAPI = { ...(window as any).tauriAPI, writeToSystemClipboard };
+
+      const deps = makeDeps();
+      createSupportUiController(deps).initLicensesUi();
+
+      document.getElementById('licenses-content')!.textContent = 'some-pkg MIT';
+      document.getElementById('copy-licenses-btn')!.click();
+
+      await vi.waitFor(() => {
+        expect(writeToSystemClipboard).toHaveBeenCalled();
+      });
+    });
+
+    it('ignores a second initLicensesUi call so handlers are not doubled', () => {
+      setupLicensesUiDom();
       const deps = makeDeps();
       const ctrl = createSupportUiController(deps);
       ctrl.initLicensesUi();
+      ctrl.initLicensesUi();
+
+      const modal = document.getElementById('licenses-modal') as HTMLElement;
+      modal.style.display = 'flex';
+      document.getElementById('licenses-close')!.click();
+
+      expect(modal.style.display).toBe('none');
+      expect(deps.deactivateModal).toHaveBeenCalledTimes(1);
     });
 
     it('handles link clicks with sanitization', () => {

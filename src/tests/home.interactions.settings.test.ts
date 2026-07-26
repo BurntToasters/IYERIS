@@ -123,6 +123,26 @@ function createOptions() {
   };
 }
 
+// F5: this file used 31 real wall-clock sleeps to let mocked IPC promise chains
+// settle, which added real latency and made the suite timing-fragile on slow CI.
+// A file-level fake clock replaces them: advanceTimersByTimeAsync drains
+// microtasks between timer callbacks, so it settles the same work deterministically.
+// These hooks are declared outside every describe so they wrap all of them.
+beforeEach(() => {
+  vi.useFakeTimers();
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+});
+
+/**
+ * Settle pending promise chains on the fake clock. The `ms` argument mirrors the
+ * delay the replaced sleep used; the drive-usage cache TTL is 60s, so advancing
+ * tens of milliseconds keeps cached entries valid exactly as before.
+ */
+const settlePendingWork = (ms = 10) => vi.advanceTimersByTimeAsync(ms);
+
 describe('handleHomeItemActivation — delegated clicks', () => {
   let api: ReturnType<typeof createMockTauriAPI>;
 
@@ -204,7 +224,7 @@ describe('handleHomeItemActivation — delegated clicks', () => {
 
     await ctrl.renderHomeDrives([{ path: '/dev/sda1', label: 'Root' }] as any);
 
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     const cards = document.querySelectorAll('#home-drives .home-drive-card');
     expect(cards.length).toBe(1);
@@ -301,7 +321,7 @@ describe('setupHomeDelegatedListeners — keydown events', () => {
     expect(item).not.toBeNull();
     item.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(api.getItemProperties).toHaveBeenCalled();
   });
@@ -319,7 +339,7 @@ describe('setupHomeDelegatedListeners — keydown events', () => {
     expect(pinBtn).not.toBeNull();
     pinBtn.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(api.getItemProperties).not.toHaveBeenCalled();
   });
@@ -353,7 +373,7 @@ describe('openRecentPath — via recent item clicks', () => {
 
     const item = document.querySelector('#home-recents .home-recent-item') as HTMLElement;
     item.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(opts.navigateTo).toHaveBeenCalledWith('/a.txt');
     expect(opts.openPath).not.toHaveBeenCalled();
@@ -374,7 +394,7 @@ describe('openRecentPath — via recent item clicks', () => {
 
     const item = document.querySelector('#home-recents .home-recent-item') as HTMLElement;
     item.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(opts.navigateTo).not.toHaveBeenCalled();
     expect(opts.openPath).toHaveBeenCalledWith('/a.txt');
@@ -396,7 +416,7 @@ describe('openRecentPath — via recent item clicks', () => {
 
     const item = document.querySelector('#home-recents .home-recent-item') as HTMLElement;
     item.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(api.openFile).toHaveBeenCalledWith('/a.txt');
   });
@@ -413,7 +433,7 @@ describe('openRecentPath — via recent item clicks', () => {
 
     const item = document.querySelector('#home-recents .home-recent-item') as HTMLElement;
     item.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(opts.openPath).toHaveBeenCalledWith('/a.txt');
   });
@@ -430,7 +450,7 @@ describe('openRecentPath — via recent item clicks', () => {
 
     const item = document.querySelector('#home-recents .home-recent-item') as HTMLElement;
     item.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(opts.openPath).toHaveBeenCalledWith('/a.txt');
   });
@@ -462,7 +482,7 @@ describe('togglePinnedRecent — pin/unpin', () => {
     const pinBtn = document.querySelector('#home-recents .home-recent-pin') as HTMLElement;
     expect(pinBtn).not.toBeNull();
     pinBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(api.saveHomeSettings).toHaveBeenCalled();
     const savedSettings = (api.saveHomeSettings as any).mock.calls[0][0];
@@ -485,7 +505,7 @@ describe('togglePinnedRecent — pin/unpin', () => {
 
     const pinBtn = document.querySelector('#home-recents .home-recent-pin') as HTMLElement;
     pinBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(api.saveHomeSettings).toHaveBeenCalled();
     const savedSettings = (api.saveHomeSettings as any).mock.calls[0][0];
@@ -504,7 +524,7 @@ describe('togglePinnedRecent — pin/unpin', () => {
 
     const pinBtn = document.querySelector('#home-recents .home-recent-pin') as HTMLElement;
     pinBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(opts.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Failed to update pinned items'),
@@ -528,7 +548,7 @@ describe('togglePinnedRecent — pin/unpin', () => {
 
     const pinBtn = document.querySelector('#home-recents .home-recent-pin') as HTMLElement;
     pinBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(api.saveHomeSettings).toHaveBeenCalled();
 
@@ -563,7 +583,7 @@ describe('getDriveUsage — cache behavior', () => {
     await ctrl.loadHomeSettings();
 
     await ctrl.renderHomeDrives([{ path: '/dev/sda1', label: 'Root' }] as any);
-    await new Promise((r) => setTimeout(r, 50));
+    await settlePendingWork(50);
 
     expect(api.getDiskSpace).toHaveBeenCalledWith('/dev/sda1');
     const meta = document.querySelector('.home-drive-meta') as HTMLElement;
@@ -583,11 +603,11 @@ describe('getDriveUsage — cache behavior', () => {
     await ctrl.loadHomeSettings();
 
     await ctrl.renderHomeDrives([{ path: '/x', label: 'X' }] as any);
-    await new Promise((r) => setTimeout(r, 50));
+    await settlePendingWork(50);
 
     api.getDiskSpace.mockClear();
     await ctrl.renderHomeDrives([{ path: '/x', label: 'X' }] as any);
-    await new Promise((r) => setTimeout(r, 50));
+    await settlePendingWork(50);
 
     expect(api.getDiskSpace).not.toHaveBeenCalled();
   });
@@ -605,7 +625,7 @@ describe('getDriveUsage — cache behavior', () => {
     await ctrl.loadHomeSettings();
 
     await ctrl.renderHomeDrives([{ path: '/fail', label: 'Fail' }] as any);
-    await new Promise((r) => setTimeout(r, 50));
+    await settlePendingWork(50);
 
     const meta = document.querySelector('.home-drive-meta') as HTMLElement;
     expect(meta.textContent).toBe('Usage unavailable');
@@ -624,7 +644,7 @@ describe('getDriveUsage — cache behavior', () => {
     await ctrl.loadHomeSettings();
 
     await ctrl.renderHomeDrives([{ path: '/nan', label: 'NaN' }] as any);
-    await new Promise((r) => setTimeout(r, 50));
+    await settlePendingWork(50);
 
     const meta = document.querySelector('.home-drive-meta') as HTMLElement;
     expect(meta.textContent).toBe('Usage unavailable');
@@ -660,7 +680,7 @@ describe('saveHomeSettings — via save button click', () => {
 
     const saveBtn = document.getElementById('home-settings-save')!;
     saveBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(api.saveHomeSettings).toHaveBeenCalled();
     expect(modal.style.display).toBe('none');
@@ -682,7 +702,7 @@ describe('saveHomeSettings — via save button click', () => {
 
     const saveBtn = document.getElementById('home-settings-save')!;
     saveBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(opts.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Failed to save home settings'),
@@ -911,7 +931,7 @@ describe('Home settings listeners — toggles and actions', () => {
     api.saveHomeSettings.mockResolvedValue({ success: true });
     const saveBtn = document.getElementById('home-settings-save')!;
     saveBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     const saved = (api.saveHomeSettings as any).mock.calls[0][0];
     expect(saved.showQuickAccess).toBe(false);
@@ -935,7 +955,7 @@ describe('Home settings listeners — toggles and actions', () => {
     api.saveHomeSettings.mockResolvedValue({ success: true });
     const saveBtn = document.getElementById('home-settings-save')!;
     saveBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     const saved = (api.saveHomeSettings as any).mock.calls[0][0];
     expect(saved.compactCards).toBe(true);
@@ -958,7 +978,7 @@ describe('Home settings listeners — toggles and actions', () => {
 
     api.saveHomeSettings.mockResolvedValue({ success: true });
     document.getElementById('home-settings-save')!.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     const saved = (api.saveHomeSettings as any).mock.calls[0][0];
     expect(saved.showDiskUsage).toBe(false);
@@ -1005,7 +1025,7 @@ describe('Home settings listeners — toggles and actions', () => {
     expect(modal.style.display).toBe('flex');
 
     modal.dispatchEvent(new MouseEvent('click', { bubbles: true }));
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(modal.style.display).toBe('none');
   });
@@ -1026,7 +1046,7 @@ describe('Home settings listeners — toggles and actions', () => {
 
     const content = modal.querySelector('.home-settings-content') as HTMLElement;
     content.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(modal.style.display).toBe('flex');
   });
@@ -1047,7 +1067,7 @@ describe('Home settings listeners — toggles and actions', () => {
 
     const closeBtn = document.getElementById('home-settings-close')!;
     closeBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(modal.style.display).toBe('none');
   });
@@ -1068,7 +1088,7 @@ describe('Home settings listeners — toggles and actions', () => {
 
     const cancelBtn = document.getElementById('home-settings-cancel')!;
     cancelBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(modal.style.display).toBe('none');
   });
@@ -1091,7 +1111,7 @@ describe('Home settings listeners — toggles and actions', () => {
 
     const closeBtn = document.getElementById('home-settings-close')!;
     closeBtn.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(opts.showConfirm).toHaveBeenCalled();
 
@@ -1121,7 +1141,7 @@ describe('Home settings listeners — toggles and actions', () => {
 
     api.saveHomeSettings.mockResolvedValue({ success: true });
     document.getElementById('home-settings-save')!.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     const saved = (api.saveHomeSettings as any).mock.calls[0][0];
     expect(saved.hiddenQuickAccessItems.length).toBeGreaterThan(0);
@@ -1245,7 +1265,7 @@ describe('additional branch coverage — home controller', () => {
 
     const item = document.querySelector('#home-recents .home-recent-item') as HTMLElement;
     item.click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     expect(opts.showToast).toHaveBeenCalledWith(
       expect.stringContaining('Failed to open file'),
@@ -1361,7 +1381,7 @@ describe('additional branch coverage — home controller', () => {
     await ctrl.loadHomeSettings();
 
     await ctrl.renderHomeDrives([{ path: '/boom', label: 'Boom' }] as any);
-    await new Promise((r) => setTimeout(r, 20));
+    await settlePendingWork(20);
 
     const meta = document.querySelector('.home-drive-meta') as HTMLElement;
     const bar = document.querySelector('.home-drive-bar span') as HTMLElement;
@@ -1423,7 +1443,7 @@ describe('additional branch coverage — home controller', () => {
 
     api.saveHomeSettings.mockResolvedValue({ success: true });
     (document.getElementById('home-settings-save') as HTMLButtonElement).click();
-    await new Promise((r) => setTimeout(r, 10));
+    await settlePendingWork(10);
 
     const saved = (api.saveHomeSettings as any).mock.calls.at(-1)?.[0];
     expect(saved.hiddenQuickAccessItems).not.toContain('desktop');

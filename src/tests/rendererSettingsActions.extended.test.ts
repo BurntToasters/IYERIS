@@ -356,24 +356,64 @@ describe('rendererSettingsActions extended', () => {
       expect(merged.previewPanelWidth).toBe(400);
     });
 
-    it('rejects non-finite numeric fields', async () => {
+    /**
+     * F6: the original version buried its only meaningful assertion inside
+     * `if (deps.setCurrentSettings.mock.calls.length > 0)`, so if the merge path
+     * ever stopped calling setCurrentSettings the check silently became a no-op and
+     * only the generic showToast assertion survived. It also fed NaN/Infinity
+     * through JSON.stringify, which turns both into null, so non-finite numbers
+     * were never actually exercised. `1e999` is the JSON-representable route to
+     * Infinity, and every assertion below is now unconditional.
+     */
+    it('never lets a non-finite numeric field into settings', async () => {
       const deps = makeDeps();
-      triggerImport(
-        deps,
-        JSON.stringify({
-          sidebarWidth: NaN,
-          maxSearchHistoryItems: Infinity,
-        })
-      );
+      triggerImport(deps, '{"sidebarWidth": 1e999, "maxSearchHistoryItems": 1e999}');
 
       await vi.waitFor(() => {
-        expect(deps.showToast).toHaveBeenCalled();
+        expect(deps.setCurrentSettings).toHaveBeenCalled();
       });
 
-      if (deps.setCurrentSettings.mock.calls.length > 0) {
-        const merged = deps.setCurrentSettings.mock.calls[0][0];
-        expect(merged.sidebarWidth).toBeUndefined();
-      }
+      const merged = deps.setCurrentSettings.mock.calls[0][0];
+      // sidebarWidth has no sanitized fallback, so the rejected value leaves no key.
+      expect(merged.sidebarWidth).toBeUndefined();
+      // maxSearchHistoryItems does have a sanitized fallback, so the rejected value
+      // is replaced by that finite default rather than being written through.
+      expect(merged.maxSearchHistoryItems).toBe(5);
+      // The invariant that actually matters: nothing non-finite lands anywhere.
+      const nonFinite = Object.entries(merged).filter(
+        ([, value]) => typeof value === 'number' && !Number.isFinite(value)
+      );
+      expect(nonFinite).toEqual([]);
+    });
+
+    it('refuses the whole import when no field survives validation', async () => {
+      const deps = makeDeps();
+      // Neither key has a sanitized fallback, so validation yields nothing at all.
+      triggerImport(deps, '{"sidebarWidth": -1e999, "previewPanelWidth": -1e999}');
+
+      await vi.waitFor(() => {
+        expect(deps.showToast).toHaveBeenCalledWith(
+          'No valid settings found in file',
+          'Import',
+          'warning'
+        );
+      });
+      expect(deps.setCurrentSettings).not.toHaveBeenCalled();
+      expect(deps.saveSettingsWithTimestamp).not.toHaveBeenCalled();
+    });
+
+    it('rejects null numeric fields the same way', async () => {
+      const deps = makeDeps();
+      // This is what JSON.stringify produces for NaN/Infinity.
+      triggerImport(deps, JSON.stringify({ sidebarWidth: null, maxSearchHistoryItems: null }));
+
+      await vi.waitFor(() => {
+        expect(deps.setCurrentSettings).toHaveBeenCalled();
+      });
+
+      const merged = deps.setCurrentSettings.mock.calls[0][0];
+      expect(merged.sidebarWidth).toBeUndefined();
+      expect(merged.maxSearchHistoryItems).toBe(5);
     });
 
     it('validates startupPath as string', async () => {
@@ -405,15 +445,23 @@ describe('rendererSettingsActions extended', () => {
     });
 
     it('does nothing when not confirmed', async () => {
-      const deps = makeDeps();
-      deps.showConfirm.mockResolvedValue(false);
-      const ctrl = createSettingsActionsController(deps as any);
-      ctrl.initSettingsActions();
+      // F5: settle the confirm-dialog promise chain on a fake clock instead of
+      // sleeping 10ms of real time. Scoped to this test; the rest of the file
+      // runs on real timers.
+      vi.useFakeTimers();
+      try {
+        const deps = makeDeps();
+        deps.showConfirm.mockResolvedValue(false);
+        const ctrl = createSettingsActionsController(deps as any);
+        ctrl.initSettingsActions();
 
-      document.getElementById('clear-search-history-btn')!.click();
+        document.getElementById('clear-search-history-btn')!.click();
 
-      await new Promise((r) => setTimeout(r, 10));
-      expect(deps.setCurrentSettings).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(10);
+        expect(deps.setCurrentSettings).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

@@ -56,7 +56,9 @@ fn resolve_extract_kind(archive: &Path) -> Result<ArchiveExtractKind, String> {
     if full_name.ends_with(".tar.gz") || full_name.ends_with(".tgz") {
         return Ok(ArchiveExtractKind::TarGz);
     }
-    if full_name.ends_with(".tar.bz2") || full_name.ends_with(".tbz2") || full_name.ends_with(".tbz")
+    if full_name.ends_with(".tar.bz2")
+        || full_name.ends_with(".tbz2")
+        || full_name.ends_with(".tbz")
     {
         return Ok(ArchiveExtractKind::TarBz2);
     }
@@ -543,8 +545,16 @@ fn parse_dictionary_size(value: &str) -> Option<u32> {
         .or_else(|| trimmed.strip_suffix('k').map(|n| (n, 1024u32)))
         .or_else(|| trimmed.strip_suffix("mb").map(|n| (n, 1024u32 * 1024)))
         .or_else(|| trimmed.strip_suffix('m').map(|n| (n, 1024u32 * 1024)))
-        .or_else(|| trimmed.strip_suffix("gb").map(|n| (n, 1024u32 * 1024 * 1024)))
-        .or_else(|| trimmed.strip_suffix('g').map(|n| (n, 1024u32 * 1024 * 1024)))
+        .or_else(|| {
+            trimmed
+                .strip_suffix("gb")
+                .map(|n| (n, 1024u32 * 1024 * 1024))
+        })
+        .or_else(|| {
+            trimmed
+                .strip_suffix('g')
+                .map(|n| (n, 1024u32 * 1024 * 1024))
+        })
         .or_else(|| trimmed.strip_suffix('b').map(|n| (n, 1u32)))
         .unwrap_or((trimmed.as_str(), 1));
 
@@ -717,15 +727,27 @@ pub async fn extract_archive(
     let result = tokio::task::spawn_blocking(move || {
         let kind = resolve_extract_kind(&archive)?;
         match kind {
-            ArchiveExtractKind::TarXz => {
-                extract_tar_xz(&archive, &dest, &extract_op_id, &webview, extract_password.as_deref())
-            }
-            ArchiveExtractKind::TarGz => {
-                extract_tar_gz(&archive, &dest, &extract_op_id, &webview, extract_password.as_deref())
-            }
-            ArchiveExtractKind::TarBz2 => {
-                extract_tar_bz2(&archive, &dest, &extract_op_id, &webview, extract_password.as_deref())
-            }
+            ArchiveExtractKind::TarXz => extract_tar_xz(
+                &archive,
+                &dest,
+                &extract_op_id,
+                &webview,
+                extract_password.as_deref(),
+            ),
+            ArchiveExtractKind::TarGz => extract_tar_gz(
+                &archive,
+                &dest,
+                &extract_op_id,
+                &webview,
+                extract_password.as_deref(),
+            ),
+            ArchiveExtractKind::TarBz2 => extract_tar_bz2(
+                &archive,
+                &dest,
+                &extract_op_id,
+                &webview,
+                extract_password.as_deref(),
+            ),
             ArchiveExtractKind::Zip => extract_zip(
                 &archive,
                 &dest,
@@ -733,9 +755,13 @@ pub async fn extract_archive(
                 &webview,
                 extract_password.as_deref(),
             ),
-            ArchiveExtractKind::Tar => {
-                extract_tar(&archive, &dest, &extract_op_id, &webview, extract_password.as_deref())
-            }
+            ArchiveExtractKind::Tar => extract_tar(
+                &archive,
+                &dest,
+                &extract_op_id,
+                &webview,
+                extract_password.as_deref(),
+            ),
             ArchiveExtractKind::SevenZ => extract_7z(
                 &archive,
                 &dest,
@@ -966,8 +992,8 @@ fn extract_7z(
                 create_dir_all_tracked(parent, &mut extracted).map_err(std::io::Error::other)?;
                 ensure_path_within_dest(parent, dest, &name).map_err(std::io::Error::other)?;
             }
-            let mut outfile = fs::File::create(&out_path)
-                .map_err(|e| std::io::Error::other(e.to_string()))?;
+            let mut outfile =
+                fs::File::create(&out_path).map_err(|e| std::io::Error::other(e.to_string()))?;
             extracted.push(out_path.clone());
             let remaining = MAX_DECOMPRESSED_SIZE.saturating_sub(cumulative_bytes);
             let mut limited = reader.take(remaining.saturating_add(1));
