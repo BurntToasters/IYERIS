@@ -4,7 +4,11 @@ use std::process::Command;
 /// Escape a string for safe embedding in a POSIX shell single-quoted context.
 /// The only character that needs escaping in single quotes is the single quote itself.
 /// We also strip null bytes and newlines to prevent argument injection.
-#[cfg(unix)]
+///
+/// Only used on macOS: the `osascript`/`do shell script` elevation path builds
+/// a shell command line that must be escaped. Linux elevation goes through
+/// `pkexec` with an argv vector (no shell involved), so it never needs this.
+#[cfg(target_os = "macos")]
 fn shell_escape(s: &str) -> String {
     if s.contains('\0') || s.contains('\n') || s.contains('\r') {
         log::warn!("[Elevated] shell_escape: path contains null/newline characters");
@@ -737,7 +741,7 @@ mod tests {
         assert!(validate_elevated_path("/tmp/Joe's File.txt", "Source").is_ok());
     }
 
-    #[cfg(unix)]
+    #[cfg(target_os = "macos")]
     #[test]
     fn shell_escape_handles_apostrophes() {
         assert_eq!(shell_escape("foo's"), "foo'\\''s");
