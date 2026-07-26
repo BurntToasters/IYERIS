@@ -20,11 +20,14 @@ export interface QualityGateProof extends ReleaseIdentity {
 
 export const DEFAULT_MAX_AGE_MS: number;
 export const QUALITY_GATE_RELATIVE_PATH: string;
+export const RELEASE_BOOTSTRAP_PATHS: ReadonlySet<string>;
 export const RELEASE_SESSION_RELATIVE_PATH: string;
 
 export function currentReleaseIdentity(root?: string): ReleaseIdentity;
 export function createReleaseSession(root?: string): ReleaseSession;
+export function startReleaseSession(root?: string): ReleaseSession;
 export function clearQualityGateProof(root?: string): void;
+export function isAcceptableReleaseWorkingTree(status: string): boolean;
 export function recordSuccessfulQualityGate(root?: string): boolean;
 export function validateQualityGate(
   proof: QualityGateProof,

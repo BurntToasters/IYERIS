@@ -89,6 +89,36 @@ function validateQualityGate(
   return qualityGate;
 }
 
+const RELEASE_BOOTSTRAP_PATHS = new Set([
+  'run.rosie.iyeris.metainfo.xml',
+  'src-tauri/tauri.conf.json',
+  'src-tauri/Cargo.toml',
+  'src-tauri/Cargo.lock',
+]);
+
+function parsePorcelainPaths(status) {
+  return status
+    .split('\n')
+    .map((line) => line.replace(/\r$/, ''))
+    .filter((line) => line.trim().length > 0)
+    .map((line) => {
+      const match = line.match(/^.. (.+)$/);
+      if (!match) return '';
+      const rest = match[1].trim();
+      const renameArrow = rest.indexOf(' -> ');
+      return renameArrow >= 0 ? rest.slice(renameArrow + 4).trim() : rest;
+    })
+    .filter(Boolean);
+}
+
+/** Clean tree, or only files that workspace:bootstrap may touch before test:all. */
+function isAcceptableReleaseWorkingTree(status) {
+  if (!status.trim()) return true;
+  const paths = parsePorcelainPaths(status);
+  if (paths.length === 0) return false;
+  return paths.every((p) => RELEASE_BOOTSTRAP_PATHS.has(p));
+}
+
 function clearQualityGateProof(root = defaultRoot) {
   fs.rmSync(path.join(root, QUALITY_GATE_RELATIVE_PATH), { force: true });
 }
@@ -100,7 +130,7 @@ function recordSuccessfulQualityGate(root = defaultRoot) {
   } catch {
     return false;
   }
-  if (status) {
+  if (!isAcceptableReleaseWorkingTree(status)) {
     return false;
   }
   const proofPath = path.join(root, QUALITY_GATE_RELATIVE_PATH);
@@ -120,10 +150,23 @@ function verifyQualityGate(root = defaultRoot, options) {
     proof = JSON.parse(fs.readFileSync(proofPath, 'utf8'));
   } catch (error) {
     throw new Error(
-      `Release quality-gate proof is missing or invalid. Run test:all first: ${error instanceof Error ? error.message : String(error)}`
+      `Release quality-gate proof is missing or invalid. On a clean checkout, run "npm run test:all" (or "npm run workspace:prepare") before release:prepare. ${error instanceof Error ? error.message : String(error)}`
     );
   }
   return validateQualityGate(proof, currentReleaseIdentity(root), options);
+}
+
+function writeReleaseSession(session, root = defaultRoot) {
+  const sessionPath = path.join(root, RELEASE_SESSION_RELATIVE_PATH);
+  fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+  fs.writeFileSync(sessionPath, `${JSON.stringify(session, null, 2)}\n`, { mode: 0o600 });
+  return session;
+}
+
+function startReleaseSession(root = defaultRoot) {
+  const session = createReleaseSession(root);
+  writeReleaseSession(session, root);
+  return session;
 }
 
 function createReleaseSession(root = defaultRoot) {
@@ -142,7 +185,7 @@ function verifyReleaseSession(root = defaultRoot, options) {
     session = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
   } catch (error) {
     throw new Error(
-      `Release build session is missing or invalid. Run release:prepare first: ${error instanceof Error ? error.message : String(error)}`
+      `Release build session is missing or invalid. On this machine run "npm run release:prepare" (or the full "npm run release:win" / "release:mac" / "release:linux:*" script), not *:continue alone. ${error instanceof Error ? error.message : String(error)}`
     );
   }
   return validateReleaseSession(session, currentReleaseIdentity(root), options);
@@ -154,6 +197,22 @@ function isDirectExecution() {
 }
 
 if (isDirectExecution()) {
+  const subcommand = process.argv[2];
+  if (subcommand === 'start') {
+    try {
+      const session = startReleaseSession();
+      console.log(
+        `release-session: started (${session.version}, ${session.commit.slice(0, 12)}, ${session.platform}-${session.arch})`
+      );
+    } catch (error) {
+      console.error(
+        `release-session: FAILED: ${error instanceof Error ? error.message : String(error)}`
+      );
+      process.exit(1);
+    }
+    process.exit(0);
+  }
+
   try {
     const session = verifyReleaseSession();
     console.log(
@@ -170,11 +229,14 @@ if (isDirectExecution()) {
 export {
   DEFAULT_MAX_AGE_MS,
   QUALITY_GATE_RELATIVE_PATH,
+  RELEASE_BOOTSTRAP_PATHS,
   RELEASE_SESSION_RELATIVE_PATH,
   clearQualityGateProof,
   createReleaseSession,
   currentReleaseIdentity,
+  isAcceptableReleaseWorkingTree,
   recordSuccessfulQualityGate,
+  startReleaseSession,
   validateQualityGate,
   validateReleaseSession,
   verifyQualityGate,
