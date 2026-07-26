@@ -15,7 +15,7 @@ function command(commandName, args, root) {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  }).trimEnd();
 }
 
 function sha256File(filePath) {
