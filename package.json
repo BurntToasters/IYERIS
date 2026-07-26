@@ -57,7 +57,7 @@
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage --coverage.reportsDirectory=coverage-headless",
     "test:all": "node scripts/test-all.js",
-    "test:release-assets": "node --test scripts/post-release-assets.test.js scripts/release-session.test.js scripts/test-all.test.js",
+    "test:release-assets": "node --test scripts/post-release-assets.test.js scripts/release-session.test.js scripts/test-all.test.js scripts/verify-release-draft.test.cjs",
     "check:native-process-policy": "node scripts/check-native-process-policy.js",
     "typecheck": "tsc --noEmit",
     "typecheck:test": "tsc --noEmit -p tsconfig.test.json",

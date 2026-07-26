@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { execSync, spawnSync } from 'child_process';
 import https from 'https';
 import { fileURLToPath } from 'url';
+import { isDirectExecution } from './direct-execution.js';
 import { verifyReleaseSession } from './release-session.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -44,7 +45,7 @@ const ext = (e) => (n) => n.toLowerCase().endsWith(e);
 const rx = (r) => (n) => r.test(n);
 const isPerTargetManifest = rx(/^latest-[a-z0-9-]+-[a-z0-9_]+\.json$/i);
 const isBetaChannelManifest = rx(/^latest-[a-z0-9]+-beta-[a-z0-9_]+\.json$/i);
-const isChecksumTextName = rx(/^SHA256SUMS(?:-[a-z0-9_]+(?:-[a-z0-9_]+)?)?\.txt$/i);
+const isChecksumTextName = rx(/^SHA256SUMS(?:-[a-z0-9_]+)*\.txt$/i);
 
 const ARTIFACT_RULES = [
   rx(/-setup\.exe$/i),
@@ -224,6 +225,76 @@ function cleanArtifactName(name) {
 function shouldUploadReleaseEntry(name) {
   if (isPrereleaseBlockedArtifact(name)) return false;
   return isArtifact(name) || name.endsWith('.asc') || isChecksumTextName(name);
+}
+
+function validateGeneratedUploadNames(artifactNames, checksumNames, signatureNames) {
+  const groups = [artifactNames, checksumNames, signatureNames];
+  const allNames = groups.flat();
+  const uniqueNames = new Set(allNames);
+  const errors = [];
+
+  if (uniqueNames.size !== allNames.length) {
+    const seen = new Set();
+    const duplicates = new Set();
+    for (const name of allNames) {
+      if (seen.has(name)) duplicates.add(name);
+      seen.add(name);
+    }
+    errors.push(`duplicate generated release entries: ${Array.from(duplicates).sort().join(', ')}`);
+  }
+
+  const rejected = Array.from(uniqueNames).filter((name) => !shouldUploadReleaseEntry(name));
+  if (rejected.length > 0) {
+    errors.push(`generated entries rejected by upload policy: ${rejected.sort().join(', ')}`);
+  }
+
+  const checksumSet = new Set(checksumNames);
+  const signatureSet = new Set(signatureNames);
+  for (const checksumName of checksumSet) {
+    if (!signatureSet.has(`${checksumName}.asc`)) {
+      errors.push(`missing checksum signature: ${checksumName}.asc`);
+    }
+  }
+
+  const manifestTargetKeys = Array.from(
+    new Set(artifactNames.map((name) => parseManifestTargetKey(name)).filter(Boolean))
+  );
+  for (const targetKey of manifestTargetKeys) {
+    const checksumName = `SHA256SUMS-${targetKey}.txt`;
+    if (!checksumSet.has(checksumName)) errors.push(`missing checksum: ${checksumName}`);
+    if (!signatureSet.has(`${checksumName}.asc`)) {
+      errors.push(`missing checksum signature: ${checksumName}.asc`);
+    }
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Generated release upload set is incomplete:\n- ${errors.join('\n- ')}`);
+  }
+  return Array.from(uniqueNames).sort((a, b) => a.localeCompare(b));
+}
+
+function buildUploadFileList(artifacts, checksumFiles, signatureFiles) {
+  const groups = [artifacts, checksumFiles, signatureFiles];
+  const fileByName = new Map();
+  for (const filePath of groups.flat()) fileByName.set(path.basename(filePath), filePath);
+  const names = validateGeneratedUploadNames(
+    artifacts.map((filePath) => path.basename(filePath)),
+    checksumFiles.map((filePath) => path.basename(filePath)),
+    signatureFiles.map((filePath) => path.basename(filePath))
+  );
+  const files = names.map((name) => fileByName.get(name));
+  for (const filePath of files) {
+    let stat;
+    try {
+      stat = fs.statSync(filePath);
+    } catch {
+      throw new Error(`Generated release entry is missing: ${path.basename(filePath)}.`);
+    }
+    if (!stat.isFile() || stat.size <= 0) {
+      throw new Error(`Generated release entry is empty or invalid: ${path.basename(filePath)}.`);
+    }
+  }
+  return files;
 }
 
 const FALLBACK_INSTALLER_PRIORITY = {
@@ -749,11 +820,46 @@ async function uploadAsset(uploadUrl, filePath) {
 }
 
 async function listReleaseAssets(releaseId) {
-  const assets = await ghRequest(
-    'GET',
-    `/repos/${REPO_OWNER}/${REPO_NAME}/releases/${releaseId}/assets?per_page=100`
-  );
-  return Array.isArray(assets) ? assets : [];
+  const assets = [];
+  for (let page = 1; ; page += 1) {
+    const batch = await ghRequest(
+      'GET',
+      `/repos/${REPO_OWNER}/${REPO_NAME}/releases/${releaseId}/assets?per_page=100&page=${page}`
+    );
+    if (!Array.isArray(batch))
+      throw new Error('GitHub returned an invalid release assets payload.');
+    assets.push(...batch);
+    if (batch.length < 100) return assets;
+  }
+}
+
+async function verifyRemoteAssets(releaseId, filePaths, context) {
+  const uploadedAssets = await listReleaseAssets(releaseId);
+  const uploadedByName = new Map(uploadedAssets.map((asset) => [asset.name, asset]));
+  const errors = [];
+  for (const filePath of filePaths) {
+    const name = path.basename(filePath);
+    const localSize = fs.statSync(filePath).size;
+    const localDigest = `sha256:${sha256(filePath)}`;
+    const asset = uploadedByName.get(name);
+    if (!asset) {
+      errors.push(`missing uploaded asset: ${name}`);
+      continue;
+    }
+    if (asset.state !== 'uploaded') errors.push(`asset is not uploaded: ${name} (${asset.state})`);
+    if (asset.size !== localSize) {
+      errors.push(`asset size mismatch: ${name} (${asset.size}; expected ${localSize})`);
+    }
+    if (asset.digest !== localDigest) {
+      errors.push(
+        `asset digest mismatch: ${name} (${asset.digest || 'missing'}; expected ${localDigest})`
+      );
+    }
+  }
+  if (errors.length > 0) {
+    throw new Error(`${context} verification failed:\n- ${errors.join('\n- ')}`);
+  }
+  console.log(`  ✓ Verified ${filePaths.length} ${context} entries`);
 }
 
 async function uploadAssetWithReplace(release, filePath) {
@@ -798,6 +904,7 @@ async function syncBetaManifestsToLatestStable(uploadedFiles, currentReleaseId) 
     await uploadAssetWithReplace(latestStable, filePath);
     console.log(`  ~ synced ${path.basename(filePath)} to latest stable release`);
   }
+  await verifyRemoteAssets(latestStable.id, betaManifests, 'stable beta-manifest sync');
 }
 
 async function main() {
@@ -836,8 +943,11 @@ async function main() {
     console.log(`  + ${path.basename(checksumFile)}.asc`);
   }
 
+  const everything = buildUploadFileList(artifacts, checksumFiles, ascFiles);
+
   if (STAGE_ONLY) {
     console.log('\n[5/5] Staging-only mode — skipping GitHub upload.');
+    console.log(`Validated ${everything.length} staged release entries.`);
     console.log(`Artifacts staged in: ${releaseDir}\n`);
     return;
   }
@@ -850,19 +960,22 @@ async function main() {
     );
   }
   console.log(`  Release: ${release.html_url || TAG}`);
-  const everything = fs
-    .readdirSync(releaseDir)
-    .filter((name) => shouldUploadReleaseEntry(name))
-    .map((n) => path.join(releaseDir, n));
   for (const f of everything) {
     await uploadAssetWithReplace(release, f);
     console.log(`  ^ ${path.basename(f)}`);
   }
+
+  await verifyRemoteAssets(release.id, everything, 'release upload');
+
   if (IS_PRERELEASE) await syncBetaManifestsToLatestStable(everything, release.id);
   console.log(`\nDone — ${TAG} uploaded as ${release.draft ? 'draft' : 'published'}.\n`);
 }
 
-main().catch((err) => {
-  console.error(err.message || err);
-  process.exit(1);
-});
+if (isDirectExecution(import.meta.url)) {
+  main().catch((err) => {
+    console.error(err.message || err);
+    process.exit(1);
+  });
+}
+
+export { isChecksumTextName, shouldUploadReleaseEntry, validateGeneratedUploadNames };
