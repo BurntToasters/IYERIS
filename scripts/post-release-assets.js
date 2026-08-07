@@ -8,7 +8,8 @@ import { isDirectExecution as isModuleDirectExecution, pathsEqual } from './dire
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const RELEASE_DIR = path.join(__dirname, '..', 'release');
+const REPOSITORY_ROOT = path.join(__dirname, '..');
+const RELEASE_DIR = path.join(REPOSITORY_ROOT, 'release');
 
 const BUILD_ONLY_DIRECTORIES = ['app', 'appimage', 'deb', 'dmg', 'macos', 'msi', 'nsis', 'rpm'];
 const BUILD_ONLY_FILES = [];
@@ -27,6 +28,25 @@ function getAfterPackLocation(env = process.env) {
   const value = env.AFTER_PACK_LOC;
   if (typeof value !== 'string') return '';
   return value.trim();
+}
+
+function isBetaReleaseVersion(version) {
+  const numeric = '(?:0|[1-9]\\d*)';
+  return new RegExp(`^${numeric}\\.${numeric}\\.${numeric}-beta\\.${numeric}$`).test(
+    String(version ?? '')
+  );
+}
+
+function readPackageVersion(repositoryRoot = REPOSITORY_ROOT) {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(repositoryRoot, 'package.json'), 'utf8')
+  );
+  return typeof packageJson.version === 'string' ? packageJson.version : '';
+}
+
+function shouldSkipBetaMirror(env = process.env, version) {
+  if (!isBetaReleaseVersion(version)) return false;
+  return String(env.OVERRIDE_BETA_MIRROR_SKIP ?? '').trim() !== '1';
 }
 
 function isDirectExecution(argv = process.argv, platform = process.platform) {
@@ -92,20 +112,38 @@ function copyReleaseAssets(releaseDir = RELEASE_DIR, destination) {
   return entries.length;
 }
 
-function run({ releaseDir = RELEASE_DIR, env = process.env } = {}) {
+function run({ releaseDir = RELEASE_DIR, env = process.env, version = readPackageVersion() } = {}) {
   cleanReleaseArtifacts(releaseDir);
-  const destination = getAfterPackLocation(env);
-  if (!destination) return { mirrored: false, destination: null };
+  let destination = getAfterPackLocation(env);
+  let skippedBetaMirror = false;
+  if (destination && shouldSkipBetaMirror(env, version)) {
+    skippedBetaMirror = true;
+    console.warn(
+      `beta version ${version}; skipping AFTER_PACK_LOC mirror (set OVERRIDE_BETA_MIRROR_SKIP=1 to force).`
+    );
+    destination = '';
+  }
+  if (!destination) return { mirrored: false, destination: null, skippedBetaMirror };
   const copiedEntries = copyReleaseAssets(releaseDir, destination);
-  return { mirrored: true, destination: path.resolve(destination), copiedEntries };
+  return {
+    mirrored: true,
+    destination: path.resolve(destination),
+    copiedEntries,
+    skippedBetaMirror: false,
+  };
 }
 
 if (isDirectExecution()) {
   try {
-    const result = run();
+    const version = readPackageVersion();
+    const result = run({ version });
     if (result.mirrored) {
       console.log(
         `Mirrored and verified ${result.copiedEntries} cleaned release entries to: ${result.destination}`
+      );
+    } else if (result.skippedBetaMirror) {
+      console.warn(
+        `WARNING: Cleaned release assets without mirroring (beta version ${version}; set OVERRIDE_BETA_MIRROR_SKIP=1 to force).`
       );
     } else {
       console.warn(
@@ -131,6 +169,9 @@ export {
   CLI_FLAG,
   cleanReleaseArtifacts,
   getAfterPackLocation,
+  isBetaReleaseVersion,
+  readPackageVersion,
+  shouldSkipBetaMirror,
   pathsEqual,
   isDirectExecution,
   getReleaseEntries,
