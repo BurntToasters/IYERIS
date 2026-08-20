@@ -320,7 +320,9 @@ assertWindowsSigningConfigured();
 stripMsiBundleForPrereleaseWindows();
 
 const tauriBuildArgs = args.join(' ').trim();
-const tauriBuildCommand = tauriBuildArgs ? `npx tauri build ${tauriBuildArgs}` : 'npx tauri build';
+const tauriBuildCommand = tauriBuildArgs
+  ? `npx --no-install tauri build ${tauriBuildArgs} -- --locked`
+  : 'npx --no-install tauri build -- --locked';
 execSync(tauriBuildCommand, { stdio: 'inherit' });
 signFinalWindowsRuntimeArtifacts();
 verifyWindowsArtifacts();
