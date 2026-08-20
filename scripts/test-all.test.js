@@ -225,3 +225,35 @@ test('parseTest extracts vitest counts from colored output', () => {
   assert.equal(results.test.failed, 0);
   assert.equal(results.test.files, 117);
 });
+
+test('cargo-safe-update and cargo-update-policy are gated plan steps', () => {
+  const plan = createStepPlan({ npm: 'npm' });
+  const safeStep = plan.find((entry) => entry.name === 'cargoSafeUpdate');
+  assert.ok(safeStep, 'cargoSafeUpdate must be in the quality-gate step plan');
+  assert.deepEqual(safeStep.args, ['run', 'test:cargo-safe-update']);
+
+  const policyStep = plan.find((entry) => entry.name === 'cargoUpdatePolicy');
+  assert.ok(policyStep, 'cargoUpdatePolicy must be in the quality-gate step plan');
+  assert.deepEqual(policyStep.args, ['run', 'check:cargo-update-policy']);
+
+  const scripts = readScripts();
+  assert.ok(scripts['test:cargo-safe-update'], 'test:cargo-safe-update must exist in package.json');
+  assert.ok(
+    scripts['check:cargo-update-policy'],
+    'check:cargo-update-policy must exist in package.json'
+  );
+
+  // Verify failure prevents recording proof
+  const { calls: safeCalls, exitCode: safeExit } = runGate({ failing: ['cargoSafeUpdate'] });
+  assert.ok(safeCalls.includes('run:cargoSafeUpdate'));
+  assert.ok(!safeCalls.includes('recordProof'), 'failing cargoSafeUpdate must not record proof');
+  assert.equal(safeExit, 1);
+
+  const { calls: policyCalls, exitCode: policyExit } = runGate({ failing: ['cargoUpdatePolicy'] });
+  assert.ok(policyCalls.includes('run:cargoUpdatePolicy'));
+  assert.ok(
+    !policyCalls.includes('recordProof'),
+    'failing cargoUpdatePolicy must not record proof'
+  );
+  assert.equal(policyExit, 1);
+});

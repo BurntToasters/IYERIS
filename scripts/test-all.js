@@ -84,6 +84,18 @@ function createStepPlan({
       args: ['run', 'check:native-process-policy'],
     },
     {
+      name: 'cargoSafeUpdate',
+      label: 'Cargo Safe Update',
+      command: npm,
+      args: ['run', 'test:cargo-safe-update'],
+    },
+    {
+      name: 'cargoUpdatePolicy',
+      label: 'Cargo Policy',
+      command: npm,
+      args: ['run', 'check:cargo-update-policy'],
+    },
+    {
       name: 'test',
       label: 'Tests',
       command: npm,
