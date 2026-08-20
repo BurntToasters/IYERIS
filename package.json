@@ -80,7 +80,7 @@
     "vi": "node scripts/vi.js",
     "b": "git fetch origin && git reset --hard && git clean -fd && git switch -C beta origin/beta && git reset --hard origin/beta && git clean -fd && npm run vi",
     "r": "git fetch origin && git reset --hard && git clean -fd && git switch -C main origin/main && git reset --hard origin/main && git clean -fd && npm run vi && npm run gitprune:force",
-    "u": "npm update && cd ./src-tauri && cargo update && cd .. && npm run workspace:bootstrap && npm run format && npm run test:all",
+    "u": "npm update && node scripts/cargo-safe-update.mjs --manifest-path src-tauri/Cargo.toml && npm run workspace:bootstrap && npm run format && npm run test:all",
     "win-compiler:x64": "node scripts/open-vs-dev-shell.js x64",
     "win-compiler:arm64": "node scripts/open-vs-dev-shell.js arm64",
     "dist:clean": "node scripts/dist-tools.js clean",
