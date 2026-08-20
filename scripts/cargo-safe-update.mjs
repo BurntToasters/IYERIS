@@ -20,8 +20,8 @@ import path from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
-export const CARGO_SAFE_UPDATE_POLICY_VERSION = 2;
-export const CARGO_SAFE_UPDATE_VERSION = 2;
+export const CARGO_SAFE_UPDATE_POLICY_VERSION = 3;
+export const CARGO_SAFE_UPDATE_VERSION = 3;
 export const MIN_PUBLISH_AGE_MS = 72 * 60 * 60 * 1000;
 const CRATES_IO_INDEX = 'https://index.crates.io';
 const IGNORED_COPY_DIRECTORIES = new Set([
@@ -199,26 +199,35 @@ export function cargoSupportsTemporaryLockfile() {
   return major > 1 || (major === 1 && minor >= 97);
 }
 
-function rewriteManifestArguments(cargoArgs, originalCwd, copiedRoot) {
-  const rewritten = [...cargoArgs];
-  for (let index = 0; index < rewritten.length; index += 1) {
-    if (rewritten[index] === '--manifest-path') {
-      const original = path.resolve(originalCwd, rewritten[index + 1]);
-      rewritten[index + 1] = path.join(
-        copiedRoot,
-        path.relative(findWorkspaceRoot(original), original)
-      );
-    } else if (rewritten[index].startsWith('--manifest-path=')) {
-      const original = path.resolve(originalCwd, rewritten[index].slice('--manifest-path='.length));
-      rewritten[index] = `--manifest-path=${path.join(
-        copiedRoot,
-        path.relative(findWorkspaceRoot(original), original)
-      )}`;
-    }
+// P1: Authoritative workspace root via `cargo locate-project --workspace`.
+// Fails closed if Cargo cannot determine the workspace root.
+// Do NOT fall back silently to dirname(manifest) for ambiguous workspaces.
+export function locateWorkspaceRoot(manifest, cwd = process.cwd()) {
+  const result = run(
+    'cargo',
+    [
+      'locate-project',
+      '--workspace',
+      '--message-format',
+      'plain',
+      '--manifest-path',
+      manifest,
+    ],
+    { cwd, env: process.env }
+  );
+
+  const workspaceManifest = result.stdout.trim();
+  if (!workspaceManifest || path.basename(workspaceManifest) !== 'Cargo.toml') {
+    throw new Error(
+      `Unable to determine Cargo workspace root for ${manifest}: cargo locate-project returned unexpected output`
+    );
   }
-  return rewritten;
+
+  return path.dirname(path.resolve(workspaceManifest));
 }
 
+// Kept for backward compatibility and for unit tests that construct synthetic workspaces.
+// Production flow uses locateWorkspaceRoot() exclusively.
 export function findWorkspaceRoot(manifest) {
   let directory = path.dirname(path.resolve(manifest));
   let outermostWorkspace = null;
@@ -259,7 +268,21 @@ function copyWorkspace(sourceRoot, destinationRoot) {
   });
 }
 
-export function prepareCandidate({ cargoArgs, cwd, realLock, baselineMetadata, tempRoot }) {
+function rewriteManifestArguments(cargoArgs, originalCwd, copiedRoot, sourceRoot) {
+  const rewritten = [...cargoArgs];
+  for (let index = 0; index < rewritten.length; index += 1) {
+    if (rewritten[index] === '--manifest-path') {
+      const original = path.resolve(originalCwd, rewritten[index + 1]);
+      rewritten[index + 1] = path.join(copiedRoot, path.relative(sourceRoot, original));
+    } else if (rewritten[index].startsWith('--manifest-path=')) {
+      const original = path.resolve(originalCwd, rewritten[index].slice('--manifest-path='.length));
+      rewritten[index] = `--manifest-path=${path.join(copiedRoot, path.relative(sourceRoot, original))}`;
+    }
+  }
+  return rewritten;
+}
+
+export function prepareCandidate({ cargoArgs, cwd, realLock, baselineMetadata, tempRoot, workspaceRoot }) {
   const useTemporaryLockfile = cargoSupportsTemporaryLockfile();
   const dryArgs = cargoArgs.filter((argument) => argument !== '--dry' && argument !== '--dry-run');
   if (useTemporaryLockfile) {
@@ -277,12 +300,12 @@ export function prepareCandidate({ cargoArgs, cwd, realLock, baselineMetadata, t
     };
   }
 
-  const sourceRoot =
-    baselineMetadata?.workspace_root ?? findWorkspaceRoot(manifestPath(cargoArgs, cwd));
+  // Fallback for Cargo < 1.97: copy entire workspace
+  const sourceRoot = workspaceRoot ?? baselineMetadata?.workspace_root ?? path.dirname(manifestPath(cargoArgs, cwd));
   const copiedRoot = path.join(tempRoot, 'workspace');
   copyWorkspace(sourceRoot, copiedRoot);
   return {
-    args: rewriteManifestArguments(dryArgs, cwd, copiedRoot),
+    args: rewriteManifestArguments(dryArgs, cwd, copiedRoot, sourceRoot),
     cwd: copiedRoot,
     env: process.env,
     candidateLock: path.join(copiedRoot, 'Cargo.lock'),
@@ -490,7 +513,8 @@ async function main() {
   const manifest = manifestPath(parsed.cargoArgs, cwd);
   if (!existsSync(manifest)) throw new Error(`Cargo manifest not found: ${manifest}`);
 
-  const workspaceRoot = findWorkspaceRoot(manifest);
+  // P1: Use Cargo's authoritative workspace root determination. Fail closed if it fails.
+  const workspaceRoot = locateWorkspaceRoot(manifest, cwd);
   const destinationLock = path.join(workspaceRoot, 'Cargo.lock');
   const originalLock = {
     path: destinationLock,
@@ -511,6 +535,7 @@ async function main() {
       realLock: originalLock.existed ? originalLock.path : null,
       baselineMetadata,
       tempRoot,
+      workspaceRoot,
     });
 
     let updateResult;

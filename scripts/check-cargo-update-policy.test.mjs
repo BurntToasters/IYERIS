@@ -259,3 +259,341 @@ test('12. requires exact path exclusion (tools/cargo-safe-update.mjs is blocked)
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+// --- P0: line-wide guard bypass regression tests ---
+
+test('13. blocks cargo-safe-update.mjs && cargo update in a shell file', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'update.sh'),
+      '#!/bin/sh\nnode scripts/cargo-safe-update.mjs --manifest-path src-tauri/Cargo.toml && cargo update\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('raw Cargo mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('14. blocks echo cargo-safe-update && cargo update in a shell file', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'update.sh'),
+      '#!/bin/sh\necho cargo-safe-update && cargo update\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('raw Cargo mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('15a. blocks guarded wrapper + raw update in .ps1 file', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'update.ps1'),
+      'node scripts/cargo-safe-update.mjs; cargo update\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('raw Cargo mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('15b. blocks guarded wrapper + raw update in .mjs file', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'update.mjs'),
+      '// updater\nconst x = "node scripts/cargo-safe-update.mjs";\ncargo update\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('raw Cargo mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// --- P1: programmatic JS/TS Cargo mutation detection ---
+
+test('16. blocks spawnSync("cargo", ["update"]) in a non-excluded script', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'do-update.mjs'),
+      'import { spawnSync } from "child_process";\nspawnSync("cargo", ["update"]);\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('programmatic Cargo mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("17. blocks spawnSync('cargo', ['generate-lockfile']) with single quotes", () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'regen.mjs'),
+      "spawnSync('cargo', ['generate-lockfile']);\n"
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('programmatic Cargo mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('18. blocks execFileSync("cargo", ["add", "serde"])', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'adder.js'),
+      'execFileSync("cargo", ["add", "serde"]);\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('programmatic Cargo mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('19. blocks execa("cargo", ["upgrade"])', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'upgrade.mjs'),
+      'import { execa } from "execa";\nexeca("cargo", ["upgrade"]);\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('programmatic Cargo mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('20. approved exact helper file (scripts/cargo-safe-update.mjs) remains excluded for programmatic calls', () => {
+  // The approved helper internally uses spawnSync("cargo", ...) — this must remain excluded
+  const root = createTempRepo();
+  try {
+    // cargo-safe-update.mjs already exists in scripts/ (created by createTempRepo),
+    // but its content has "cargo update" not a spawnSync form — let's override to test:
+    writeFileSync(
+      path.join(root, 'scripts', 'cargo-safe-update.mjs'),
+      '// approved helper\nspawnSync("cargo", ["update", "--manifest-path", manifest]);\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, true, 'approved helper must remain excluded for programmatic calls');
+    assert.equal(errors.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// --- P1: No whole-file DOCUMENTED_MENTIONS exemption ---
+
+test('21. whole-file exemption removed — troubleshooting text + execSync("cargo update") fails', () => {
+  const root = createTempRepo();
+  try {
+    // Simulate what bump-version.js might look like: documentation text + real mutation
+    writeFileSync(
+      path.join(root, 'scripts', 'bump-version.js'),
+      '// regenerate the Cargo lockfile using the approved dependency-maintenance workflow\nexecSync("cargo update");\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false, 'execSync("cargo update") in bump-version.js must be detected');
+    assert.ok(errors.some((e) => e.includes('programmatic Cargo mutation') || e.includes('raw Cargo mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('22. different file with same basename does not inherit any exemption', () => {
+  const root = createTempRepo();
+  try {
+    mkdirSync(path.join(root, 'tools'), { recursive: true });
+    writeFileSync(
+      path.join(root, 'tools', 'bump-version.js'),
+      'cargo update\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('tools/bump-version.js')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// --- P2: Root-level JS/TS scanning ---
+
+test('23. blocks root-level update-deps.mjs with cargo update', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'update-deps.mjs'),
+      '#!/usr/bin/env node\ncargo update\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('update-deps.mjs')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('24. blocks root-level release-deps.js with cargo update', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'release-deps.js'),
+      'const cmd = "cargo update";\nexec(cmd);\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('release-deps.js')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+// --- P2: Cargo alias scanning ---
+
+test('25. blocks .cargo/config.toml with [alias] u = "update"', () => {
+  const root = createTempRepo();
+  try {
+    mkdirSync(path.join(root, '.cargo'), { recursive: true });
+    writeFileSync(
+      path.join(root, '.cargo', 'config.toml'),
+      '[alias]\nu = "update"\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('Cargo alias dependency mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('26. blocks .cargo/config.toml with [alias] regen = ["generate-lockfile"]', () => {
+  const root = createTempRepo();
+  try {
+    mkdirSync(path.join(root, '.cargo'), { recursive: true });
+    writeFileSync(
+      path.join(root, '.cargo', 'config.toml'),
+      '[alias]\nregen = ["generate-lockfile"]\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, false);
+    assert.ok(errors.some((e) => e.includes('Cargo alias dependency mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('27. allows .cargo/config.toml with safe aliases (b = "build")', () => {
+  const root = createTempRepo();
+  try {
+    mkdirSync(path.join(root, '.cargo'), { recursive: true });
+    writeFileSync(
+      path.join(root, '.cargo', 'config.toml'),
+      '[alias]\nb = "build"\nt = "test"\nc = "check"\n'
+    );
+    const errors = [];
+    const ok = runPolicyCheck({
+      root,
+      log: () => {},
+      error: (msg) => errors.push(msg),
+    });
+    assert.equal(ok, true);
+    assert.equal(errors.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

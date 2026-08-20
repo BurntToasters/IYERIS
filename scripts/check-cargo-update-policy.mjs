@@ -9,8 +9,8 @@ import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const CARGO_UPDATE_POLICY_SCANNER_VERSION = 2;
-export const CARGO_UPDATE_SCANNER_VERSION = 2;
+export const CARGO_UPDATE_POLICY_SCANNER_VERSION = 3;
+export const CARGO_UPDATE_SCANNER_VERSION = 3;
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -64,15 +64,27 @@ export const EXCLUDED_FILES = new Set([
   'scripts/check-cargo-update-policy.test.mjs',
 ]);
 
-export const DOCUMENTED_MENTIONS = new Map([
-  ['scripts/bump-version.js', 'prints cargo generate-lockfile troubleshooting text only'],
-]);
-
+// P0: raw shell-level Cargo mutation command
 const RAW_CARGO_MUTATION_REGEX = /\bcargo\s+(update|upgrade|add|generate-lockfile)\b/;
+
+// Cargo.lock deletion via shell/PowerShell/Node API
 const LOCKFILE_DELETE_REGEX =
-  /(?:\b(?:rm|unlink|Remove-Item|ri|del|erase|rmSync|unlinkSync)\b[^\n\r;]*[\\/]Cargo\.lock\b)|(?:\b(?:rm|unlink|Remove-Item|ri|del|erase|rmSync|unlinkSync)\s+[^\n\r;]*\bCargo\.lock\b)|(?:\b(?:rmSync|unlinkSync)\s*\([^)]*Cargo\.lock[^)]*\))/;
+  /(?:\b(?:rm|unlink|Remove-Item|ri|del|erase|rmSync|unlinkSync)\b[^\n\r;]*[/\\]Cargo\.lock\b)|(?:\b(?:rm|unlink|Remove-Item|ri|del|erase|rmSync|unlinkSync)\s+[^\n\r;]*\bCargo\.lock\b)|(?:\b(?:rmSync|unlinkSync)\s*\([^)]*Cargo\.lock[^)]*\))/;
+
+// Cargo.lock truncation / overwrite via shell redirect
 const LOCKFILE_TRUNCATE_OVERWRITE_REGEX =
-  /(?:>\s*(?:[^\n\r;]*[\\/])?Cargo\.lock\b)|(?:\btruncate\s+[^\n\r;]*\bCargo\.lock\b)/;
+  /(?:>\s*(?:[^\n\r;]*[/\\])?Cargo\.lock\b)|(?:\btruncate\s+[^\n\r;]*\bCargo\.lock\b)/;
+
+// P1: programmatic Node/JS calls that bypass shell-level detection.
+// Catches: spawn/spawnSync/execFile/execFileSync/execa/execaSync("cargo", ["update"/...])
+// Also catches execSync("cargo update") style calls.
+// Uses conservative regex — false positives in docs are reviewable.
+const PROGRAMMATIC_CARGO_MUTATION_REGEX =
+  /\b(?:spawn(?:Sync)?|execFile(?:Sync)?|execa(?:Sync)?)\s*\(\s*['"]cargo['"]\s*,\s*\[\s*['"](?:update|upgrade|add|generate-lockfile)['"]/
+  // Also catch execSync("cargo update") / exec("cargo update") forms
+  ;
+const EXEC_SYNC_CARGO_MUTATION_REGEX =
+  /\b(?:execSync|exec)\s*\(\s*['"]cargo\s+(?:update|upgrade|add|generate-lockfile)\b/;
 
 export function normalizeRelPath(relPath) {
   return relPath.split(path.sep).join('/');
@@ -80,10 +92,6 @@ export function normalizeRelPath(relPath) {
 
 export function commandSegments(command) {
   return command.split(/&&|\|\||;|\n/u);
-}
-
-export function segmentIsGuarded(segment) {
-  return segment.includes('cargo-safe-update');
 }
 
 export function stripCommentLines(text) {
@@ -107,12 +115,10 @@ export function stripCommentLines(text) {
     .join('\n');
 }
 
+// P0: No line-wide segmentIsGuarded short-circuit.
+// Any raw Cargo mutation is always a violation outside the exact approved helper path.
 export function classifyLine(line) {
-  if (segmentIsGuarded(line)) return null;
-
   for (const segment of commandSegments(line)) {
-    if (segmentIsGuarded(segment)) continue;
-
     if (RAW_CARGO_MUTATION_REGEX.test(segment)) {
       return {
         kind: 'raw Cargo mutation',
@@ -130,6 +136,15 @@ export function classifyLine(line) {
     if (LOCKFILE_TRUNCATE_OVERWRITE_REGEX.test(segment)) {
       return {
         kind: 'Cargo.lock overwrite/truncate',
+        text: segment.trim(),
+      };
+    }
+
+    // P1: programmatic Node/JS cargo mutation (full-line check since these are not
+    // typically chained with &&; checking each segment is still correct)
+    if (PROGRAMMATIC_CARGO_MUTATION_REGEX.test(segment) || EXEC_SYNC_CARGO_MUTATION_REGEX.test(segment)) {
+      return {
+        kind: 'programmatic Cargo mutation',
         text: segment.trim(),
       };
     }
@@ -182,7 +197,8 @@ export function scanFile(relPath, fullPath, violations) {
     const line = lines[i];
     const finding = classifyLine(line);
     if (finding) {
-      if (DOCUMENTED_MENTIONS.has(normalizedRel)) continue;
+      // P1: No whole-file DOCUMENTED_MENTIONS exemption.
+      // Every finding in every file is reported. Use EXCLUDED_FILES for approved helpers only.
       violations.push({
         file: normalizedRel,
         line: i + 1,
@@ -219,11 +235,68 @@ export function scanPackageJson(root, violations) {
   }
 }
 
+// P2: Scan .cargo/config.toml and .cargo/config for dependency-mutating aliases.
+// Disallow aliases whose expansion begins with or invokes update/upgrade/add/generate-lockfile.
+export function scanCargoConfig(root, violations) {
+  const configPaths = [
+    path.join(root, '.cargo', 'config.toml'),
+    path.join(root, '.cargo', 'config'),
+  ];
+
+  const MUTATION_ALIAS_REGEX = /^\s*(?:update|upgrade|add|generate-lockfile)\b/;
+
+  for (const configPath of configPaths) {
+    let content;
+    try {
+      content = readFileSync(configPath, 'utf8');
+    } catch {
+      continue;
+    }
+
+    let inAliasSection = false;
+    const lines = content.split(/\r?\n/u);
+    for (let i = 0; i < lines.length; i += 1) {
+      const line = lines[i];
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+
+      // Detect section headers
+      if (trimmed.startsWith('[')) {
+        inAliasSection = trimmed === '[alias]';
+        continue;
+      }
+
+      if (!inAliasSection) continue;
+
+      // Key = "value" or Key = ["value", ...]
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx < 0) continue;
+      const aliasValue = trimmed.slice(eqIdx + 1).trim();
+
+      // Extract the first word from the alias expansion (strip quotes, brackets)
+      const stripped = aliasValue.replace(/^\[?\s*['"]?/, '').replace(/['"\]].*/u, '').trim();
+
+      if (MUTATION_ALIAS_REGEX.test(stripped)) {
+        const relConfig = normalizeRelPath(path.relative(root, configPath));
+        violations.push({
+          file: relConfig,
+          line: i + 1,
+          kind: 'Cargo alias dependency mutation',
+          text: line.trim(),
+        });
+      }
+    }
+  }
+}
+
 export function runPolicyCheck({ root = repoRoot, log = console.log, error = console.error } = {}) {
   const violations = [];
   scanPackageJson(root, violations);
 
-  // Scan root automation exact files
+  // P2: Scan .cargo/config for mutation aliases
+  scanCargoConfig(root, violations);
+
+  // Scan root automation exact files (Makefile, justfile, Taskfile, etc.)
   for (const name of EXACT_AUTOMATION_FILES) {
     const fullPath = path.join(root, name);
     try {
@@ -262,13 +335,20 @@ export function runPolicyCheck({ root = repoRoot, log = console.log, error = con
     }
   }
 
-  // Scan root-level shell / powershell / cmd files
+  // P2: Scan root-level shell, PowerShell, cmd, AND JS/TS automation files
+  const ROOT_SCRIPT_EXTENSIONS = new Set([
+    '.sh', '.bash', '.zsh',
+    '.ps1', '.psm1',
+    '.cmd', '.bat',
+    '.js', '.mjs', '.cjs',
+    '.ts', '.mts', '.cts',
+  ]);
   try {
     const rootEntries = readdirSync(root, { withFileTypes: true });
     for (const entry of rootEntries) {
       if (entry.isFile()) {
         const ext = path.extname(entry.name).toLowerCase();
-        if (['.sh', '.bash', '.zsh', '.ps1', '.psm1', '.cmd', '.bat'].includes(ext)) {
+        if (ROOT_SCRIPT_EXTENSIONS.has(ext)) {
           scanFile(entry.name, path.join(root, entry.name), violations);
         }
       }
