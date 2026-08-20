@@ -110,7 +110,7 @@ function createStepPlan({
       name: 'rustCheck',
       label: 'Rust Check',
       command: 'cargo',
-      args: ['check', '--manifest-path', cargoManifest],
+      args: ['check', '--locked', '--manifest-path', cargoManifest],
       timeout: rustTimeout,
     },
     {
@@ -119,6 +119,7 @@ function createStepPlan({
       command: 'cargo',
       args: [
         'clippy',
+        '--locked',
         '--manifest-path',
         cargoManifest,
         '--all-targets',
@@ -134,7 +135,7 @@ function createStepPlan({
       name: 'rustTest',
       label: 'Rust Test',
       command: 'cargo',
-      args: ['test', '--manifest-path', cargoManifest, '--all-targets'],
+      args: ['test', '--locked', '--manifest-path', cargoManifest, '--all-targets'],
       timeout: rustTimeout,
     },
   ];
