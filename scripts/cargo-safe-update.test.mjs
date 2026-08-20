@@ -1,11 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { Buffer } from 'node:buffer';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { URL } from 'node:url';
 import {
+  CARGO_SAFE_UPDATE_POLICY_VERSION,
+  CARGO_SAFE_UPDATE_VERSION,
   MIN_PUBLISH_AGE_MS,
   crateIndexPath,
+  findWorkspaceRoot,
   installValidatedLock,
   isPublishAgeAllowed,
   parseArguments,
@@ -17,7 +22,6 @@ import {
 
 const now = Date.parse('2026-08-20T12:00:00Z');
 const olderThan72h = '2026-08-17T11:59:59Z';
-const exact72h = '2026-08-17T12:00:00Z';
 const youngerThan72h = '2026-08-19T12:00:00Z';
 
 function withMockFetch(records, fn) {
@@ -29,20 +33,20 @@ function withMockFetch(records, fn) {
         if (typeof handler === 'function') return handler(urlStr);
         if (handler.error) throw new Error(handler.error);
         if (handler.status && handler.status !== 200) {
-          return new Response('Not Found', { status: handler.status });
+          return new globalThis.Response('Not Found', { status: handler.status });
         }
         const text = Array.isArray(handler)
           ? handler.map((r) => JSON.stringify(r)).join('\n')
           : typeof handler === 'string'
             ? handler
             : JSON.stringify(handler);
-        return new Response(text, {
+        return new globalThis.Response(text, {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
       }
     }
-    return new Response('Not found', { status: 404 });
+    return new globalThis.Response('Not found', { status: 404 });
   };
   return Promise.resolve()
     .then(fn)
@@ -472,11 +476,11 @@ test('18. restoreRealLock preserves lockfile byte-for-byte on failure or drift',
     writeFileSync(lockPath, originalBytes);
 
     writeFileSync(lockPath, Buffer.from('# TAMPERED_LOCKFILE_BYTES\nversion = 4\n'));
-    restoreRealLock(lockPath, originalBytes);
+    restoreRealLock(lockPath, { path: lockPath, existed: true, bytes: originalBytes });
     assert.deepEqual(readFileSync(lockPath), originalBytes);
 
     rmSync(lockPath, { force: true });
-    restoreRealLock(lockPath, originalBytes);
+    restoreRealLock(lockPath, { path: lockPath, existed: true, bytes: originalBytes });
     assert.deepEqual(readFileSync(lockPath), originalBytes);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -502,7 +506,12 @@ test('19. installValidatedLock installs exact validated candidate lockfile on su
     writeFileSync(realLock, Buffer.from('# ORIGINAL\nversion = 4\n'));
     writeFileSync(candidateLock, candidateContent);
 
-    installValidatedLock(candidateLock, realLock, ['--manifest-path', manifestPath], tempDir);
+    installValidatedLock(
+      candidateLock,
+      { path: realLock, existed: true, bytes: Buffer.from('# ORIGINAL\nversion = 4\n') },
+      ['--manifest-path', manifestPath],
+      tempDir
+    );
     assert.deepEqual(readFileSync(realLock), candidateContent);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -522,7 +531,7 @@ test('20. installValidatedLock rolls back to original lockfile when final verifi
       () =>
         installValidatedLock(
           candidateLock,
-          realLock,
+          { path: realLock, existed: true, bytes: originalContent },
           ['--manifest-path', path.join(tempDir, 'nonexistent-Cargo.toml')],
           tempDir
         ),
@@ -543,7 +552,7 @@ test('21. detects and restores real lockfile modification drift during resolutio
     writeFileSync(realLock, originalBytes);
 
     writeFileSync(realLock, Buffer.from('unexpectedly mutated lock bytes'));
-    restoreRealLock(realLock, originalBytes);
+    restoreRealLock(realLock, { path: realLock, existed: true, bytes: originalBytes });
     assert.deepEqual(readFileSync(realLock), originalBytes);
   } finally {
     rmSync(tempDir, { recursive: true, force: true });
@@ -584,23 +593,23 @@ test('23. preserves and forwards standard Cargo update arguments', () => {
   ]);
 });
 
-test('24. prepares candidate in temporary lockfile using CARGO_RESOLVER_LOCKFILE_PATH', () => {
+test('24. prepares candidate in temporary lockfile using CARGO_RESOLVER_LOCKFILE_PATH and leaves it nonexistent if no baseline', () => {
   const workspaceDir = mkdtempSync(path.join(os.tmpdir(), 'cargo-test-ws-'));
   const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'cargo-test-temp-'));
   try {
-    const realLock = path.join(workspaceDir, 'Cargo.lock');
-    writeFileSync(realLock, 'version = 4\n');
+    // When no baseline lockfile exists:
     const result = prepareCandidate({
       cargoArgs: ['--manifest-path', path.join(workspaceDir, 'Cargo.toml')],
       cwd: workspaceDir,
-      realLock,
+      realLock: null,
       baselineMetadata: null,
       tempRoot,
     });
     if (!result.copiedWorkspace) {
       assert.ok(result.env.CARGO_RESOLVER_LOCKFILE_PATH);
       assert.equal(path.basename(result.env.CARGO_RESOLVER_LOCKFILE_PATH), 'Cargo.lock');
-      assert.notEqual(result.env.CARGO_RESOLVER_LOCKFILE_PATH, realLock);
+      // Invariant: candidateLock MUST NOT exist before Cargo creates it!
+      assert.equal(existsSync(result.candidateLock), false);
     }
   } finally {
     rmSync(workspaceDir, { recursive: true, force: true });
@@ -616,12 +625,141 @@ test('25. dependency update entry points use guarded Cargo resolution', () => {
     assert.doesNotMatch(command, /\bcargo update\b/);
     assert.match(command, /cargo-safe-update/);
   }
-  const helperUrl = new URL('./update-iyeris-pkg.js', import.meta.url);
+});
+
+test('26. integration test: no-lock workspace generates candidate in temp, leaves real lock untouched, installs on approval', () => {
+  const tempWs = mkdtempSync(path.join(os.tmpdir(), 'cargo-int-nolock-'));
+  const tempGuard = mkdtempSync(path.join(os.tmpdir(), 'cargo-int-guard-'));
   try {
-    const helperCommand = readFileSync(helperUrl, 'utf8');
-    assert.doesNotMatch(helperCommand, /\bcargo update\b/);
-    assert.match(helperCommand, /cargo-safe-update/);
-  } catch {
-    // helper is IYERIS-specific
+    const manifestPath = path.join(tempWs, 'Cargo.toml');
+    const realLock = path.join(tempWs, 'Cargo.lock');
+    mkdirSync(path.join(tempWs, 'src'), { recursive: true });
+    writeFileSync(path.join(tempWs, 'src', 'lib.rs'), '// simple lib\n');
+    writeFileSync(
+      manifestPath,
+      '[package]\nname = "no-lock-fixture"\nversion = "0.1.0"\nedition = "2021"\n[lib]\npath = "src/lib.rs"\n'
+    );
+
+    assert.equal(existsSync(realLock), false, 'real Cargo.lock must not exist initially');
+
+    const prep = prepareCandidate({
+      cargoArgs: ['--manifest-path', manifestPath],
+      cwd: tempWs,
+      realLock: null,
+      baselineMetadata: null,
+      tempRoot: tempGuard,
+    });
+
+    if (!prep.copiedWorkspace) {
+      assert.equal(
+        existsSync(prep.candidateLock),
+        false,
+        'candidateLock must not exist prior to resolution'
+      );
+    }
+
+    // Simulate approval and transactional install
+    const candidateContent = Buffer.from(
+      '# This file is automatically @generated by Cargo.\n# It is not intended for manual editing.\nversion = 4\n\n[[package]]\nname = "no-lock-fixture"\nversion = "0.1.0"\n'
+    );
+    writeFileSync(prep.candidateLock, candidateContent);
+
+    assert.equal(existsSync(realLock), false, 'real lock still does not exist before install');
+
+    installValidatedLock(
+      prep.candidateLock,
+      { path: realLock, existed: false, bytes: null },
+      ['--manifest-path', manifestPath],
+      tempWs
+    );
+
+    assert.equal(existsSync(realLock), true, 'real lock installed on approval');
+    assert.deepEqual(readFileSync(realLock), candidateContent);
+  } finally {
+    rmSync(tempWs, { recursive: true, force: true });
+    rmSync(tempGuard, { recursive: true, force: true });
   }
+});
+
+test('27. integration test: no-lock workspace restores absence on policy rejection or resolution failure', () => {
+  const tempWs = mkdtempSync(path.join(os.tmpdir(), 'cargo-int-reject-'));
+  try {
+    const realLock = path.join(tempWs, 'Cargo.lock');
+    assert.equal(existsSync(realLock), false);
+
+    // If realLock was unexpectedly created during dirty resolution:
+    writeFileSync(realLock, Buffer.from('dirty resolution bytes'));
+    restoreRealLock(realLock, { path: realLock, existed: false, bytes: null });
+
+    assert.equal(
+      existsSync(realLock),
+      false,
+      'real lockfile must be deleted on rollback to absence'
+    );
+  } finally {
+    rmSync(tempWs, { recursive: true, force: true });
+  }
+});
+
+test('28. integration test: no-lock workspace restores absence if final verification fails', () => {
+  const tempWs = mkdtempSync(path.join(os.tmpdir(), 'cargo-int-verifail-'));
+  const tempGuard = mkdtempSync(path.join(os.tmpdir(), 'cargo-int-vguard-'));
+  try {
+    const realLock = path.join(tempWs, 'Cargo.lock');
+    const candidateLock = path.join(tempGuard, 'Cargo.lock');
+    writeFileSync(candidateLock, Buffer.from('# INVALID_CANDIDATE\nversion = 4\n'));
+
+    assert.throws(
+      () =>
+        installValidatedLock(
+          candidateLock,
+          { path: realLock, existed: false, bytes: null },
+          ['--manifest-path', path.join(tempWs, 'nonexistent-Cargo.toml')],
+          tempWs
+        ),
+      /Final Cargo\.lock verification failed; original lock restored\./
+    );
+
+    assert.equal(
+      existsSync(realLock),
+      false,
+      'new real Cargo.lock must be removed if workspace originally had no lockfile'
+    );
+  } finally {
+    rmSync(tempWs, { recursive: true, force: true });
+    rmSync(tempGuard, { recursive: true, force: true });
+  }
+});
+
+test('29. findWorkspaceRoot correctly locates roots for standalone, member, and virtual workspaces', () => {
+  const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'cargo-ws-roots-'));
+  try {
+    // 1. Nested standalone (src-tauri without root workspace)
+    const standaloneDir = path.join(tempRoot, 'standalone');
+    const tauriDir = path.join(standaloneDir, 'src-tauri');
+    mkdirSync(tauriDir, { recursive: true });
+    writeFileSync(
+      path.join(tauriDir, 'Cargo.toml'),
+      '[package]\nname = "standalone"\nversion = "0.1.0"\n'
+    );
+    assert.equal(findWorkspaceRoot(path.join(tauriDir, 'Cargo.toml')), tauriDir);
+
+    // 2. Member of workspace (repo with root Cargo.toml [workspace] and crates/app)
+    const wsDir = path.join(tempRoot, 'ws-with-members');
+    const appDir = path.join(wsDir, 'crates', 'app');
+    mkdirSync(appDir, { recursive: true });
+    writeFileSync(path.join(wsDir, 'Cargo.toml'), '[workspace]\nmembers = ["crates/app"]\n');
+    writeFileSync(path.join(appDir, 'Cargo.toml'), '[package]\nname = "app"\nversion = "0.1.0"\n');
+    assert.equal(findWorkspaceRoot(path.join(appDir, 'Cargo.toml')), wsDir);
+
+    // 3. Virtual workspace root
+    assert.equal(findWorkspaceRoot(path.join(wsDir, 'Cargo.toml')), wsDir);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('30. version markers are exported', () => {
+  assert.equal(CARGO_SAFE_UPDATE_POLICY_VERSION, 2);
+  assert.equal(CARGO_SAFE_UPDATE_VERSION, 2);
 });
