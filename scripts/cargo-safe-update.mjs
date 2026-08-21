@@ -3,7 +3,7 @@
 /* Temporary stable-Cargo fallback. Remove after supported stable Cargo ships
  * global minimum publish age; then restore direct `cargo update` call sites. */
 
-import { spawnSync } from 'node:child_process';
+import { execFile, spawnSync } from 'node:child_process';
 import console from 'node:console';
 import {
   copyFileSync,
@@ -18,12 +18,15 @@ import {
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { pathToFileURL } from 'node:url';
+import { createServer } from 'node:http';
+import { URL, pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 
-export const CARGO_SAFE_UPDATE_POLICY_VERSION = 3;
-export const CARGO_SAFE_UPDATE_VERSION = 3;
+export const CARGO_SAFE_UPDATE_POLICY_VERSION = 4;
+export const CARGO_SAFE_UPDATE_VERSION = 4;
 export const MIN_PUBLISH_AGE_MS = 72 * 60 * 60 * 1000;
 const CRATES_IO_INDEX = 'https://index.crates.io';
+const execFileAsync = promisify(execFile);
 const IGNORED_COPY_DIRECTORIES = new Set([
   '.git',
   'node_modules',
@@ -125,6 +128,23 @@ function run(command, args, { cwd = process.cwd(), env = process.env } = {}) {
     throw new Error(`${command} ${args.join(' ')} failed${detail ? `\n${detail}` : ''}`);
   }
   return result;
+}
+
+async function runAsync(command, args, { cwd = process.cwd(), env = process.env } = {}) {
+  try {
+    return await execFileAsync(command, args, {
+      cwd,
+      env,
+      encoding: 'utf8',
+      maxBuffer: 64 * 1024 * 1024,
+      shell: false,
+    });
+  } catch (error) {
+    const detail = [error.stdout, error.stderr].filter(Boolean).join('\n').trim();
+    throw new Error(`${command} ${args.join(' ')} failed${detail ? `\n${detail}` : ''}`, {
+      cause: error,
+    });
+  }
 }
 
 function cargoMetadata(cargoArgs, cwd, env) {
@@ -318,6 +338,111 @@ function registryIndexBase(source) {
   if (registry.includes('crates.io-index')) return CRATES_IO_INDEX;
   if (registry.startsWith('sparse+')) return registry.slice('sparse+'.length);
   return registry;
+}
+
+function isCratesIoRegistry(source) {
+  return sourceKind(source) === 'registry' && registryIndexBase(source) === CRATES_IO_INDEX;
+}
+
+export function filterRegistryIndex(body, baseline, overrides, now = Date.now()) {
+  const baselineVersions = new Set(
+    baseline
+      .filter((pkg) => isCratesIoRegistry(pkg.source))
+      .map((pkg) => `${pkg.name}@${pkg.version}`)
+  );
+  const filtered = [];
+
+  for (const line of body.split(/\r?\n/u)) {
+    if (!line.trim()) continue;
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch (error) {
+      throw new Error('crates.io index returned malformed JSON', { cause: error });
+    }
+
+    const key = `${record.name}@${record.vers}`;
+    const published = parsePublishTime(record.pubtime);
+    if (
+      baselineVersions.has(key) ||
+      overrides.allowYoung.has(key) ||
+      isPublishAgeAllowed(published, now)
+    ) {
+      filtered.push(line);
+    }
+  }
+
+  return filtered.length > 0 ? `${filtered.join('\n')}\n` : '';
+}
+
+async function startCratesIoAgeFilter({ baseline, overrides, tempRoot, now = Date.now() }) {
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.method !== 'GET' && request.method !== 'HEAD') {
+        response.writeHead(405).end();
+        return;
+      }
+
+      const pathname = new URL(request.url ?? '/', 'http://127.0.0.1').pathname;
+      const upstreamUrl = `${CRATES_IO_INDEX}${pathname}`;
+      const upstream = await globalThis.fetch(upstreamUrl, {
+        headers: { accept: 'application/json' },
+        signal: globalThis.AbortSignal.timeout(30_000),
+      });
+      const upstreamBody = await upstream.text();
+      if (!upstream.ok) {
+        response.writeHead(upstream.status, { 'content-type': 'text/plain' });
+        response.end(request.method === 'HEAD' ? undefined : upstreamBody);
+        return;
+      }
+
+      const body =
+        pathname === '/config.json'
+          ? upstreamBody
+          : filterRegistryIndex(upstreamBody, baseline, overrides, now);
+      response.writeHead(200, {
+        'content-type': upstream.headers.get('content-type') ?? 'text/plain',
+        'cache-control': 'no-store',
+      });
+      response.end(request.method === 'HEAD' ? undefined : body);
+    } catch (error) {
+      response.writeHead(502, { 'content-type': 'text/plain' });
+      response.end(`cargo-safe-update registry filter failed: ${error.message}`);
+    }
+  });
+
+  await new Promise((resolve, reject) => {
+    server.once('error', reject);
+    server.listen(0, '127.0.0.1', resolve);
+  });
+  const address = server.address();
+  if (!address || typeof address === 'string') {
+    server.close();
+    throw new Error('Unable to start local crates.io age filter');
+  }
+
+  const configPath = path.join(tempRoot, 'cargo-age-filter.toml');
+  writeFileSync(
+    configPath,
+    [
+      '[source.crates-io]',
+      'replace-with = "cargo-safe-age-filter"',
+      '',
+      '[source.cargo-safe-age-filter]',
+      `registry = "sparse+http://127.0.0.1:${address.port}/"`,
+      '',
+    ].join('\n')
+  );
+
+  return {
+    cargoArgs: ['--config', configPath],
+    async close() {
+      await new Promise((resolve) => {
+        server.close(resolve);
+        server.closeAllConnections?.();
+      });
+    },
+  };
 }
 
 async function readRegistryRecord(pkg) {
@@ -539,14 +664,21 @@ async function main() {
     });
 
     let updateResult;
+    const ageFilter = await startCratesIoAgeFilter({
+      baseline,
+      overrides: parsed,
+      tempRoot,
+    });
     try {
-      updateResult = run('cargo', ['update', ...candidate.args], {
+      updateResult = await runAsync('cargo', ['update', ...ageFilter.cargoArgs, ...candidate.args], {
         cwd: candidate.cwd,
-        env: candidate.env,
+        env: { ...candidate.env, CARGO_HOME: path.join(tempRoot, 'cargo-home') },
       });
     } catch (error) {
       restoreRealLock(originalLock.path, originalLock);
       throw error;
+    } finally {
+      await ageFilter.close();
     }
     if (updateResult.stdout) process.stdout.write(updateResult.stdout);
     if (updateResult.stderr) process.stderr.write(updateResult.stderr);
