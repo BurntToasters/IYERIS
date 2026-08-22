@@ -36,6 +36,7 @@ import {
   MINIMUM_NPM_VERSION,
   PINNED_RUST_VERSION,
   hasPinnedRustToolchain,
+  isSupportedNodeVersion,
   isVersionAtLeast,
   npmUpdateArguments,
   parseVersion,
@@ -1276,6 +1277,13 @@ test('45. update environment versions fail closed at exact boundaries', () => {
   assert.equal(isVersionAtLeast('12.1.0', MINIMUM_NPM_VERSION), true);
   assert.equal(isVersionAtLeast('12.0.0', MINIMUM_NPM_VERSION), false);
   assert.equal(isVersionAtLeast('11.99.99', MINIMUM_NPM_VERSION), false);
+  assert.equal(isSupportedNodeVersion('22.22.2'), true);
+  assert.equal(isSupportedNodeVersion('22.22.1'), false);
+  assert.equal(isSupportedNodeVersion('23.99.99'), false);
+  assert.equal(isSupportedNodeVersion('24.15.0'), true);
+  assert.equal(isSupportedNodeVersion('24.14.9'), false);
+  assert.equal(isSupportedNodeVersion('25.99.99'), false);
+  assert.equal(isSupportedNodeVersion('26.0.0'), true);
   assert.throws(() => parseVersion('latest'), /Invalid semantic version/);
   assert.equal(
     hasPinnedRustToolchain(`${PINNED_RUST_VERSION}-aarch64-apple-darwin (default)\n`),

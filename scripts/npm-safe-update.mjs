@@ -19,6 +19,7 @@ import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 
 export const MINIMUM_NPM_VERSION = '12.0.1';
+export const SUPPORTED_NODE_VERSIONS = '^22.22.2 || ^24.15.0 || >=26.0.0';
 export const PINNED_RUST_VERSION = '1.97.1';
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
@@ -38,6 +39,13 @@ export function isVersionAtLeast(value, minimum) {
     if (current[index] < required[index]) return false;
   }
   return true;
+}
+
+export function isSupportedNodeVersion(value) {
+  const [major] = parseVersion(value);
+  if (major === 22) return isVersionAtLeast(value, '22.22.2');
+  if (major === 24) return isVersionAtLeast(value, '24.15.0');
+  return major >= 26;
 }
 
 export function hasPinnedRustToolchain(output, version = PINNED_RUST_VERSION) {
@@ -138,8 +146,8 @@ function acquireUpdateLock(root) {
 
 export function assertUpdateEnvironment() {
   const nodeVersion = process.versions.node;
-  if (!isVersionAtLeast(nodeVersion, '22.13.0')) {
-    throw new Error(`Node.js 22.13.0+ required; found ${nodeVersion}`);
+  if (!isSupportedNodeVersion(nodeVersion)) {
+    throw new Error(`Node.js ${SUPPORTED_NODE_VERSIONS} required; found ${nodeVersion}`);
   }
 
   const npmVersion = run(npmCommand, ['--version'], { capture: true });
