@@ -1,16 +1,25 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
-import { URL } from 'node:url';
+import { URL, fileURLToPath } from 'node:url';
 import {
   CARGO_SAFE_UPDATE_POLICY_VERSION,
   CARGO_SAFE_UPDATE_VERSION,
   MIN_PUBLISH_AGE_MS,
+  acquireUpdateLock,
   crateIndexPath,
   filterRegistryIndex,
   findWorkspaceRoot,
@@ -23,6 +32,15 @@ import {
   restoreRealLock,
   validateCandidate,
 } from './cargo-safe-update.mjs';
+import {
+  MINIMUM_NPM_VERSION,
+  PINNED_RUST_VERSION,
+  hasPinnedRustToolchain,
+  isVersionAtLeast,
+  npmUpdateArguments,
+  parseVersion,
+  restoreSnapshot,
+} from './npm-safe-update.mjs';
 
 // Skip real Cargo integration tests if SKIP_CARGO_INTEGRATION=1
 const SKIP_CARGO_INTEGRATION = process.env.SKIP_CARGO_INTEGRATION === '1';
@@ -453,7 +471,7 @@ test('15. ignores path and workspace dependencies for publish-age validation', a
   assert.equal(result.approved.length, 0);
 });
 
-test('16. blocks unsupported or private registry without provable pubtime', async () => {
+test('16. blocks unsupported or private registry', async () => {
   const baseline = [];
   const candidate = [
     { name: 'private-pkg', version: '1.0.0', source: 'registry+https://private.example/index' },
@@ -469,13 +487,13 @@ test('16. blocks unsupported or private registry without provable pubtime', asyn
             { allowYoung: new Set(), allowGit: new Set() },
             now
           ),
-        /missing or invalid pubtime/
+        /unsupported registry/
       );
     }
   );
 });
 
-test('17. allows alternate registry with valid pubtime older than 72 hours', async () => {
+test('17. blocks alternate registry even when it claims an old pubtime', async () => {
   const baseline = [];
   const candidate = [
     { name: 'private-pkg', version: '1.0.0', source: 'registry+https://private.example/index' },
@@ -483,13 +501,16 @@ test('17. allows alternate registry with valid pubtime older than 72 hours', asy
   await withMockFetch(
     { 'pr/iv/private-pkg': [{ name: 'private-pkg', vers: '1.0.0', pubtime: olderThan72h }] },
     async () => {
-      const result = await validateCandidate(
-        baseline,
-        candidate,
-        { allowYoung: new Set(), allowGit: new Set() },
-        now
+      await assert.rejects(
+        () =>
+          validateCandidate(
+            baseline,
+            candidate,
+            { allowYoung: new Set(), allowGit: new Set() },
+            now
+          ),
+        /unsupported registry/
       );
-      assert.equal(result.approved.length, 1);
     }
   );
 });
@@ -589,7 +610,7 @@ test('22. candidate stage implementation never invokes cargo build/check/test/ru
   const source = readFileSync(new URL('./cargo-safe-update.mjs', import.meta.url), 'utf8');
   assert.doesNotMatch(
     source,
-    /run\(\s*['"]cargo['"]\s*,\s*\[\s*['"](build|check|test|run|bench|install)['"]/
+    /\b(?:run|runAsync)\(\s*['"]cargo['"]\s*,\s*\[\s*['"](build|check|test|run|bench|install)['"]/
   );
   assert.doesNotMatch(source, /\btauri\s+build\b/);
 });
@@ -651,6 +672,8 @@ test('25. dependency update entry points use guarded Cargo resolution', () => {
     assert.doesNotMatch(command, /\bcargo update\b/);
     assert.match(command, /cargo-safe-update/);
   }
+  assert.match(packageJson.scripts.u, /npm-safe-update/);
+  assert.doesNotMatch(packageJson.scripts.u, /workspace:bootstrap|format|test:all/);
 });
 
 test('26. unit: no-lock workspace generates candidate in temp, leaves real lock untouched, installs on approval', () => {
@@ -786,8 +809,8 @@ test('29. unit: findWorkspaceRoot correctly locates roots for standalone, member
 });
 
 test('30. version markers are exported', () => {
-  assert.equal(CARGO_SAFE_UPDATE_POLICY_VERSION, 4);
-  assert.equal(CARGO_SAFE_UPDATE_VERSION, 4);
+  assert.equal(CARGO_SAFE_UPDATE_POLICY_VERSION, 5);
+  assert.equal(CARGO_SAFE_UPDATE_VERSION, 5);
 });
 
 // --- Phase 2: Cargo-authoritative workspace root tests ---
@@ -1199,4 +1222,231 @@ test('42. registry filter keeps eligible releases while hiding only too-young re
       .map((line) => JSON.parse(line).vers),
     ['1.0.0', '1.1.0', '1.3.0']
   );
+});
+
+test('43. rejects registry URLs that only contain the crates.io index name', async () => {
+  let fetched = false;
+  await withMockFetch(
+    {
+      '3/f/foo': () => {
+        fetched = true;
+        return new globalThis.Response('', { status: 200 });
+      },
+    },
+    async () => {
+      const pkg = {
+        name: 'foo',
+        version: '1.0.0',
+        source: 'registry+https://evil.example/crates.io-index',
+      };
+      await assert.rejects(
+        () =>
+          validateCandidate(
+            [pkg],
+            [pkg],
+            { allowYoung: new Set(['foo@1.0.0']), allowGit: new Set() },
+            now
+          ),
+        /unsupported registry/
+      );
+      assert.equal(fetched, false, 'unsupported registry must fail before any registry fetch');
+    }
+  );
+});
+
+test('44. deceptive registry baseline cannot preserve a too-young release', () => {
+  const filtered = filterRegistryIndex(
+    `${JSON.stringify({ name: 'foo', vers: '1.0.0', pubtime: youngerThan72h })}\n`,
+    [
+      {
+        name: 'foo',
+        version: '1.0.0',
+        source: 'registry+https://evil.example/crates.io-index',
+      },
+    ],
+    { allowYoung: new Set(), allowGit: new Set() },
+    now
+  );
+  assert.equal(filtered, '');
+});
+
+test('45. update environment versions fail closed at exact boundaries', () => {
+  assert.deepEqual(parseVersion('12.0.1'), [12, 0, 1]);
+  assert.equal(isVersionAtLeast('12.0.1', MINIMUM_NPM_VERSION), true);
+  assert.equal(isVersionAtLeast('12.1.0', MINIMUM_NPM_VERSION), true);
+  assert.equal(isVersionAtLeast('12.0.0', MINIMUM_NPM_VERSION), false);
+  assert.equal(isVersionAtLeast('11.99.99', MINIMUM_NPM_VERSION), false);
+  assert.throws(() => parseVersion('latest'), /Invalid semantic version/);
+  assert.equal(
+    hasPinnedRustToolchain(`${PINNED_RUST_VERSION}-aarch64-apple-darwin (default)\n`),
+    true
+  );
+  assert.equal(hasPinnedRustToolchain('stable-aarch64-apple-darwin\n'), false);
+});
+
+test('46. npm lock update cannot install packages or run lifecycle scripts', () => {
+  const args = npmUpdateArguments('/isolated/npm-cache');
+  assert.deepEqual(args, [
+    'update',
+    '--package-lock-only',
+    '--ignore-scripts',
+    '--min-release-age=3',
+    '--cache=/isolated/npm-cache',
+  ]);
+});
+
+test('47. concurrent Cargo dependency updates are rejected', () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'cargo-update-lock-'));
+  try {
+    const release = acquireUpdateLock(tempDir);
+    assert.throws(() => acquireUpdateLock(tempDir), /Another Cargo dependency update holds/);
+    release();
+    const releaseAgain = acquireUpdateLock(tempDir);
+    releaseAgain();
+    assert.equal(existsSync(path.join(tempDir, '.cargo-safe-update.lock')), false);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('48. lock installation refuses to overwrite a concurrent edit', () => {
+  const tempDir = mkdtempSync(path.join(os.tmpdir(), 'cargo-update-compare-swap-'));
+  try {
+    const realLock = path.join(tempDir, 'Cargo.lock');
+    const candidateLock = path.join(tempDir, 'Candidate.lock');
+    const original = Buffer.from('# ORIGINAL\nversion = 4\n');
+    const concurrent = Buffer.from('# CONCURRENT_EDIT\nversion = 4\n');
+    writeFileSync(realLock, original);
+    writeFileSync(candidateLock, Buffer.from('# CANDIDATE\nversion = 4\n'));
+    writeFileSync(realLock, concurrent);
+
+    assert.throws(
+      () =>
+        installValidatedLock(
+          candidateLock,
+          { path: realLock, existed: true, bytes: original },
+          ['--manifest-path', path.join(tempDir, 'Cargo.toml')],
+          tempDir
+        ),
+      /Cargo\.lock changed since dependency update started/
+    );
+    assert.deepEqual(readFileSync(realLock), concurrent);
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
+});
+
+test(
+  '49. end-to-end dry-run uses proxy and leaves caller Cargo home untouched',
+  { skip: SKIP_CARGO_INTEGRATION },
+  () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'cargo-safe-e2e-'));
+    try {
+      const workspace = path.join(tempRoot, 'workspace');
+      const userCargoHome = path.join(tempRoot, 'user-cargo-home');
+      mkdirSync(workspace, { recursive: true });
+      mkdirSync(userCargoHome, { recursive: true });
+      createCargoFixture(workspace, { name: 'cargo-safe-update-proxy-fixture' });
+      const manifest = path.join(workspace, 'Cargo.toml');
+      writeFileSync(
+        manifest,
+        `${readFileSync(manifest, 'utf8')}\n[dependencies]\nitoa = "=1.0.10"\n`
+      );
+      writeFileSync(path.join(userCargoHome, 'sentinel'), 'unchanged\n');
+
+      const result = spawnSync(
+        process.execPath,
+        [
+          fileURLToPath(new URL('./cargo-safe-update.mjs', import.meta.url)),
+          '--manifest-path',
+          manifest,
+          '--dry-run',
+        ],
+        {
+          cwd: workspace,
+          env: {
+            ...process.env,
+            CARGO_HOME: userCargoHome,
+            RUSTUP_TOOLCHAIN: PINNED_RUST_VERSION,
+          },
+          encoding: 'utf8',
+          timeout: 120_000,
+        }
+      );
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /Dry run: real Cargo\.lock was not modified\./);
+      assert.equal(existsSync(path.join(workspace, 'Cargo.lock')), false);
+      assert.deepEqual(readdirSync(userCargoHome), ['sentinel']);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  }
+);
+
+test('50. end-to-end npm update is lock-only and uses a disposable cache', () => {
+  const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'npm-safe-e2e-'));
+  try {
+    const workspace = path.join(tempRoot, 'workspace');
+    const userNpmCache = path.join(tempRoot, 'user-npm-cache');
+    mkdirSync(workspace, { recursive: true });
+    mkdirSync(userNpmCache, { recursive: true });
+    writeFileSync(
+      path.join(workspace, 'package.json'),
+      `${JSON.stringify({ name: 'npm-safe-fixture', version: '1.0.0', private: true }, null, 2)}\n`
+    );
+    writeFileSync(
+      path.join(workspace, 'package-lock.json'),
+      `${JSON.stringify(
+        {
+          name: 'npm-safe-fixture',
+          version: '1.0.0',
+          lockfileVersion: 3,
+          requires: true,
+          packages: { '': { name: 'npm-safe-fixture', version: '1.0.0' } },
+        },
+        null,
+        2
+      )}\n`
+    );
+    writeFileSync(path.join(userNpmCache, 'sentinel'), 'unchanged\n');
+
+    const result = spawnSync(
+      process.execPath,
+      [fileURLToPath(new URL('./npm-safe-update.mjs', import.meta.url))],
+      {
+        cwd: workspace,
+        env: { ...process.env, npm_config_cache: userNpmCache },
+        encoding: 'utf8',
+        timeout: 120_000,
+      }
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(existsSync(path.join(workspace, 'node_modules')), false);
+    assert.equal(existsSync(path.join(workspace, '.npm-safe-update.lock')), false);
+    assert.deepEqual(readdirSync(userNpmCache), ['sentinel']);
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test('51. npm rollback refuses to overwrite a concurrent package-lock edit', () => {
+  const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'npm-safe-rollback-'));
+  try {
+    const packageLock = path.join(tempRoot, 'package-lock.json');
+    const original = { existed: true, bytes: Buffer.from('original\n') };
+    const candidate = { existed: true, bytes: Buffer.from('candidate\n') };
+    writeFileSync(packageLock, 'concurrent\n');
+
+    assert.throws(
+      () => restoreSnapshot(packageLock, original, candidate),
+      /Concurrent package-lock edit detected/
+    );
+    assert.equal(readFileSync(packageLock, 'utf8'), 'concurrent\n');
+
+    writeFileSync(packageLock, candidate.bytes);
+    restoreSnapshot(packageLock, original, candidate);
+    assert.equal(readFileSync(packageLock, 'utf8'), 'original\n');
+  } finally {
+    rmSync(tempRoot, { recursive: true, force: true });
+  }
 });

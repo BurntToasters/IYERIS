@@ -3,7 +3,7 @@ const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
 const s = pkg.scripts;
 
 s['u'] =
-  'npm update && node scripts/cargo-safe-update.mjs --manifest-path src-tauri/Cargo.toml && npm run workspace:bootstrap && npm run format && npm run test:all';
+  'node scripts/npm-safe-update.mjs && node scripts/cargo-safe-update.mjs --manifest-path src-tauri/Cargo.toml';
 
 s['build:win:x64:prepared'] =
   'dotenv -e .env -- node scripts/tauri-build.js --require-tauri-signing --require-windows-signing --target x86_64-pc-windows-msvc --bundles nsis,msi';
@@ -34,7 +34,7 @@ s['build:linux:arm64'] =
 s['build:linux'] = 'npm run build:linux:x64 && npm run build:linux:arm64';
 
 s['workspace:bootstrap'] =
-  'npm run rust:update && npm ci && npm run sync-version && node scripts/update-metainfo.js';
+  'npm run rust:update && npm ci --ignore-scripts && npm run sync-version && node scripts/update-metainfo.js';
 s['workspace:prepare'] = 'npm run workspace:bootstrap && npm run test:all';
 
 s['release:prepare'] = 'npm run workspace:prepare && npm run dist:clean-release-artifacts';

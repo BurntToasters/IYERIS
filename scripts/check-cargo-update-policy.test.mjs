@@ -21,6 +21,10 @@ function createTempRepo() {
     path.join(tempDir, 'scripts', 'cargo-safe-update.mjs'),
     '// approved implementation\ncargo update\n'
   );
+  writeFileSync(
+    path.join(tempDir, 'scripts', 'npm-safe-update.mjs'),
+    '// approved implementation\nnpm update\n'
+  );
   return tempDir;
 }
 
@@ -593,6 +597,114 @@ test('27. allows .cargo/config.toml with safe aliases (b = "build")', () => {
     });
     assert.equal(ok, true);
     assert.equal(errors.length, 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('28. blocks cargo +stable update', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(path.join(root, 'scripts', 'update.sh'), 'cargo +stable update\n');
+    const ok = runPolicyCheck({ root, log: () => {}, error: () => {} });
+    assert.equal(ok, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('29. blocks spawnSync cargo update with a toolchain selector', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'update.mjs'),
+      'spawnSync("cargo", ["+stable", "update"]);\n'
+    );
+    const ok = runPolicyCheck({ root, log: () => {}, error: () => {} });
+    assert.equal(ok, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('30. blocks shell line-continuation cargo update', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(path.join(root, 'scripts', 'update.sh'), 'cargo \\\n      update\n');
+    const ok = runPolicyCheck({ root, log: () => {}, error: () => {} });
+    assert.equal(ok, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('31. blocks Python subprocess cargo update', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'update.py'),
+      'import subprocess\nsubprocess.run(["cargo", "update"], check=True)\n'
+    );
+    const ok = runPolicyCheck({ root, log: () => {}, error: () => {} });
+    assert.equal(ok, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('32. blocks a dynamically assembled execSync cargo update', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'update.mjs'),
+      'const command = ["cargo", "update"].join(" ");\nexecSync(command);\n'
+    );
+    const ok = runPolicyCheck({ root, log: () => {}, error: () => {} });
+    assert.equal(ok, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('33. blocks raw npm update in package.json', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'package.json'),
+      JSON.stringify({ scripts: { u2: 'npm update && npm run test' } })
+    );
+    const errors = [];
+    const ok = runPolicyCheck({ root, log: () => {}, error: (msg) => errors.push(msg) });
+    assert.equal(ok, false);
+    assert.ok(errors.some((error) => error.includes('raw npm dependency mutation')));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('34. blocks programmatic npm update', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'update.mjs'),
+      'spawnSync("npm", ["update"]);\n'
+    );
+    const ok = runPolicyCheck({ root, log: () => {}, error: () => {} });
+    assert.equal(ok, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('35. blocks a dynamically assembled execSync npm update', () => {
+  const root = createTempRepo();
+  try {
+    writeFileSync(
+      path.join(root, 'scripts', 'update.mjs'),
+      'const command = ["npm", "update"].join(" ");\nexecSync(command);\n'
+    );
+    const ok = runPolicyCheck({ root, log: () => {}, error: () => {} });
+    assert.equal(ok, false);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
