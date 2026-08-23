@@ -4,10 +4,12 @@ import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
 import { execSync, spawnSync } from 'child_process';
-import https from 'https';
 import { fileURLToPath } from 'url';
 import { isDirectExecution } from './direct-execution.js';
 import { verifyReleaseSession } from './release-session.js';
+import githubCli from './github-cli.cjs';
+
+const { assertGitHubCliAuthenticated, githubApi, uploadReleaseAsset } = githubCli;
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
@@ -20,7 +22,6 @@ const IS_PRERELEASE = /-(?:beta|alpha|rc)(?:[.-]?\d+)?/i.test(VERSION);
 
 const GPG_KEY_ID = process.env.GPG_KEY_ID;
 const GPG_PASSPHRASE = process.env.GPG_PASSPHRASE;
-const GH_TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
 const STAGE_ONLY = process.argv.includes('--stage-only');
 const REPO_OWNER = process.env.GH_REPO_OWNER || 'BurntToasters';
 const REPO_NAME = process.env.GH_REPO_NAME || 'IYERIS';
@@ -721,40 +722,7 @@ function signArtifacts(files) {
 }
 
 function ghRequest(method, endpoint, body) {
-  return new Promise((resolve, reject) => {
-    const opts = {
-      hostname: 'api.github.com',
-      path: endpoint,
-      method,
-      headers: {
-        Authorization: `Bearer ${GH_TOKEN}`,
-        'User-Agent': 'IYERIS-Release',
-        Accept: 'application/vnd.github.v3+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    };
-    if (body) opts.headers['Content-Type'] = 'application/json';
-    const req = https.request(opts, (res) => {
-      let data = '';
-      res.on('data', (c) => (data += c));
-      res.on('end', () => {
-        try {
-          const json = data ? JSON.parse(data) : {};
-          if (res.statusCode >= 200 && res.statusCode < 300) resolve(json);
-          else reject(new Error(`GitHub ${res.statusCode}: ${json.message || data}`));
-        } catch {
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            resolve(data);
-          } else {
-            reject(new Error(`GitHub ${res.statusCode}: ${data || 'Non-JSON error response'}`));
-          }
-        }
-      });
-    });
-    req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
-    req.end();
-  });
+  return Promise.resolve(githubApi(method, endpoint, body));
 }
 
 async function getOrCreateRelease() {
@@ -774,48 +742,6 @@ async function getOrCreateRelease() {
     name: `IYERIS ${VERSION}`,
     draft: true,
     prerelease: IS_PRERELEASE,
-  });
-}
-
-async function uploadAsset(uploadUrl, filePath) {
-  const fileName = path.basename(filePath);
-  const content = fs.readFileSync(filePath);
-  const url = new URL(uploadUrl.replace('{?name,label}', ''));
-  url.searchParams.set('name', fileName);
-  const isText = /\.(asc|txt|json)$/i.test(fileName);
-  await new Promise((resolve, reject) => {
-    const req = https.request(
-      {
-        hostname: url.hostname,
-        path: url.pathname + url.search,
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${GH_TOKEN}`,
-          'User-Agent': 'IYERIS-Release',
-          Accept: 'application/vnd.github.v3+json',
-          'Content-Type': isText ? 'text/plain' : 'application/octet-stream',
-          'Content-Length': content.length,
-        },
-      },
-      (res) => {
-        let data = '';
-        res.on('data', (c) => (data += c));
-        res.on('end', () => {
-          if (res.statusCode < 300) resolve(true);
-          else if (res.statusCode === 422) {
-            let detail = data;
-            try {
-              const p = JSON.parse(data);
-              if (p?.message) detail = p.message;
-            } catch {}
-            reject(new Error(`Upload ${fileName} rejected (422): ${detail}.`));
-          } else reject(new Error(`Upload ${fileName} failed ${res.statusCode}: ${data}`));
-        });
-      }
-    );
-    req.on('error', reject);
-    req.write(content);
-    req.end();
   });
 }
 
@@ -863,11 +789,12 @@ async function verifyRemoteAssets(releaseId, filePaths, context) {
 }
 
 async function uploadAssetWithReplace(release, filePath) {
+  const releaseTag = release.tag_name || TAG;
   try {
-    await uploadAsset(release.upload_url, filePath);
+    uploadReleaseAsset(`${REPO_OWNER}/${REPO_NAME}`, releaseTag, filePath);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    if (!message.includes('(422)')) throw err;
+    if (err?.statusCode !== 422 && !/already[_ ]exists/i.test(message)) throw err;
     const fileName = path.basename(filePath);
     const assets = await listReleaseAssets(release.id);
     const existing = assets.find((a) => a?.name === fileName && typeof a.id === 'number');
@@ -879,8 +806,7 @@ async function uploadAssetWithReplace(release, filePath) {
         { cause: err }
       );
     }
-    await ghRequest('DELETE', `/repos/${REPO_OWNER}/${REPO_NAME}/releases/assets/${existing.id}`);
-    await uploadAsset(release.upload_url, filePath);
+    uploadReleaseAsset(`${REPO_OWNER}/${REPO_NAME}`, releaseTag, filePath, { clobber: true });
   }
 }
 
@@ -898,7 +824,7 @@ async function syncBetaManifestsToLatestStable(uploadedFiles, currentReleaseId) 
       { cause: err }
     );
   }
-  if (!latestStable?.id || !latestStable?.upload_url) return;
+  if (!latestStable?.id || !latestStable?.tag_name) return;
   if (latestStable.id === currentReleaseId) return;
   for (const filePath of betaManifests) {
     await uploadAssetWithReplace(latestStable, filePath);
@@ -909,11 +835,7 @@ async function syncBetaManifestsToLatestStable(uploadedFiles, currentReleaseId) 
 
 async function main() {
   console.log(`\nIYERIS ${VERSION} — release pipeline\n`);
-  if (!GH_TOKEN && !STAGE_ONLY) {
-    throw new Error(
-      'GH_TOKEN is required to upload release assets. Use the explicit staging-only command when no upload is intended.'
-    );
-  }
+  if (!STAGE_ONLY) assertGitHubCliAuthenticated();
   console.log('[1/5] Checking GPG...');
   if (!GPG_KEY_ID) {
     console.error('GPG_KEY_ID is required.');

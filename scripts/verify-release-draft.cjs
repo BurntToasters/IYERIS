@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const https = require('https');
+const { assertGitHubCliAuthenticated, githubApi } = require('./github-cli.cjs');
 
 require('dotenv').config();
 
@@ -8,10 +8,8 @@ const pkg = require('../package.json');
 const VERSION = pkg.version;
 const TAG = `v${VERSION}`;
 const IS_PRERELEASE = /-(?:alpha|beta|rc)(?:[.-]?\d+)?/i.test(VERSION);
-const GH_TOKEN = process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
 const REPO_OWNER = process.env.GH_REPO_OWNER || 'BurntToasters';
 const REPO_NAME = process.env.GH_REPO_NAME || 'IYERIS';
-const REQUEST_TIMEOUT_MS = Number.parseInt(process.env.GH_REQUEST_TIMEOUT_MS || '30000', 10);
 
 const BASE_INSTALLERS = [
   'IYERIS-Win-x64.exe',
@@ -48,49 +46,7 @@ function betaTargetKey(target) {
 }
 
 function githubRequest(endpoint) {
-  return new Promise((resolve, reject) => {
-    const request = https.request(
-      {
-        hostname: 'api.github.com',
-        path: endpoint,
-        method: 'GET',
-        headers: {
-          Authorization: `Bearer ${GH_TOKEN}`,
-          'User-Agent': 'IYERIS-Release-Verifier',
-          Accept: 'application/vnd.github+json',
-          'X-GitHub-Api-Version': '2022-11-28',
-        },
-      },
-      (response) => {
-        let body = '';
-        response.setEncoding('utf8');
-        response.on('data', (chunk) => (body += chunk));
-        response.on('end', () => {
-          let parsed;
-          try {
-            parsed = body ? JSON.parse(body) : null;
-          } catch (error) {
-            reject(new Error(`GitHub returned invalid JSON: ${error.message}`));
-            return;
-          }
-          if ((response.statusCode || 0) >= 200 && (response.statusCode || 0) < 300) {
-            resolve(parsed);
-            return;
-          }
-          reject(
-            new Error(
-              `GitHub ${response.statusCode || 0}: ${parsed?.message || body || 'unknown error'}`
-            )
-          );
-        });
-      }
-    );
-    request.setTimeout(REQUEST_TIMEOUT_MS, () => {
-      request.destroy(new Error(`GitHub request timed out after ${REQUEST_TIMEOUT_MS}ms`));
-    });
-    request.on('error', reject);
-    request.end();
-  });
+  return Promise.resolve(githubApi('GET', endpoint));
 }
 
 function expectedReleaseAssets({ prerelease = IS_PRERELEASE } = {}) {
@@ -169,7 +125,7 @@ async function listAllAssets(releaseId) {
 }
 
 async function main() {
-  if (!GH_TOKEN) throw new Error('GH_TOKEN is required to verify the release draft.');
+  assertGitHubCliAuthenticated();
 
   const release = await findDraft();
   if (!release) throw new Error(`No draft release found for ${TAG}.`);
