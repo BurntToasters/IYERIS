@@ -40,6 +40,14 @@ if (-not $installed) {
     [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
     $ProgressPreference = 'SilentlyContinue'
     Invoke-WebRequest -UseBasicParsing -Uri 'https://download.microsoft.com/download/70ad2c3b-761f-4aa9-a9de-e7405aa2b4c1/ArtifactSigningClientTools.msi' -OutFile $msiPath
+    Import-BundledPowerShellSecurityModule
+    $signature = Get-AuthenticodeSignature -LiteralPath $msiPath
+    if ($signature.Status -ne [System.Management.Automation.SignatureStatus]::Valid) {
+      throw "Artifact Signing Client Tools MSI signature is not valid: $($signature.Status)"
+    }
+    if (-not $signature.SignerCertificate -or $signature.SignerCertificate.Subject -notmatch '(?i)(?:^|,\s*)O=Microsoft Corporation(?:,|$)') {
+      throw 'Artifact Signing Client Tools MSI is not signed by Microsoft Corporation.'
+    }
     $process = Start-Process msiexec.exe -Wait -PassThru -ArgumentList @('/i', ('"{0}"' -f $msiPath), '/quiet', '/norestart')
     if ($process.ExitCode -notin @(0, 1641, 3010)) { throw "Artifact Signing Client Tools MSI failed with exit code $($process.ExitCode)" }
     if ($process.ExitCode -in @(1641, 3010)) { Write-Warning 'Installation succeeded and Windows requested a restart.' }
