@@ -66,12 +66,16 @@ export function npmUpdateArguments(cachePath) {
   ];
 }
 
+export function commandRequiresShell(command, platform = process.platform) {
+  return platform === 'win32' && /\.cmd$/iu.test(command);
+}
+
 function run(command, args, { cwd = process.cwd(), env = process.env, capture = false } = {}) {
   const result = spawnSync(command, args, {
     cwd,
     env,
     encoding: 'utf8',
-    shell: false,
+    shell: commandRequiresShell(command),
     stdio: capture ? 'pipe' : 'inherit',
   });
   if (result.error) throw result.error;

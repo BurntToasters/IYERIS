@@ -35,6 +35,7 @@ import {
 import {
   MINIMUM_NPM_VERSION,
   PINNED_RUST_VERSION,
+  commandRequiresShell,
   hasPinnedRustToolchain,
   isSupportedNodeVersion,
   isVersionAtLeast,
@@ -1301,6 +1302,12 @@ test('46. npm lock update cannot install packages or run lifecycle scripts', () 
     '--min-release-age=3',
     '--cache=/isolated/npm-cache',
   ]);
+});
+
+test('Windows command shims run through a shell', () => {
+  assert.equal(commandRequiresShell('npm.cmd', 'win32'), true);
+  assert.equal(commandRequiresShell('npm', 'win32'), false);
+  assert.equal(commandRequiresShell('npm.cmd', 'linux'), false);
 });
 
 test('47. concurrent Cargo dependency updates are rejected', () => {
