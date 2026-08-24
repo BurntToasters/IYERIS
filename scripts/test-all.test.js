@@ -107,6 +107,44 @@ test('rust formatting is gated the same way the JS side is', () => {
   assert.ok(names.indexOf('rustFormat') < names.indexOf('rustClippy'));
 });
 
+test('quality-gate rust steps stay locked; only u/u2 may resolve new crates', () => {
+  const plan = createStepPlan({ npm: 'npm', cargoManifest: 'src-tauri/Cargo.toml' });
+  for (const name of ['rustCheck', 'rustClippy', 'rustTest']) {
+    const step = plan.find((entry) => entry.name === name);
+    assert.ok(step, `${name} must stay in the quality-gate plan`);
+    assert.equal(
+      step.args.includes('--locked'),
+      true,
+      `${name} must use Cargo.lock so compile/download cannot pull unsigned graph changes`
+    );
+  }
+
+  const scripts = readScripts();
+  assert.match(
+    readFileSync(path.join(repoRoot, 'scripts', 'tauri-build.js'), 'utf8'),
+    /--locked/,
+    'release tauri builds must still install from Cargo.lock'
+  );
+  assert.match(scripts.u, /npm-safe-update\.mjs/);
+  assert.match(scripts.u, /cargo-safe-update\.mjs/);
+  assert.equal(scripts.u.includes('--locked'), false);
+
+  const packageVersion = JSON.parse(
+    readFileSync(path.join(repoRoot, 'package.json'), 'utf8')
+  ).version;
+  const cargoLock = readFileSync(path.join(repoRoot, 'src-tauri', 'Cargo.lock'), 'utf8');
+  assert.match(
+    cargoLock,
+    new RegExp(`name = "iyeris"\\r?\\nversion = "${packageVersion.replaceAll('.', '\\.')}"`),
+    'Cargo.lock package version must match package.json so --locked cargo can run'
+  );
+  assert.match(
+    readFileSync(path.join(repoRoot, 'scripts', 'sync-version.js'), 'utf8'),
+    /Cargo\.lock/,
+    'sync-version must keep Cargo.lock aligned after a version bump'
+  );
+});
+
 test('every planned step is represented in the results map that gates the proof', () => {
   const plan = createStepPlan({ npm: 'npm' });
   assert.deepEqual(
