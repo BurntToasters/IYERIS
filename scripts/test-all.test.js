@@ -45,6 +45,7 @@ function runGate({ failing = [], proofRecorded = true } = {}) {
     clearProof: () => {
       calls.push('clearProof');
     },
+    listBlockingPaths: () => (proofRecorded ? [] : ['src-tauri/src/main.rs']),
     root: repoRoot,
     log: (line) => logs.push(String(line)),
   });
@@ -198,6 +199,7 @@ test('main keeps a clean exit when the proof is skipped for a dirty tree', () =>
   const { exitCode, logs } = runGate({ proofRecorded: false });
   assert.equal(exitCode, 0);
   assert.ok(logs.some((line) => line.includes('not recorded because the working tree is dirty')));
+  assert.ok(logs.some((line) => line.includes('src-tauri/src/main.rs')));
 });
 
 test('printSummary reports the release-asset step and fails the run', () => {

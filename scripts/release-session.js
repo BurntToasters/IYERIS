@@ -95,6 +95,15 @@ const RELEASE_BOOTSTRAP_PATHS = new Set([
   'src-tauri/Cargo.toml',
   'src-tauri/Cargo.lock',
 ]);
+const RELEASE_BOOTSTRAP_PREFIXES = ['src-tauri/gen/schemas/'];
+
+function normalizePorcelainPath(value) {
+  let normalized = String(value).replace(/\\/g, '/');
+  if (normalized.startsWith('"') && normalized.endsWith('"') && normalized.length >= 2) {
+    normalized = normalized.slice(1, -1).replace(/\\"/g, '"');
+  }
+  return normalized;
+}
 
 function parsePorcelainPaths(status) {
   return status
@@ -102,21 +111,42 @@ function parsePorcelainPaths(status) {
     .map((line) => line.replace(/\r$/, ''))
     .filter((line) => line.trim().length > 0)
     .map((line) => {
-      const match = line.match(/^.. (.+)$/);
+      // XY (2 chars) + space + path. Do not trim the line: ` M path` is valid porcelain.
+      const match = line.match(/^(.{2}) (.*)$/);
       if (!match) return '';
-      const rest = match[1].trim();
+      const rest = match[2];
       const renameArrow = rest.indexOf(' -> ');
-      return renameArrow >= 0 ? rest.slice(renameArrow + 4).trim() : rest;
+      return normalizePorcelainPath(renameArrow >= 0 ? rest.slice(renameArrow + 4) : rest);
     })
     .filter(Boolean);
 }
 
-/** Clean tree, or only files that workspace:bootstrap may touch before test:all. */
+function isAllowedBootstrapPath(filePath) {
+  if (RELEASE_BOOTSTRAP_PATHS.has(filePath)) return true;
+  return RELEASE_BOOTSTRAP_PREFIXES.some((prefix) => filePath.startsWith(prefix));
+}
+
+/** Clean tree, or only files that workspace:bootstrap / cargo check may touch before proof. */
 function isAcceptableReleaseWorkingTree(status) {
   if (!status.trim()) return true;
   const paths = parsePorcelainPaths(status);
   if (paths.length === 0) return false;
-  return paths.every((p) => RELEASE_BOOTSTRAP_PATHS.has(p));
+  return paths.every((filePath) => isAllowedBootstrapPath(filePath));
+}
+
+function gitPorcelainStatus(root) {
+  return command('git', ['status', '--porcelain=v1', '--untracked-files=all'], root);
+}
+
+function blockingReleaseWorkingTreePaths(root = defaultRoot) {
+  let status;
+  try {
+    status = gitPorcelainStatus(root);
+  } catch {
+    return ['<git status failed>'];
+  }
+  if (isAcceptableReleaseWorkingTree(status)) return [];
+  return parsePorcelainPaths(status).filter((filePath) => !isAllowedBootstrapPath(filePath));
 }
 
 function clearQualityGateProof(root = defaultRoot) {
@@ -126,7 +156,7 @@ function clearQualityGateProof(root = defaultRoot) {
 function recordSuccessfulQualityGate(root = defaultRoot) {
   let status;
   try {
-    status = command('git', ['status', '--porcelain=v1', '--untracked-files=all'], root);
+    status = gitPorcelainStatus(root);
   } catch {
     return false;
   }
@@ -233,10 +263,12 @@ export {
   QUALITY_GATE_RELATIVE_PATH,
   RELEASE_BOOTSTRAP_PATHS,
   RELEASE_SESSION_RELATIVE_PATH,
+  blockingReleaseWorkingTreePaths,
   clearQualityGateProof,
   createReleaseSession,
   currentReleaseIdentity,
   isAcceptableReleaseWorkingTree,
+  parsePorcelainPaths,
   recordSuccessfulQualityGate,
   startReleaseSession,
   validateQualityGate,
