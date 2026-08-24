@@ -36,3 +36,19 @@ if (updated !== cargo) {
   fs.writeFileSync(cargoPath, updated);
   console.log(`Cargo.toml      → ${version}`);
 }
+
+const cargoLockPath = path.join(root, 'src-tauri', 'Cargo.lock');
+if (fs.existsSync(cargoLockPath)) {
+  const cargoLock = fs.readFileSync(cargoLockPath, 'utf-8');
+  const packageNameMatch = (updated !== cargo ? updated : cargo).match(/^name\s*=\s*"([^"]+)"/m);
+  const packageName = packageNameMatch?.[1] ?? 'iyeris';
+  const escapedName = packageName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const lockPackagePattern = new RegExp(
+    `(\\[\\[package\\]\\]\\r?\\nname = "${escapedName}"\\r?\\nversion = )"[^"]*"`
+  );
+  const lockMatch = cargoLock.match(lockPackagePattern);
+  if (lockMatch && !lockMatch[0].includes(`version = "${version}"`)) {
+    fs.writeFileSync(cargoLockPath, cargoLock.replace(lockPackagePattern, `$1"${version}"`));
+    console.log(`Cargo.lock      → ${version}`);
+  }
+}

@@ -89,7 +89,7 @@ jobs:
         # -D warnings fails on any clippy lint or rustc warning, except the
         # deliberate unsafe_code markers (crate sets unsafe_code = "warn" to
         # self-document justified FFI/env blocks; those should not fail CI).
-        run: cargo clippy --all-targets -- -D warnings -A unsafe_code
+        run: cargo clippy --locked --all-targets -- -D warnings -A unsafe_code
         working-directory: src-tauri
 
       - name: Run test suite and formatting checks
