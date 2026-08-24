@@ -38,8 +38,9 @@ modules:
         HUSKY: '0'
     build-commands:
       - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
-      # node22 SDK ships npm 10.x; engine-strict requires npm >= 12.0.1 (same pin as CI).
-      - npm install --global npm@12.0.2 --ignore-scripts --engine-strict=false --prefix /run/build/iyeris/npm-global
+      # node22 SDK ships npm 10.x, which does not support --min-release-age.
+      # npm@12 plus --before 3 days ago takes the newest 12.x that is old enough.
+      - npm install --global npm@12 --ignore-scripts --engine-strict=false --before="$(date -u -d '3 days ago' +%Y-%m-%dT%H:%M:%SZ)" --prefix /run/build/iyeris/npm-global
       - npm ci
       - npm run sync-version
       - npm run licenses

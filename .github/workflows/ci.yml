@@ -14,7 +14,7 @@ concurrency:
 
 env:
   NODE_VERSION: '24.16.0'
-  NPM_VERSION: '12.0.2'
+  NPM_VERSION: '12'
   RUST_VERSION: 'stable'
   CARGO_AUDIT_VERSION: '0.22.2'
 
@@ -37,8 +37,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Pin npm
-        run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts
+      - name: Install latest npm 12
+        run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts --min-release-age=3
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
@@ -112,8 +112,8 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Pin npm
-        run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts
+      - name: Install latest npm 12
+        run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts --min-release-age=3
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
