@@ -1,11 +1,25 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
 import type { Settings } from '../types';
 
+// F4 (isolation): createStatusBarController attaches a 'contextmenu' listener to
+// the .status-bar element, and opening the menu registers a document-level
+// 'click' closer on a timer. The DOM here must be built once and left alone
+// (rendererElements.ts captures its element handles at import time), so the
+// listeners cannot be retired by rebuilding the fixture. Every controller is
+// therefore created through makeController() and disposed in afterEach, which
+// stops handlers owned by an earlier test from firing during a later one.
 describe('rendererStatusBar', () => {
   let deps: any;
   let currentSettings: Settings;
   let createStatusBarController: any;
+  const liveControllers: { dispose: () => void }[] = [];
+
+  function makeController(controllerDeps: any = deps) {
+    const controller = createStatusBarController(controllerDeps);
+    liveControllers.push(controller);
+    return controller;
+  }
 
   beforeAll(async () => {
     // Create all required DOM elements to satisfy top-level requireElement calls in rendererElements.ts
@@ -133,9 +147,16 @@ describe('rendererStatusBar', () => {
     };
   });
 
+  afterEach(() => {
+    liveControllers.forEach((controller) => controller.dispose());
+    liveControllers.length = 0;
+    document.querySelectorAll('.status-bar-context-menu').forEach((menu) => menu.remove());
+    vi.restoreAllMocks();
+  });
+
   it('updates status bar item count correctly', () => {
     deps.getAllFiles.mockReturnValue([{ name: 'a' }, { name: 'b' }]);
-    const ctrl = createStatusBarController(deps);
+    const ctrl = makeController();
     ctrl.update();
 
     const statusItems = document.getElementById('status-items');
@@ -146,7 +167,7 @@ describe('rendererStatusBar', () => {
   it('hides item count when disabled in settings', () => {
     currentSettings.statusBarItems!.items = false;
     deps.getAllFiles.mockReturnValue([{ name: 'a' }]);
-    const ctrl = createStatusBarController(deps);
+    const ctrl = makeController();
     ctrl.update();
 
     const statusItems = document.getElementById('status-items');
@@ -156,7 +177,7 @@ describe('rendererStatusBar', () => {
   it('displays selection info when items are selected', () => {
     deps.getSelectedItems.mockReturnValue(new Set(['/path/a']));
     deps.getSelectedItemsSizeBytes.mockReturnValue(2048);
-    const ctrl = createStatusBarController(deps);
+    const ctrl = makeController();
     ctrl.update();
 
     const statusSelected = document.getElementById('status-selected');
@@ -168,7 +189,7 @@ describe('rendererStatusBar', () => {
   it('hides selection info when disabled in settings', () => {
     currentSettings.statusBarItems!.selected = false;
     deps.getSelectedItems.mockReturnValue(new Set(['/path/a']));
-    const ctrl = createStatusBarController(deps);
+    const ctrl = makeController();
     ctrl.update();
 
     const statusSelected = document.getElementById('status-selected');
@@ -177,7 +198,7 @@ describe('rendererStatusBar', () => {
 
   it('displays hidden files count when showHiddenFiles is false and hidden count > 0', () => {
     deps.getHiddenFilesCount.mockReturnValue(3);
-    const ctrl = createStatusBarController(deps);
+    const ctrl = makeController();
     ctrl.update();
 
     const statusHidden = document.getElementById('status-hidden');
@@ -188,7 +209,7 @@ describe('rendererStatusBar', () => {
   it('hides hidden files count when disabled in settings', () => {
     currentSettings.statusBarItems!.hidden = false;
     deps.getHiddenFilesCount.mockReturnValue(3);
-    const ctrl = createStatusBarController(deps);
+    const ctrl = makeController();
     ctrl.update();
 
     const statusHidden = document.getElementById('status-hidden');
@@ -196,7 +217,7 @@ describe('rendererStatusBar', () => {
   });
 
   it('handles right-click context menu and toggles settings correctly', () => {
-    createStatusBarController(deps);
+    makeController();
     const event = new MouseEvent('contextmenu', {
       clientX: 100,
       clientY: 100,
@@ -222,7 +243,7 @@ describe('rendererStatusBar', () => {
   it('refreshes owner-controlled indicators when re-enabled from context menu', () => {
     currentSettings.statusBarItems!.gitBranch = false;
     currentSettings.statusBarItems!.clipboard = false;
-    createStatusBarController(deps);
+    makeController();
 
     document.querySelector('.status-bar')?.dispatchEvent(
       new MouseEvent('contextmenu', {
@@ -253,5 +274,55 @@ describe('rendererStatusBar', () => {
     clipboardMenu.click();
 
     expect(deps.updateClipboardIndicator).toHaveBeenCalled();
+  });
+
+  describe('dispose', () => {
+    function rightClickStatusBar() {
+      document.querySelector('.status-bar')?.dispatchEvent(
+        new MouseEvent('contextmenu', {
+          clientX: 10,
+          clientY: 10,
+          bubbles: true,
+          cancelable: true,
+        })
+      );
+    }
+
+    it('stops handling status bar right-clicks and closes an open menu', () => {
+      const controller = makeController();
+      rightClickStatusBar();
+      expect(document.querySelector('.status-bar-context-menu')).toBeTruthy();
+
+      controller.dispose();
+      expect(document.querySelector('.status-bar-context-menu')).toBeNull();
+
+      rightClickStatusBar();
+      expect(document.querySelector('.status-bar-context-menu')).toBeNull();
+    });
+
+    it('is safe to call more than once', () => {
+      const controller = makeController();
+      rightClickStatusBar();
+      expect(() => {
+        controller.dispose();
+        controller.dispose();
+      }).not.toThrow();
+    });
+
+    it('drops the pending document click closer so it cannot fire later', () => {
+      vi.useFakeTimers();
+      try {
+        const controller = makeController();
+        rightClickStatusBar();
+        controller.dispose();
+        const addEventListener = vi.spyOn(document, 'addEventListener');
+
+        // The closer is attached on a 10ms timer; disposal must have cancelled it.
+        vi.advanceTimersByTime(50);
+        expect(addEventListener).not.toHaveBeenCalledWith('click', expect.any(Function));
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 });

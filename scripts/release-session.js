@@ -15,7 +15,7 @@ function command(commandName, args, root) {
     cwd: root,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'pipe'],
-  }).trim();
+  }).trimEnd();
 }
 
 function sha256File(filePath) {
@@ -150,7 +150,8 @@ function verifyQualityGate(root = defaultRoot, options) {
     proof = JSON.parse(fs.readFileSync(proofPath, 'utf8'));
   } catch (error) {
     throw new Error(
-      `Release quality-gate proof is missing or invalid. On a clean checkout, run "npm run test:all" (or "npm run workspace:prepare") before release:prepare. ${error instanceof Error ? error.message : String(error)}`
+      `Release quality-gate proof is missing or invalid. On a clean checkout, run "npm run test:all" (or "npm run workspace:prepare") before release:prepare. ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
   return validateQualityGate(proof, currentReleaseIdentity(root), options);
@@ -185,7 +186,8 @@ function verifyReleaseSession(root = defaultRoot, options) {
     session = JSON.parse(fs.readFileSync(sessionPath, 'utf8'));
   } catch (error) {
     throw new Error(
-      `Release build session is missing or invalid. On this machine run "npm run release:prepare" (or the full "npm run release:win" / "release:mac" / "release:linux:*" script), not *:continue alone. ${error instanceof Error ? error.message : String(error)}`
+      `Release build session is missing or invalid. On this machine run "npm run release:prepare" (or the full "npm run release:win" / "release:mac" / "release:linux:*" script), not *:continue alone. ${error instanceof Error ? error.message : String(error)}`,
+      { cause: error }
     );
   }
   return validateReleaseSession(session, currentReleaseIdentity(root), options);

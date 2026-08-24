@@ -68,6 +68,7 @@ describe('rendererUtilityDrawer', () => {
   }
 
   beforeEach(() => {
+    vi.useFakeTimers();
     buildDOM();
     settings = {
       utilityDrawerCollapsed: false,
@@ -112,10 +113,19 @@ describe('rendererUtilityDrawer', () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     document.body.innerHTML = '';
     delete (window as any).tauriAPI;
     delete (window as any)._triggerChecksumProgress;
   });
+
+  /**
+   * F5: settle pending promise chains on the fake clock instead of sleeping on
+   * the real one. advanceTimersByTimeAsync drains microtasks between timer
+   * callbacks, so this replaces `await new Promise((r) => setTimeout(r, 10))`
+   * without spending real wall-clock time or going flaky on a loaded machine.
+   */
+  const settlePendingWork = (ms = 10) => vi.advanceTimersByTimeAsync(ms);
 
   it('initializes layout and state from settings', async () => {
     settings.utilityDrawerCollapsed = true;
@@ -174,7 +184,7 @@ describe('rendererUtilityDrawer', () => {
     ctrl.updateSelection('/path/to/file.txt');
 
     // Wait for the async tauriAPI mock to resolve properties
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     expect(document.getElementById('utility-drawer-status')?.textContent).toBe(
       'Selected: file.txt'
@@ -212,10 +222,10 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     // Re-trigger platform detection mock load
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     ctrl.updateSelection('C:\\path\\to\\file.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     // Windows attributes panel visible
     expect(document.getElementById('utility-posix-perms')?.style.display).toBe('none');
@@ -251,7 +261,7 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     ctrl.updateSelection('C:\\path\\to\\file.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     expect(document.getElementById('utility-posix-perms')?.style.display).toBe('none');
     expect(document.getElementById('utility-win-attrs')?.style.display).toBe('flex');
@@ -266,7 +276,7 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     ctrl.updateSelection('/path/to/file.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     const octal = document.getElementById('posix-octal-input') as HTMLInputElement;
     octal.value = '644';
@@ -296,13 +306,13 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     ctrl.updateSelection('/path/to/file.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     const applyBtn = document.getElementById('utility-apply-posix-btn');
     applyBtn?.click();
 
     expect(mockTauriAPI.setPermissions).toHaveBeenCalledWith('/path/to/file.txt', 0o755);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
     expect(showToastMock).toHaveBeenCalledWith(
       'POSIX permissions updated successfully',
       'Success',
@@ -319,10 +329,10 @@ describe('rendererUtilityDrawer', () => {
     });
 
     ctrl.init();
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     ctrl.updateSelection('C:\\path\\to\\file.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     const readonlyBox = document.getElementById('attr-readonly') as HTMLInputElement;
     readonlyBox.checked = true;
@@ -346,7 +356,7 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     ctrl.updateSelection('/path/to/file.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     document.getElementById('utility-copy-path-btn')?.click();
     expect(mockTauriAPI.writeToSystemClipboard).toHaveBeenCalledWith('/path/to/file.txt');
@@ -361,7 +371,7 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     ctrl.updateSelection('/path/to/file.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     document.getElementById('utility-copy-name-btn')?.click();
     expect(mockTauriAPI.writeToSystemClipboard).toHaveBeenCalledWith('file.txt');
@@ -376,7 +386,7 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     ctrl.updateSelection('/path/to/file.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     document.getElementById('utility-copy-uri-btn')?.click();
     expect(mockTauriAPI.writeToSystemClipboard).toHaveBeenCalledWith('file:///path/to/file.txt');
@@ -392,7 +402,7 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     ctrl.updateSelection('C:\\Users\\test user\\file name.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     document.getElementById('utility-copy-uri-btn')?.click();
     expect(mockTauriAPI.writeToSystemClipboard).toHaveBeenCalledWith(
@@ -401,8 +411,9 @@ describe('rendererUtilityDrawer', () => {
   });
 
   it('ignores stale selection responses', async () => {
-    let resolveFirst: ((value: unknown) => void) | null = null;
-    let resolveSecond: ((value: unknown) => void) | null = null;
+    // Assigned inside the Promise executors below; TS control flow cannot see that.
+    let resolveFirst!: (value: unknown) => void;
+    let resolveSecond!: (value: unknown) => void;
     mockTauriAPI.getItemProperties = vi
       .fn()
       .mockImplementationOnce(
@@ -436,7 +447,7 @@ describe('rendererUtilityDrawer', () => {
         mode: 0o644,
       },
     });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     resolveFirst?.({
       success: true,
@@ -446,7 +457,7 @@ describe('rendererUtilityDrawer', () => {
         mode: 0o755,
       },
     });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     expect(document.getElementById('utility-drawer-status')?.textContent).toBe(
       'Selected: second.txt'
@@ -470,7 +481,7 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     ctrl.updateSelection('/path/to/file.txt');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     // Auto-calculate is triggered on selection because file < 50MB and auto settings is enabled
     expect(mockTauriAPI.calculateChecksum).toHaveBeenCalled();
@@ -493,7 +504,7 @@ describe('rendererUtilityDrawer', () => {
     });
 
     // Wait for the checksum call to resolve completely
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
     expect(txtArea.value).toBe('abc123hash');
   });
 
@@ -515,7 +526,7 @@ describe('rendererUtilityDrawer', () => {
 
     ctrl.init();
     ctrl.updateSelection('/path/to/big-file.iso');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     expect(mockTauriAPI.calculateChecksum).not.toHaveBeenCalled();
 
@@ -601,7 +612,7 @@ describe('rendererUtilityDrawer', () => {
     expect(removeBtn).toBeTruthy();
     removeBtn.click();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     expect(saveSettingsMock).toHaveBeenCalled();
     expect(settings.dashboardWidgets).not.toContain('favorites');
@@ -613,7 +624,7 @@ describe('rendererUtilityDrawer', () => {
 
     addFavBtn.click();
 
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await settlePendingWork();
 
     expect(settings.dashboardWidgets).toContain('favorites');
   });

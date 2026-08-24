@@ -94,7 +94,13 @@ fn copy_dir_recursive_inner_cancellable(
         if meta.file_type().is_symlink() {
             copy_symlink(&entry_path, &target)?;
         } else if meta.is_dir() {
-            copy_dir_recursive_inner_cancellable(&entry_path, &target, visited, depth + 1, is_cancelled)?;
+            copy_dir_recursive_inner_cancellable(
+                &entry_path,
+                &target,
+                visited,
+                depth + 1,
+                is_cancelled,
+            )?;
         } else {
             fs::copy(&entry_path, &target).map_err(|e| e.to_string())?;
         }
@@ -218,9 +224,8 @@ mod tests {
         // Cancel after the second file-level check (i.e., mid-directory).
         let call_count = Arc::new(AtomicUsize::new(0));
         let cc = Arc::clone(&call_count);
-        let result = copy_dir_recursive_cancellable(&src, &dst, &|| {
-            cc.fetch_add(1, Ordering::SeqCst) >= 2
-        });
+        let result =
+            copy_dir_recursive_cancellable(&src, &dst, &|| cc.fetch_add(1, Ordering::SeqCst) >= 2);
 
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "Operation cancelled");
@@ -263,7 +268,13 @@ mod tests {
 
         copy_dir_recursive(&src, &dst).unwrap();
 
-        assert_eq!(fs::read_to_string(dst.join("root.txt")).unwrap(), "root content");
-        assert_eq!(fs::read_to_string(dst.join("nested/leaf.txt")).unwrap(), "leaf content");
+        assert_eq!(
+            fs::read_to_string(dst.join("root.txt")).unwrap(),
+            "root content"
+        );
+        assert_eq!(
+            fs::read_to_string(dst.join("nested/leaf.txt")).unwrap(),
+            "leaf content"
+        );
     }
 }

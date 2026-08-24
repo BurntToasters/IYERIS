@@ -7,7 +7,7 @@
  *      Also: the error toast must never show "undefined" — result.error is
  *      typed as string | undefined and was not guarded.
  */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createThemeEditorController } from '../rendererThemeEditor';
 import type { Settings, CustomTheme } from '../types';
@@ -68,9 +68,21 @@ function createDeps(saveResult: { success: boolean; error?: string }, initialThe
 
 describe('rendererThemeEditor — N6c rollback and error message', () => {
   beforeEach(() => {
+    vi.useFakeTimers();
     vi.clearAllMocks();
     buildDom();
   });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /**
+   * F5: settle pending promise chains on the fake clock instead of the real one.
+   * advanceTimersByTimeAsync drains microtasks between timer callbacks, so this is
+   * an exact replacement for `await new Promise((r) => setTimeout(r, 0))`.
+   */
+  const settlePendingWork = (ms = 0) => vi.advanceTimersByTimeAsync(ms);
 
   it('calls applySettings a second time (revert) when save fails', async () => {
     const deps = createDeps({ success: false, error: 'disk full' }, 'default');
@@ -78,7 +90,7 @@ describe('rendererThemeEditor — N6c rollback and error message', () => {
     ctrl.setupThemeEditorListeners();
 
     document.getElementById('theme-editor-save')!.click();
-    await new Promise((r) => setTimeout(r, 0));
+    await settlePendingWork();
 
     // First call: apply new theme. Second call: revert on failure.
     expect(deps.applySettings).toHaveBeenCalledTimes(2);
@@ -92,7 +104,7 @@ describe('rendererThemeEditor — N6c rollback and error message', () => {
     expect(deps.settings.theme).toBe('default');
 
     document.getElementById('theme-editor-save')!.click();
-    await new Promise((r) => setTimeout(r, 0));
+    await settlePendingWork();
 
     // Theme must be reverted back to 'default'.
     expect(deps.settings.theme).toBe('default');
@@ -106,7 +118,7 @@ describe('rendererThemeEditor — N6c rollback and error message', () => {
     ctrl.setupThemeEditorListeners();
 
     document.getElementById('theme-editor-save')!.click();
-    await new Promise((r) => setTimeout(r, 0));
+    await settlePendingWork();
 
     const toastCalls = (deps.showToast as ReturnType<typeof vi.fn>).mock.calls;
     const errorToast = toastCalls.find(([, , type]) => type === 'error');
@@ -122,7 +134,7 @@ describe('rendererThemeEditor — N6c rollback and error message', () => {
     ctrl.setupThemeEditorListeners();
 
     document.getElementById('theme-editor-save')!.click();
-    await new Promise((r) => setTimeout(r, 0));
+    await settlePendingWork();
 
     const toastCalls = (deps.showToast as ReturnType<typeof vi.fn>).mock.calls;
     const errorToast = toastCalls.find(([, , type]) => type === 'error');
@@ -135,7 +147,7 @@ describe('rendererThemeEditor — N6c rollback and error message', () => {
     ctrl.setupThemeEditorListeners();
 
     document.getElementById('theme-editor-save')!.click();
-    await new Promise((r) => setTimeout(r, 0));
+    await settlePendingWork();
 
     // Only one applySettings call (apply new theme; no revert).
     expect(deps.applySettings).toHaveBeenCalledTimes(1);

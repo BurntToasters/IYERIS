@@ -344,7 +344,8 @@ describe('handleContextMenuAction - all branches', () => {
 
   it('handles "paste-into" and in-progress guard', async () => {
     const deps = createDeps();
-    let resolvePaste: (() => void) | null = null;
+    // Assigned inside the Promise executor below; TS control flow cannot see that.
+    let resolvePaste!: () => void;
     const pastePromise = new Promise<void>((resolve) => {
       resolvePaste = resolve;
     });

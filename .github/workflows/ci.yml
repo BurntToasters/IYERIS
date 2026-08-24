@@ -2,7 +2,6 @@ name: CI
 
 on:
   push:
-    branches: [main, beta]
   pull_request:
     branches: [main, beta]
 
@@ -14,8 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '22'
-  RUST_VERSION: '1.94.0'
+  NODE_VERSION: '24.16.0'
+  NPM_VERSION: '12.0.2'
+  RUST_VERSION: '1.97.1'
+  CARGO_AUDIT_VERSION: '0.22.2'
 
 jobs:
   verify:
@@ -26,22 +27,27 @@ jobs:
       matrix:
         os: [ubuntu-22.04, windows-latest, macos-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      - name: Pin npm
+        run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts
+
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: ${{ env.RUST_VERSION }}
           components: clippy
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: |
             src-tauri -> target
@@ -63,7 +69,10 @@ jobs:
             libdbus-1-dev
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Verify npm registry signatures
+        run: npm audit signatures
 
       - name: Typecheck (app + tests)
         run: |
@@ -93,21 +102,26 @@ jobs:
     name: Security Audit
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
+      - name: Pin npm
+        run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts
+
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: ${{ env.RUST_VERSION }}
 
       - name: Cache Rust dependencies
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
         with:
           workspaces: |
             src-tauri -> target
@@ -115,13 +129,16 @@ jobs:
           prefix-key: v2-audit
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
+
+      - name: Verify npm registry signatures
+        run: npm audit signatures
 
       - name: npm audit (production deps)
         run: npm audit --production --audit-level=high
 
       - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
+        run: cargo install cargo-audit --version ${{ env.CARGO_AUDIT_VERSION }} --locked
 
       - name: cargo audit
         run: cargo audit

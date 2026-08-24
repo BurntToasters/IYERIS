@@ -39,6 +39,7 @@ vi.mock('../home.js', () => ({
 }));
 
 import { createColumnViewController } from '../rendererColumnView';
+import { COLUMN_VIEW_RENDER_TIMEOUT_MS } from '../rendererLocalConstants';
 
 function createDeps(overrides: Partial<Record<string, unknown>> = {}) {
   const columnView = document.getElementById('column-view') as HTMLElement;
@@ -829,6 +830,9 @@ describe('createColumnViewController', () => {
     });
 
     describe('concurrent render handling', () => {
+      // F6: previously asserted only `panes.length >= 1`, which held no matter
+      // which navigation won. Assert the *winner* instead: the panes must spell
+      // out the later path, so a broken stale-render guard is detectable.
       it('only the latest render takes effect', async () => {
         const deps = createDeps();
         deps.getCurrentPath = () => '/a';
@@ -846,15 +850,81 @@ describe('createColumnViewController', () => {
         const p2 = controller.renderColumnView();
 
         await Promise.all([p1, p2]);
+        await vi.advanceTimersByTimeAsync(100);
 
         const columnView = document.getElementById('column-view')!;
-        const panes = columnView.querySelectorAll('.column-pane');
+        const panePaths = Array.from(columnView.querySelectorAll('.column-pane')).map(
+          (pane) => (pane as HTMLElement).dataset.path
+        );
 
-        expect(panes.length).toBeGreaterThanOrEqual(1);
+        // '/b' expands to the root column plus the '/b' column; '/a' must be gone.
+        expect(panePaths).toEqual(['/', '/b']);
+        expect(panePaths).not.toContain('/a');
+      });
+
+      it('discards the losing render even when it resolves last', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/slow';
+
+        // Hold the first render's directory read open so it settles after the second.
+        let releaseSlowRead!: (value: unknown) => void;
+        mockTauriAPI.getDirectoryContents
+          .mockImplementationOnce(
+            () =>
+              new Promise((resolve) => {
+                releaseSlowRead = resolve;
+              })
+          )
+          .mockResolvedValue({ success: true, contents: [] });
+
+        const controller = createColumnViewController(deps as any);
+        const slowRender = controller.renderColumnView();
+
+        deps.getCurrentPath = () => '/fast';
+        const fastRender = controller.renderColumnView();
+        // A render that starts while another is in flight waits up to
+        // COLUMN_VIEW_RENDER_TIMEOUT_MS; jump the fake clock past it rather than
+        // spending 3s of real time here.
+        await vi.advanceTimersByTimeAsync(COLUMN_VIEW_RENDER_TIMEOUT_MS);
+        await fastRender;
+
+        releaseSlowRead({ success: true, contents: [] });
+        await slowRender;
+        await vi.advanceTimersByTimeAsync(100);
+
+        const columnView = document.getElementById('column-view')!;
+        const panePaths = Array.from(columnView.querySelectorAll('.column-pane')).map(
+          (pane) => (pane as HTMLElement).dataset.path
+        );
+        expect(panePaths).toEqual(['/', '/fast']);
       });
     });
 
     describe('scroll position', () => {
+      /**
+       * F6: the original test ended in `expect(true).toBe(true)`, so the scroll
+       * behaviour was never checked. jsdom never resets scrollLeft on its own, so
+       * simply reading the value back would also pass if the restore never ran.
+       * Record every assignment through a setter instead and assert on the writes.
+       */
+      function trackScrollLeft(element: HTMLElement, initial: number, scrollWidth: number) {
+        const writes: number[] = [];
+        let current = initial;
+        Object.defineProperty(element, 'scrollLeft', {
+          configurable: true,
+          get: () => current,
+          set: (value: number) => {
+            writes.push(value);
+            current = value;
+          },
+        });
+        Object.defineProperty(element, 'scrollWidth', {
+          configurable: true,
+          get: () => scrollWidth,
+        });
+        return writes;
+      }
+
       it('restores saved scroll position when > 0', async () => {
         const deps = createDeps();
         deps.getCurrentPath = () => '/test';
@@ -865,17 +935,61 @@ describe('createColumnViewController', () => {
         });
 
         const columnView = document.getElementById('column-view')!;
-        Object.defineProperty(columnView, 'scrollLeft', {
-          value: 200,
-          writable: true,
-          configurable: true,
-        });
+        const scrollWrites = trackScrollLeft(columnView, 200, 900);
 
         const controller = createColumnViewController(deps as any);
         await controller.renderColumnView();
         await vi.advanceTimersByTimeAsync(100);
 
-        expect(true).toBe(true);
+        // The saved offset is re-applied, not replaced by a scroll-to-end.
+        expect(scrollWrites).toContain(200);
+        expect(scrollWrites).not.toContain(900);
+        expect(columnView.scrollLeft).toBe(200);
+      });
+
+      it('scrolls to the newest column when there is no saved position', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/test';
+
+        mockTauriAPI.getDirectoryContents.mockResolvedValue({
+          success: true,
+          contents: [],
+        });
+
+        const columnView = document.getElementById('column-view')!;
+        const scrollWrites = trackScrollLeft(columnView, 0, 900);
+
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(scrollWrites).toContain(900);
+        expect(columnView.scrollLeft).toBe(900);
+      });
+
+      it('does not move the scroll position for a superseded render', async () => {
+        const deps = createDeps();
+        deps.getCurrentPath = () => '/first';
+
+        mockTauriAPI.getDirectoryContents.mockResolvedValue({
+          success: true,
+          contents: [],
+        });
+
+        const columnView = document.getElementById('column-view')!;
+        const controller = createColumnViewController(deps as any);
+        await controller.renderColumnView();
+        await vi.advanceTimersByTimeAsync(100);
+
+        // Start a render, supersede it, and confirm only the winner scrolls.
+        const scrollWrites = trackScrollLeft(columnView, 120, 640);
+        const superseded = controller.renderColumnView();
+        deps.getCurrentPath = () => '/second';
+        await controller.renderColumnView();
+        await superseded;
+        await vi.advanceTimersByTimeAsync(100);
+
+        expect(scrollWrites).toEqual([120]);
       });
     });
 

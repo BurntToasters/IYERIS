@@ -1053,19 +1053,27 @@ describe('rendererPreviews', () => {
 
   describe('request ID staleness', () => {
     it('stale requests do not update content after clearPreview', async () => {
-      const deps = createDeps();
-      const ctrl = createPreviewController(deps as any);
+      // F5: settle the in-flight read on a fake clock rather than sleeping 50ms of
+      // real time, which was fragile if the read took longer under load. Scoped to
+      // this test because the rest of the file runs on real timers.
+      vi.useFakeTimers();
+      try {
+        const deps = createDeps();
+        const ctrl = createPreviewController(deps as any);
 
-      const file = makeFile({ name: 'slow.txt', path: '/home/user/slow.txt' });
-      ctrl.updatePreview(file);
+        const file = makeFile({ name: 'slow.txt', path: '/home/user/slow.txt' });
+        ctrl.updatePreview(file);
 
-      ctrl.clearPreview();
+        ctrl.clearPreview();
 
-      await new Promise((r) => setTimeout(r, 50));
+        await vi.advanceTimersByTimeAsync(50);
 
-      const content = document.getElementById('preview-content')!;
-      expect(content.innerHTML).toContain('preview-empty');
-      expect(content.innerHTML).not.toContain('Hello, world!');
+        const content = document.getElementById('preview-content')!;
+        expect(content.innerHTML).toContain('preview-empty');
+        expect(content.innerHTML).not.toContain('Hello, world!');
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

@@ -4,14 +4,17 @@
 //   --wait     poll until that draft exists; NEVER create. Run by mac/linux so
 //              they only ever reuse the draft Windows created (no duplicates).
 
-const https = require('https');
+const fs = require('fs');
+const path = require('path');
+const { assertGitHubCliAuthenticated, githubApi } = require('./github-cli.cjs');
 
 require('dotenv').config();
 
-const GH_TOKEN = process.env.GH_TOKEN;
+const REPOSITORY_ROOT = path.resolve(__dirname, '..');
+const CHANGELOG_PATH = path.join(REPOSITORY_ROOT, 'CHANGELOG.md');
+
 const REPO_OWNER = 'BurntToasters';
 const REPO_NAME = 'IYERIS';
-const GH_REQUEST_TIMEOUT_MS = Number.parseInt(process.env.GH_REQUEST_TIMEOUT_MS || '30000', 10);
 const GH_REQUEST_RETRIES = Number.parseInt(process.env.GH_REQUEST_RETRIES || '3', 10);
 const GH_REQUEST_RETRY_DELAY_MS = Number.parseInt(
   process.env.GH_REQUEST_RETRY_DELAY_MS || '1500',
@@ -34,6 +37,42 @@ const IS_PRERELEASE = VERSION.includes('beta') || VERSION.includes('alpha');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function readChangelogReleaseBody(changelogPath = CHANGELOG_PATH) {
+  let body;
+  try {
+    body = fs.readFileSync(changelogPath, 'utf8');
+  } catch (error) {
+    throw new Error(
+      'CHANGELOG.md is required for GitHub release notes: ' +
+        (error && error.message ? error.message : String(error)),
+      { cause: error }
+    );
+  }
+  if (!body.trim()) {
+    throw new Error('CHANGELOG.md is empty; refusing to set blank release notes.');
+  }
+  return body;
+}
+
+async function syncReleaseNotesBody(release, body) {
+  if (!release || typeof release.id !== 'number') {
+    throw new Error('Cannot sync release notes without a GitHub release id.');
+  }
+  const updated = await githubRequestWithRetry(
+    'PATCH',
+    '/repos/' + REPO_OWNER + '/' + REPO_NAME + '/releases/' + release.id,
+    { body }
+  );
+  console.log(
+    '   Synced CHANGELOG.md into release notes (' +
+      body.length +
+      ' chars) for ' +
+      (release.name || TAG_NAME) +
+      '.'
+  );
+  return updated;
 }
 
 function isRetryableGithubError(error) {
@@ -61,77 +100,7 @@ function isRetryableGithubError(error) {
 }
 
 function githubRequest(method, endpoint, body) {
-  return new Promise((resolve, reject) => {
-    const options = {
-      hostname: 'api.github.com',
-      path: endpoint,
-      method: method,
-      headers: {
-        Authorization: 'Bearer ' + GH_TOKEN,
-        'User-Agent': 'IYERIS-Release-Script',
-        Accept: 'application/vnd.github.v3+json',
-        'X-GitHub-Api-Version': '2022-11-28',
-      },
-    };
-
-    if (body) {
-      options.headers['Content-Type'] = 'application/json';
-    }
-
-    const req = https.request(options, (res) => {
-      let data = '';
-      res.setEncoding('utf8');
-      res.on('data', (chunk) => (data += chunk));
-      res.on('aborted', () => {
-        const err = new Error('GitHub API response aborted for ' + method + ' ' + endpoint);
-        err.code = 'ECONNRESET';
-        reject(err);
-      });
-      res.on('end', () => {
-        const statusCode = res.statusCode || 0;
-        try {
-          if (statusCode >= 200 && statusCode < 300) {
-            resolve(data ? JSON.parse(data) : {});
-          } else {
-            const json = data ? JSON.parse(data) : {};
-            const err = new Error(
-              'GitHub API error ' +
-                statusCode +
-                ' for ' +
-                method +
-                ' ' +
-                endpoint +
-                ': ' +
-                (json.message || data || 'unknown error')
-            );
-            err.statusCode = statusCode;
-            reject(err);
-          }
-        } catch (e) {
-          const err = new Error(
-            'GitHub API invalid JSON for ' + method + ' ' + endpoint + ': ' + e.message
-          );
-          err.statusCode = statusCode;
-          reject(err);
-        }
-      });
-    });
-
-    req.setTimeout(GH_REQUEST_TIMEOUT_MS, () => {
-      const err = new Error(
-        'GitHub API timeout after ' + GH_REQUEST_TIMEOUT_MS + 'ms for ' + method + ' ' + endpoint
-      );
-      err.code = 'ETIMEDOUT';
-      req.destroy(err);
-    });
-
-    req.on('error', reject);
-
-    if (body) {
-      req.write(JSON.stringify(body));
-    }
-    req.end();
-  });
+  return Promise.resolve(githubApi(method, endpoint, body));
 }
 
 async function githubRequestWithRetry(method, endpoint, body) {
@@ -187,6 +156,7 @@ async function findExistingRelease() {
 
 async function ensureDraftRelease() {
   console.log('Ensuring draft release exists for ' + TAG_NAME + '...');
+  const body = readChangelogReleaseBody();
 
   const existing = await findExistingRelease();
   if (existing) {
@@ -197,9 +167,9 @@ async function ensureDraftRelease() {
         existing.id +
         ', ' +
         (existing.assets ? existing.assets.length : 0) +
-        ' assets) - skipping create.'
+        ' assets) - refreshing release notes.'
     );
-    return existing;
+    return syncReleaseNotesBody(existing, body);
   }
 
   console.log('   No release found. Creating draft...');
@@ -212,12 +182,17 @@ async function ensureDraftRelease() {
         // tag = "v" + version, name defaults to the version, draft:true.
         tag_name: TAG_NAME,
         name: VERSION,
+        body,
         draft: true,
         prerelease: IS_PRERELEASE,
       }
     );
     console.log(
-      '   Created draft release: ' + (release.name || TAG_NAME) + ' (id ' + release.id + ')'
+      '   Created draft release: ' +
+        (release.name || TAG_NAME) +
+        ' (id ' +
+        release.id +
+        ') with CHANGELOG.md release notes.'
     );
     return release;
   } catch (error) {
@@ -228,7 +203,7 @@ async function ensureDraftRelease() {
       const afterRetry = await findExistingRelease();
       if (afterRetry) {
         console.log('   Found existing draft after retry: id ' + afterRetry.id);
-        return afterRetry;
+        return syncReleaseNotesBody(afterRetry, body);
       }
     }
     throw error;
@@ -282,11 +257,7 @@ async function waitForDraftRelease() {
 }
 
 async function main() {
-  if (!GH_TOKEN) {
-    throw new Error(
-      `GH_TOKEN is required to ${WAIT_MODE ? 'wait for' : 'create or reuse'} the release draft.`
-    );
-  }
+  assertGitHubCliAuthenticated();
 
   if (WAIT_MODE) {
     await waitForDraftRelease();

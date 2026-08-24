@@ -6,6 +6,19 @@ import {
   validateIpc,
 } from '../rendererSchemas';
 
+/**
+ * validateIpc returns `T | null`. The success-path tests below read fields off
+ * the result, so this asserts the payload really validated rather than leaning on
+ * a non-null assertion: if a schema starts rejecting valid input, the failure is
+ * reported here instead of surfacing as a confusing property-access error.
+ * The two null-path tests call validateIpc directly.
+ */
+function parseIpc<T>(...args: Parameters<typeof validateIpc<T>>): T {
+  const value = validateIpc<T>(...args);
+  expect(value).not.toBeNull();
+  return value as T;
+}
+
 const validFileItem = {
   name: 'a.txt',
   path: '/x/a.txt',
@@ -27,14 +40,14 @@ const validFileItem = {
 
 describe('validateIpc + RawFileItemSchema', () => {
   it('parses a valid FileItem payload', () => {
-    const v = validateIpc(RawFileItemSchema, validFileItem, 'FileItem');
+    const v = parseIpc(RawFileItemSchema, validFileItem, 'FileItem');
     expect(v.name).toBe('a.txt');
     expect(v.symlinkTarget).toBeNull();
     expect(v.size).toBe(10);
   });
 
   it('strips unknown backend keys instead of failing', () => {
-    const v = validateIpc(RawFileItemSchema, { ...validFileItem, bogusField: 42 }, 'FileItem');
+    const v = parseIpc(RawFileItemSchema, { ...validFileItem, bogusField: 42 }, 'FileItem');
     expect((v as Record<string, unknown>).bogusField).toBeUndefined();
     expect(v.name).toBe('a.txt');
   });
@@ -48,7 +61,7 @@ describe('validateIpc + RawFileItemSchema', () => {
 
 describe('RawDriveInfoSchema', () => {
   it('parses a valid DriveInfo payload', () => {
-    const v = validateIpc(
+    const v = parseIpc(
       RawDriveInfoSchema,
       {
         name: 'Macintosh HD',
@@ -67,7 +80,7 @@ describe('RawDriveInfoSchema', () => {
 
 describe('RawItemPropertiesSchema', () => {
   it('parses a valid ItemProperties payload with null optionals', () => {
-    const v = validateIpc(
+    const v = parseIpc(
       RawItemPropertiesSchema,
       {
         name: 'a.txt',
@@ -107,7 +120,7 @@ import {
 
 describe('RawSearchResultSchema', () => {
   it('parses a SearchResult (FileItem flags absent) with matchContext', () => {
-    const v = validateIpc(
+    const v = parseIpc(
       RawSearchResultSchema,
       {
         name: 'a.txt',
@@ -125,7 +138,7 @@ describe('RawSearchResultSchema', () => {
   });
 
   it('accepts a null matchContext (plain search)', () => {
-    const v = validateIpc(
+    const v = parseIpc(
       RawSearchResultSchema,
       {
         name: 'd',
@@ -145,7 +158,7 @@ describe('RawSearchResultSchema', () => {
 
 describe('RawArchiveEntrySchema', () => {
   it('parses an archive entry', () => {
-    const v = validateIpc(
+    const v = parseIpc(
       RawArchiveEntrySchema,
       { name: 'f', path: 'dir/f', size: 100, isDirectory: false, compressedSize: 40 },
       'ArchiveEntry'
@@ -156,7 +169,7 @@ describe('RawArchiveEntrySchema', () => {
 
 describe('RawFolderSizeSchema', () => {
   it('parses a folder-size result', () => {
-    const v = validateIpc(
+    const v = parseIpc(
       RawFolderSizeSchema,
       { totalSize: 2048, fileCount: 3, folderCount: 1 },
       'FolderSize'
@@ -170,7 +183,7 @@ import { RawDuplicateGroupSchema, RawGitStatusSchema } from '../rendererSchemas'
 
 describe('RawDuplicateGroupSchema', () => {
   it('parses a duplicate group', () => {
-    const v = validateIpc(
+    const v = parseIpc(
       RawDuplicateGroupSchema,
       { size: 1024, hash: 'abc123', paths: ['/a.txt', '/copy/a.txt'] },
       'DuplicateGroup'
@@ -182,7 +195,7 @@ describe('RawDuplicateGroupSchema', () => {
 
 describe('RawGitStatusSchema', () => {
   it('parses a git status payload', () => {
-    const v = validateIpc(
+    const v = parseIpc(
       RawGitStatusSchema,
       {
         isGitRepo: true,

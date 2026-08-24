@@ -1,21 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import * as gitPrune from '../../build/git-prune-local-branches.js';
 
-type GitPruneModule = {
-  parseArgs: (argv: string[]) => { remote: string; dryRun: boolean; force: boolean };
-  stripRemotePrefix: (ref: string, remote: string) => string | null;
-  selectBranchesToDelete: (
-    localBranches: string[],
-    remoteBranches: string[],
-    currentBranch: string
-  ) => string[];
-  deleteBranches: (
-    branches: string[],
-    options?: { force?: boolean; dryRun?: boolean }
-  ) => { deleted: string[]; skipped: Array<{ branch: string; reason: string }> };
-};
-
-const typedGitPrune = gitPrune as unknown as GitPruneModule;
+// Signatures now come from build/git-prune-local-branches.d.ts instead of a
+// hand-maintained copy in this file, so the test is checked against the module's
+// declared contract rather than a duplicate that could drift from it.
+const typedGitPrune = gitPrune;
 
 describe('build/git-prune-local-branches.js', () => {
   it('parses default args', () => {

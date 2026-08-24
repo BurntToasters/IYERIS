@@ -36,10 +36,14 @@ export function createStatusBarController(deps: StatusBarDeps) {
     statusBarEl.addEventListener('contextmenu', showStatusBarContextMenu);
   }
 
+  /** Tears down an open context menu: its node, its click closer and its timer. */
+  let closeActiveMenu: (() => void) | null = null;
+
   function showStatusBarContextMenu(e: MouseEvent): void {
     e.preventDefault();
 
     // Remove any existing status bar context menus
+    closeActiveMenu?.();
     const existing = document.querySelector('.status-bar-context-menu');
     if (existing) existing.remove();
 
@@ -119,11 +123,20 @@ export function createStatusBarController(deps: StatusBarDeps) {
     const closeMenu = () => {
       menu.remove();
       document.removeEventListener('click', closeMenu);
+      clearTimeout(attachTimer);
+      if (closeActiveMenu === closeMenu) closeActiveMenu = null;
     };
 
-    setTimeout(() => {
+    const attachTimer = setTimeout(() => {
       document.addEventListener('click', closeMenu);
     }, 10);
+    closeActiveMenu = closeMenu;
+  }
+
+  /** Detach every listener this controller owns. */
+  function dispose(): void {
+    closeActiveMenu?.();
+    statusBarEl?.removeEventListener('contextmenu', showStatusBarContextMenu);
   }
 
   function refreshExternalStatusItem(key: string, enabled: boolean): void {
@@ -238,5 +251,5 @@ export function createStatusBarController(deps: StatusBarDeps) {
     );
   }
 
-  return { update };
+  return { update, dispose };
 }

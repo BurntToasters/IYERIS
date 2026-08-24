@@ -1,15 +1,16 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, resolve } from 'node:path';
 import { clearQualityGateProof, recordSuccessfulQualityGate } from './release-session.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const packageJsonPath = resolve(__dirname, '..', 'package.json');
+const repoRoot = resolve(__dirname, '..');
+const packageJsonPath = resolve(repoRoot, 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 const appVersion = packageJson.version ?? 'unknown';
-const scriptVersion = '1.0.0';
+const scriptVersion = '1.1.0';
 
 const colors = {
   reset: '\x1b[0m',
@@ -21,35 +22,13 @@ const colors = {
 const defaultTimeoutMs = 300_000;
 const rustTimeoutMs = process.platform === 'win32' ? 1_200_000 : 600_000;
 
-function createInitialResults() {
-  return {
-    typecheck: { status: 'pending' },
-    typecheckTest: { status: 'pending' },
-    lint: { status: 'pending' },
-    lintTest: { status: 'pending' },
-    format: { status: 'pending' },
-    nativePolicy: { status: 'pending' },
-    test: { status: 'pending', passed: null, failed: null, files: null },
-    rustCheck: { status: 'pending' },
-    rustClippy: { status: 'pending' },
-    rustTest: { status: 'pending' },
-  };
-}
-
 function getNpmCommand(platform = process.platform) {
   return platform === 'win32' ? 'npm.cmd' : 'npm';
 }
 
 function stripAnsi(value) {
+  // eslint-disable-next-line no-control-regex -- ANSI escape sequences are control chars by definition
   return value.replace(/\x1B\[[0-?]*[ -/]*[@-~]/g, '');
-}
-
-function printTail(output) {
-  const cleanOutput = stripAnsi(output).trim();
-  if (!cleanOutput) return;
-  const lines = cleanOutput.split('\n');
-  const tail = lines.slice(-20).join('\n');
-  console.log(`${colors.red}${tail}${colors.reset}`);
 }
 
 function parseTest(output, results) {
@@ -62,11 +41,149 @@ function parseTest(output, results) {
   if (filesMatch) results.test.files = parseInt(filesMatch[1], 10);
 }
 
-function runCommand(name, command, args, parser, results, options = {}) {
-  console.log(`${colors.blue}${colors.bold}Running ${name}...${colors.reset}`);
-  const useShell = process.platform === 'win32' && /\.cmd$/i.test(command);
-  const timeout = options.timeout ?? defaultTimeoutMs;
-  const run = spawnSync(command, args, {
+function formatTestDetail(result) {
+  const failedSuffix = result.failed > 0 ? `, ${result.failed} failed` : '';
+  const filesSuffix = result.files ? `, ${result.files} files` : '';
+  return ` (${result.passed ?? 'n/a'} passed${failedSuffix}${filesSuffix})`;
+}
+
+/**
+ * Every check that gates the release quality-gate proof, in execution order.
+ *
+ * This list is the single source of truth: `createInitialResults` derives the
+ * results map from it and `isQualityGateClean` requires all of them to pass, so
+ * a step cannot run without also gating the proof.
+ *
+ * `releaseAssets` used to be chained after this script with a shell `&&` in
+ * package.json's `test:all`. That put it *after* `recordSuccessfulQualityGate`,
+ * so a failing release-tooling suite still left a valid proof on disk that
+ * `release:session:start` would accept. Release-gating checks belong in this
+ * plan, never chained after it.
+ */
+function createStepPlan({
+  npm = getNpmCommand(),
+  rustTimeout = rustTimeoutMs,
+  cargoManifest = 'src-tauri/Cargo.toml',
+} = {}) {
+  return [
+    { name: 'typecheck', label: 'TypeCheck', command: npm, args: ['run', 'typecheck'] },
+    {
+      name: 'typecheckTest',
+      label: 'TypeCheck(Test)',
+      command: npm,
+      args: ['run', 'typecheck:test'],
+    },
+    { name: 'lint', label: 'Lint', command: npm, args: ['run', 'lint:prod'] },
+    { name: 'lintTest', label: 'Lint(Test)', command: npm, args: ['run', 'lint:test'] },
+    { name: 'lintScripts', label: 'Lint(Scripts)', command: npm, args: ['run', 'lint:scripts'] },
+    { name: 'format', label: 'Format', command: npm, args: ['run', 'format:check'] },
+    {
+      name: 'nativePolicy',
+      label: 'Native Policy',
+      command: npm,
+      args: ['run', 'check:native-process-policy'],
+    },
+    {
+      name: 'cargoSafeUpdate',
+      label: 'Cargo Safe Update',
+      command: npm,
+      args: ['run', 'test:cargo-safe-update'],
+    },
+    {
+      name: 'cargoUpdatePolicy',
+      label: 'Cargo Policy',
+      command: npm,
+      args: ['run', 'check:cargo-update-policy'],
+    },
+    {
+      name: 'test',
+      label: 'Tests',
+      command: npm,
+      args: ['run', 'test:cov'],
+      parser: parseTest,
+      detail: formatTestDetail,
+    },
+    {
+      name: 'releaseAssets',
+      label: 'Release Assets',
+      command: npm,
+      args: ['run', 'test:release-assets'],
+    },
+    {
+      // The JS/TS side is format-checked by `format:check`; the Rust side had no
+      // equivalent gate in either test:all or CI until now.
+      name: 'rustFormat',
+      label: 'Rust Format',
+      command: 'cargo',
+      args: ['fmt', '--manifest-path', cargoManifest, '--all', '--check'],
+      timeout: rustTimeout,
+    },
+    {
+      name: 'rustCheck',
+      label: 'Rust Check',
+      command: 'cargo',
+      args: ['check', '--locked', '--manifest-path', cargoManifest],
+      timeout: rustTimeout,
+    },
+    {
+      name: 'rustClippy',
+      label: 'Rust Clippy',
+      command: 'cargo',
+      args: [
+        'clippy',
+        '--locked',
+        '--manifest-path',
+        cargoManifest,
+        '--all-targets',
+        '--',
+        '-D',
+        'warnings',
+        '-A',
+        'unsafe_code',
+      ],
+      timeout: rustTimeout,
+    },
+    {
+      name: 'rustTest',
+      label: 'Rust Test',
+      command: 'cargo',
+      args: ['test', '--locked', '--manifest-path', cargoManifest, '--all-targets'],
+      timeout: rustTimeout,
+    },
+  ];
+}
+
+function createInitialResults(plan = createStepPlan()) {
+  const results = {};
+  for (const step of plan) {
+    results[step.name] =
+      step.name === 'test'
+        ? { status: 'pending', passed: null, failed: null, files: null }
+        : { status: 'pending' };
+  }
+  return results;
+}
+
+/** Sole gate for recording the release proof: every planned step must have passed. */
+function isQualityGateClean(results) {
+  const values = Object.values(results);
+  if (values.length === 0) return false;
+  return values.every((result) => result?.status === 'passed');
+}
+
+function printTail(output, log) {
+  const cleanOutput = stripAnsi(output).trim();
+  if (!cleanOutput) return;
+  const lines = cleanOutput.split('\n');
+  const tail = lines.slice(-20).join('\n');
+  log(`${colors.red}${tail}${colors.reset}`);
+}
+
+function runCommand(step, results, { spawn = spawnSync, log = console.log } = {}) {
+  log(`${colors.blue}${colors.bold}Running ${step.name}...${colors.reset}`);
+  const useShell = process.platform === 'win32' && /\.cmd$/i.test(step.command);
+  const timeout = step.timeout ?? defaultTimeoutMs;
+  const run = spawn(step.command, step.args, {
     encoding: 'utf8',
     stdio: 'pipe',
     shell: useShell,
@@ -74,26 +191,26 @@ function runCommand(name, command, args, parser, results, options = {}) {
     timeout,
   });
   const output = `${run.stdout || ''}${run.stderr || ''}`;
-  if (parser) parser(output, results);
+  if (step.parser) step.parser(output, results);
   if (!run.error && run.status === 0) {
-    results[name].status = 'passed';
-    console.log(`${colors.green}✓ ${name} passed${colors.reset}\n`);
+    results[step.name].status = 'passed';
+    log(`${colors.green}✓ ${step.name} passed${colors.reset}\n`);
     return true;
   }
-  results[name].status = 'failed';
+  results[step.name].status = 'failed';
   const reason = run.error
     ? run.error.message
     : run.status === null
       ? `signal ${run.signal || 'unknown'}`
       : `exit code ${run.status}`;
-  console.log(`${colors.red}✗ ${name} failed (${reason})${colors.reset}`);
-  printTail(output);
-  console.log('');
+  log(`${colors.red}✗ ${step.name} failed (${reason})${colors.reset}`);
+  printTail(output, log);
+  log('');
   return false;
 }
 
-function printBanner() {
-  console.log(`${colors.bold}${colors.blue}
+function printBanner(log = console.log) {
+  log(`${colors.bold}${colors.blue}
 ╔══════════════════════════════════════╗
 ║        IYERIS TEST SUITE             ║
 ╚══════════════════════════════════════╝
@@ -102,118 +219,73 @@ Script Version: ${scriptVersion}
 ${colors.reset}`);
 }
 
-function printSummary(results) {
-  console.log(`${colors.bold}${colors.blue}
+function printSummary(results, plan = createStepPlan(), log = console.log) {
+  log(`${colors.bold}${colors.blue}
 ╔══════════════════════════════════════╗
 ║               SUMMARY                ║
 ╚══════════════════════════════════════╝
 ${colors.reset}`);
-  const allPassed = Object.values(results).every((r) => r.status === 'passed');
-  console.log(
-    `${colors.bold}TypeCheck:${colors.reset}  ${results.typecheck.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
-  );
-  console.log(
-    `${colors.bold}TypeCheck(Test):${colors.reset}  ${results.typecheckTest.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
-  );
-  console.log(
-    `${colors.bold}Lint:${colors.reset}       ${results.lint.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
-  );
-  console.log(
-    `${colors.bold}Lint(Test):${colors.reset}  ${results.lintTest.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
-  );
-  console.log(
-    `${colors.bold}Format:${colors.reset}     ${results.format.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
-  );
-  console.log(
-    `${colors.bold}Native Policy:${colors.reset} ${results.nativePolicy.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
-  );
-  console.log(
-    `${colors.bold}Tests:${colors.reset}      ${results.test.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset} (${results.test.passed ?? 'n/a'} passed${results.test.failed > 0 ? `, ${results.test.failed} failed` : ''}${results.test.files ? `, ${results.test.files} files` : ''})`
-  );
-  console.log(
-    `${colors.bold}Rust Check:${colors.reset} ${results.rustCheck.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
-  );
-  console.log(
-    `${colors.bold}Rust Clippy:${colors.reset} ${results.rustClippy.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
-  );
-  console.log(
-    `${colors.bold}Rust Test:${colors.reset} ${results.rustTest.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`}${colors.reset}`
-  );
-  console.log('');
-  if (allPassed) {
-    console.log(`${colors.green}${colors.bold}✓ All checks passed.${colors.reset}`);
+  const width = Math.max(...plan.map((step) => step.label.length)) + 2;
+  for (const step of plan) {
+    const result = results[step.name] ?? { status: 'pending' };
+    const mark = result.status === 'passed' ? `${colors.green}✓ PASS` : `${colors.red}✗ FAIL`;
+    const label = `${step.label}:`.padEnd(width, ' ');
+    const detail = step.detail ? step.detail(result) : '';
+    log(`${colors.bold}${label}${colors.reset}${mark}${colors.reset}${detail}`);
+  }
+  log('');
+  if (isQualityGateClean(results)) {
+    log(`${colors.green}${colors.bold}✓ All checks passed.${colors.reset}`);
     return 0;
   }
-  console.log(
-    `${colors.red}${colors.bold}✗ Some checks failed. Review output above.${colors.reset}`
-  );
+  log(`${colors.red}${colors.bold}✗ Some checks failed. Review output above.${colors.reset}`);
   return 1;
 }
 
-function main() {
-  clearQualityGateProof(resolve(__dirname, '..'));
-  const results = createInitialResults();
-  const npm = getNpmCommand();
-  printBanner();
-  runCommand('typecheck', npm, ['run', 'typecheck'], null, results);
-  runCommand('typecheckTest', npm, ['run', 'typecheck:test'], null, results);
-  runCommand('lint', npm, ['run', 'lint:prod'], null, results);
-  runCommand('lintTest', npm, ['run', 'lint:test'], null, results);
-  runCommand('format', npm, ['run', 'format:check'], null, results);
-  runCommand('nativePolicy', npm, ['run', 'check:native-process-policy'], null, results);
-  runCommand('test', npm, ['run', 'test:cov'], parseTest, results);
-  runCommand(
-    'rustCheck',
-    'cargo',
-    ['check', '--manifest-path', 'src-tauri/Cargo.toml'],
-    null,
-    results,
-    {
-      timeout: rustTimeoutMs,
-    }
-  );
-  runCommand(
-    'rustClippy',
-    'cargo',
-    [
-      'clippy',
-      '--manifest-path',
-      'src-tauri/Cargo.toml',
-      '--all-targets',
-      '--',
-      '-D',
-      'warnings',
-      '-A',
-      'unsafe_code',
-    ],
-    null,
-    results,
-    {
-      timeout: rustTimeoutMs,
-    }
-  );
-  runCommand(
-    'rustTest',
-    'cargo',
-    ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--all-targets'],
-    null,
-    results,
-    {
-      timeout: rustTimeoutMs,
-    }
-  );
-  const exitCode = printSummary(results);
-  if (exitCode === 0) {
-    if (recordSuccessfulQualityGate(resolve(__dirname, '..'))) {
-      console.log('Release quality-gate proof recorded for this clean commit.');
-    } else {
-      console.log('Release quality-gate proof not recorded because the working tree is dirty.');
-      console.log(
-        'Commit or stash changes (only version/metainfo lockfile drift from bootstrap is allowed).'
-      );
-    }
+function main({
+  plan = createStepPlan(),
+  runStep = runCommand,
+  recordProof = recordSuccessfulQualityGate,
+  clearProof = clearQualityGateProof,
+  root = repoRoot,
+  log = console.log,
+} = {}) {
+  clearProof(root);
+  const results = createInitialResults(plan);
+  printBanner(log);
+  for (const step of plan) {
+    runStep(step, results, { log });
+  }
+  const exitCode = printSummary(results, plan, log);
+  if (exitCode !== 0) return exitCode;
+  if (recordProof(root)) {
+    log('Release quality-gate proof recorded for this clean commit.');
+  } else {
+    log('Release quality-gate proof not recorded because the working tree is dirty.');
+    log(
+      'Commit or stash changes (only version/metainfo lockfile drift from bootstrap is allowed).'
+    );
   }
   return exitCode;
 }
 
-process.exit(main());
+function isDirectExecution() {
+  if (!process.argv[1]) return false;
+  return pathToFileURL(resolve(process.argv[1])).href === import.meta.url;
+}
+
+if (isDirectExecution()) {
+  process.exit(main());
+}
+
+export {
+  createInitialResults,
+  createStepPlan,
+  getNpmCommand,
+  isQualityGateClean,
+  main,
+  parseTest,
+  printSummary,
+  runCommand,
+  stripAnsi,
+};

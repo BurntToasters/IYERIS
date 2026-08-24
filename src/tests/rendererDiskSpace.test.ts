@@ -511,8 +511,9 @@ describe('createDiskSpaceController', () => {
     it('ignores stale async result when current drive has changed', async () => {
       vi.useFakeTimers();
       let currentPath = '/home/user/Documents';
-      let resolveFirst:
-        ((value: { success: boolean; total: number; free: number }) => void) | null = null;
+      // Assigned inside the Promise executor below; TS control flow cannot see
+      // that, so use a definite-assignment declaration rather than `| null`.
+      let resolveFirst!: (value: { success: boolean; total: number; free: number }) => void;
       const firstResult = new Promise<{ success: boolean; total: number; free: number }>(
         (resolve) => {
           resolveFirst = resolve;

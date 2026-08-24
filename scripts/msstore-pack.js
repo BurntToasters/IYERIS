@@ -63,19 +63,6 @@ function findExe(rustTarget) {
   return null;
 }
 
-function copyDirContents(src, dest) {
-  ensureDir(dest);
-  for (const entry of fs.readdirSync(src, { withFileTypes: true })) {
-    const srcPath = path.join(src, entry.name);
-    const destPath = path.join(dest, entry.name);
-    if (entry.isDirectory()) {
-      copyDirContents(srcPath, destPath);
-    } else {
-      fs.copyFileSync(srcPath, destPath);
-    }
-  }
-}
-
 function loadEnv() {
   const missing = [];
   const values = {};

@@ -18,9 +18,11 @@ describe('rendererThumbnails dual-root observers', () => {
     if (originalIntersectionObserver) {
       globalThis.IntersectionObserver = originalIntersectionObserver;
     } else {
-      delete (
-        globalThis as typeof globalThis & { IntersectionObserver?: typeof IntersectionObserver }
-      ).IntersectionObserver;
+      // `delete` needs an optional property, and lib.dom declares
+      // globalThis.IntersectionObserver as required, so narrow to just that
+      // optional slot instead of intersecting with typeof globalThis.
+      delete (globalThis as { IntersectionObserver?: typeof IntersectionObserver })
+        .IntersectionObserver;
     }
   });
 

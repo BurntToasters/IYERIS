@@ -1,7 +1,14 @@
 {
+  // Tests now compile under the same `strict` settings as production so the
+  // suite is held to the contract the modules under test are built with.
+  //
+  // `noUncheckedIndexedAccess` remains relaxed: assertions index into fixtures
+  // and mock records constantly (`mock.calls[0][0]`, `panes[1]`, `parts[0]`), and
+  // turning it on adds ~175 `possibly undefined` errors whose only fix is a
+  // non-null assertion at each site. That trades real type safety for noise, so
+  // it is the one production option deliberately not mirrored here.
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "strict": false,
     "noUncheckedIndexedAccess": false
   },
   "include": ["src/**/*"],
