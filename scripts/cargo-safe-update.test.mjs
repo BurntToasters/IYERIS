@@ -34,9 +34,9 @@ import {
 } from './cargo-safe-update.mjs';
 import {
   MINIMUM_NPM_VERSION,
-  PINNED_RUST_VERSION,
+  STABLE_RUST_CHANNEL,
   commandRequiresShell,
-  hasPinnedRustToolchain,
+  hasStableRustToolchain,
   isSupportedNodeVersion,
   isVersionAtLeast,
   npmUpdateArguments,
@@ -1287,10 +1287,10 @@ test('45. update environment versions fail closed at exact boundaries', () => {
   assert.equal(isSupportedNodeVersion('26.0.0'), true);
   assert.throws(() => parseVersion('latest'), /Invalid semantic version/);
   assert.equal(
-    hasPinnedRustToolchain(`${PINNED_RUST_VERSION}-aarch64-apple-darwin (default)\n`),
+    hasStableRustToolchain(`${STABLE_RUST_CHANNEL}-aarch64-apple-darwin (default)\n`),
     true
   );
-  assert.equal(hasPinnedRustToolchain('stable-aarch64-apple-darwin\n'), false);
+  assert.equal(hasStableRustToolchain('1.97.1-aarch64-apple-darwin\n'), false);
 });
 
 test('46. npm lock update cannot install packages or run lifecycle scripts', () => {
@@ -1382,7 +1382,7 @@ test(
           env: {
             ...process.env,
             CARGO_HOME: userCargoHome,
-            RUSTUP_TOOLCHAIN: PINNED_RUST_VERSION,
+            RUSTUP_TOOLCHAIN: STABLE_RUST_CHANNEL,
           },
           encoding: 'utf8',
           timeout: 120_000,

@@ -20,7 +20,7 @@ import { pathToFileURL } from 'node:url';
 
 export const MINIMUM_NPM_VERSION = '12.0.1';
 export const SUPPORTED_NODE_VERSIONS = '^22.22.2 || ^24.15.0 || >=26.0.0';
-export const PINNED_RUST_VERSION = '1.97.1';
+export const STABLE_RUST_CHANNEL = 'stable';
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 export function parseVersion(value) {
@@ -48,11 +48,11 @@ export function isSupportedNodeVersion(value) {
   return major >= 26;
 }
 
-export function hasPinnedRustToolchain(output, version = PINNED_RUST_VERSION) {
+export function hasStableRustToolchain(output, channel = STABLE_RUST_CHANNEL) {
   return String(output)
     .split(/\r?\n/u)
     .some(
-      (line) => line === version || line.startsWith(`${version}-`) || line.startsWith(`${version} `)
+      (line) => line === channel || line.startsWith(`${channel}-`) || line.startsWith(`${channel} `)
     );
 }
 
@@ -160,9 +160,9 @@ export function assertUpdateEnvironment() {
   }
 
   const rustToolchains = run('rustup', ['toolchain', 'list'], { capture: true });
-  if (!hasPinnedRustToolchain(rustToolchains)) {
+  if (!hasStableRustToolchain(rustToolchains)) {
     throw new Error(
-      `Rust ${PINNED_RUST_VERSION} must already be installed before updating dependencies`
+      `Rust ${STABLE_RUST_CHANNEL} must already be installed before updating dependencies`
     );
   }
 }
