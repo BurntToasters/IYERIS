@@ -1,14 +1,14 @@
-> [!NOTE]
-> 🅱️ This is a Beta build.
+<!-- > [!NOTE]
+> 🅱️ This is a Beta build. -->
 
 # ⬇️ Downloads
 
-| <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/windows.png" /> Windows                                                                                                      | <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/mac.png" /> macOS                 | <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/linux.png" /> Linux                                                                                                                                         |
-| :----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Linux-x86_64.AppImage) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Linux-arm64.AppImage) --> |
-| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>                     | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Linux-amd64.deb) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Linux-arm64.deb) -->                 |
-|                                                                                                                                                                                                                    |                                                                                                                         | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Linux-x86_64.rpm) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Linux-aarch64.rpm) -->              |
-|                                                                                                                                                                                                                    |                                                                                                                         | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Linux-x86_64.flatpak) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4-beta.1/IYERIS-Linux-aarch64.flatpak) -->  |
+| <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/windows.png" /> Windows                                                                                        | <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/mac.png" /> macOS          | <img height="20" src="https://raw.githubusercontent.com/BurntToasters/bcls/main/media/linux.png" /> Linux                                                                                                                           |
+| :--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :--------------------------------------------------------------------------------------------------------------- | :---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **EXE:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Win-x64.exe) / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Win-arm64.exe) | **[Universal DMG](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-MacOS-universal.dmg)** | **AppImage:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Linux-x86_64.AppImage) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Linux-arm64.AppImage) --> |
+| <div align="center"><a href="https://apps.microsoft.com/detail/9pkgd6lkcl5j?referrer=appbadge&mode=full"><img src="https://get.microsoft.com/images/en-us%20light.svg" width="150"/></a></div>       | **[Universal ZIP](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-MacOS-universal.zip)** | **DEB:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Linux-amd64.deb) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Linux-arm64.deb) -->                 |
+|                                                                                                                                                                                                      |                                                                                                                  | **RPM:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Linux-x86_64.rpm) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Linux-aarch64.rpm) -->              |
+|                                                                                                                                                                                                      |                                                                                                                  | **Flatpak:** [x64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Linux-x86_64.flatpak) <!-- / [arm64](https://github.com/BurntToasters/IYERIS/releases/download/v3.0.4/IYERIS-Linux-aarch64.flatpak) -->  |
 
 > [!IMPORTANT]
 > The `.sig` files in this repo are NOT normal gpg signatures — they are for Tauri V2's
@@ -23,11 +23,10 @@
 
 ### ℹ️ Enjoying IYERIS? Consider [❤️ Supporting Me! ❤️](https://rosie.run/support)
 
-## Changes in `v3.0.4-beta.1:`
+## Changes in `v3.0.4:`
 
-Beta 1 releases of IYERIS are normally just a version bump to sync beta users to the latest STABLE. This one carries a bit more than that — a much larger test suite, a stricter release gate, and one status bar fix. Nothing here changes how the app looks or how you use it.
-
-- **Ver:** Bumped version to `v3.0.4-beta.1`.
+- **PKG Safety - Rust:** Added my own temporary method to control what cargo deps update based on a min release age of 3 days.
+  - Cargo plans to add this in the future and when its officially supported my own implimentation will be removed.
 - **UI:** Fixed an issue where opening the status bar right-click menu over and over left orphaned document listeners and pending timers behind.
   - The status bar now tears down its own menu, timer, and listeners on teardown, and closes an already-open menu before opening a new one.
 - **Testing:** Grew the headless frontend suite to 124 files and 3,113 tests.
@@ -39,6 +38,7 @@ Beta 1 releases of IYERIS are normally just a version bump to sync beta users to
   - The gate runner now receives its step plan, step runner, and proof handling as injected dependencies, which makes the ordering itself testable.
   - Added a release session gate so release builds refuse to run without a recorded pass against a clean tree.
 - **Codebase:** Added `npm run lint:scripts` and a `cargo fmt --check` gate so the build and release scripts get linted and the Rust side stays formatted.
+- **Codebase:** Release scripts now use gh cli instead of a raw api key and interactions.
 - **Typescript:** Turned on `strict` typechecking for the test project and fixed everything it flagged.
 
 ## Changes in `v3.0.3:`
