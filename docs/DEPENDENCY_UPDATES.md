@@ -2,7 +2,7 @@
 
 `npm run u` is a lockfile-only dependency proposal. It does not install npm packages, run npm lifecycle scripts, compile Rust, execute Cargo build scripts or procedural macros, format source files, or run tests.
 
-The command requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, npm 12.0.1 or newer, and an already-installed Rust 1.97.1 toolchain. It performs these steps:
+The command requires Node.js `^22.22.2 || ^24.15.0 || >=26.0.0`, npm 12.0.1 or newer, and an already-installed Rust stable toolchain. It performs these steps:
 
 1. Resolve npm updates with `--package-lock-only`, `--ignore-scripts`, and a three-day minimum release age in a disposable npm cache.
 2. Reject high-severity npm audit findings without populating the project `node_modules` directory.
