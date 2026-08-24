@@ -28,6 +28,8 @@ export function createReleaseSession(root?: string): ReleaseSession;
 export function startReleaseSession(root?: string): ReleaseSession;
 export function clearQualityGateProof(root?: string): void;
 export function isAcceptableReleaseWorkingTree(status: string): boolean;
+export function parsePorcelainPaths(status: string): string[];
+export function blockingReleaseWorkingTreePaths(root?: string): string[];
 export function recordSuccessfulQualityGate(root?: string): boolean;
 export function validateQualityGate(
   proof: QualityGateProof,
