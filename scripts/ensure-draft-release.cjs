@@ -63,7 +63,7 @@ async function syncReleaseNotesBody(release, body) {
   const updated = await githubRequestWithRetry(
     'PATCH',
     '/repos/' + REPO_OWNER + '/' + REPO_NAME + '/releases/' + release.id,
-    { body }
+    { name: VERSION, body }
   );
   console.log(
     '   Synced CHANGELOG.md into release notes (' +
