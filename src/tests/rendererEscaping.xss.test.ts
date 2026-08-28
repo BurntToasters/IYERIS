@@ -1,17 +1,10 @@
 // @vitest-environment jsdom
 //
-// F3 (escaping integration): production interpolates user-controlled data into
-// innerHTML at a number of boundaries and relies on escapeHtml() /
-// sanitizeMarkdownHtml() to neutralize it. Every module suite for those
-// boundaries replaces escapeHtml with an identity function
-// (`vi.mock('../shared.js', () => ({ escapeHtml: (s) => s }))`) and never feeds
-// HTML-bearing input, so dropping an escapeHtml() call at any one of them would
-// keep those suites green.
-//
-// This suite is the counterweight: it deliberately does NOT mock ../shared.js,
-// so the real escaping runs, and it pushes an active payload through each
-// boundary asserting the rendered markup is inert and the payload survives as
-// visible text.
+// F3 escaping integration: production interpolates user data into innerHTML
+// and relies on escapeHtml() or sanitizeMarkdownHtml(). Existing boundary tests
+// replace escapeHtml() with an identity function and use no HTML payloads, so a
+// missing escape can remain green. This suite keeps the real shared.js and sends
+// active payloads through each boundary, asserting inert markup and visible text.
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 /** Payloads that become live nodes if interpolated unescaped. */
