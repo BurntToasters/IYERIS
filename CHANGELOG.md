@@ -26,7 +26,7 @@
 ## Changes in `v3.0.4:`
 
 - **PKG Safety - Rust:** Added my own temporary method to control what cargo deps update based on a min release age of 3 days.
-  - Cargo plans to add this in the future and when its officially supported my own implimentation will be removed.
+  - Cargo plans to add this in the future and when its officially supported my own implementation will be removed.
 - **UI:** Fixed an issue where opening the status bar right-click menu over and over left orphaned document listeners and pending timers behind.
   - The status bar now tears down its own menu, timer, and listeners on teardown, and closes an already-open menu before opening a new one.
 - **Testing:** Grew the headless frontend suite to 124 files and 3,113 tests.
