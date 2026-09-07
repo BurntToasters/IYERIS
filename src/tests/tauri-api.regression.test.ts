@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockListen = vi.hoisted(() => vi.fn());
+const mockUpdaterCheck = vi.hoisted(() => vi.fn());
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mockInvoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: mockListen }));
@@ -26,13 +27,15 @@ vi.mock('@tauri-apps/plugin-notification', () => ({
   sendNotification: vi.fn(),
 }));
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn(), exit: vi.fn() }));
-vi.mock('@tauri-apps/plugin-updater', () => ({ check: vi.fn() }));
+vi.mock('@tauri-apps/plugin-updater', () => ({ check: mockUpdaterCheck }));
 
 describe('tauri-api regressions', () => {
   beforeEach(() => {
     vi.resetModules();
     mockInvoke.mockReset();
     mockListen.mockResolvedValue(() => {});
+    mockUpdaterCheck.mockReset();
+    mockUpdaterCheck.mockResolvedValue(null);
   });
 
   // M6 -----------------------------------------------------------------------
@@ -128,6 +131,192 @@ describe('tauri-api regressions', () => {
       expect(getArgs?.filePath).toBe(saveArgs?.filePath);
       expect(getArgs?.mtimeMs).toBe(saveArgs?.mtimeMs);
       expect(getArgs?.fileSize).toBe(saveArgs?.fileSize);
+    });
+  });
+
+  describe('update check reports the selected channel', () => {
+    function mockInstalledVersion(version: string) {
+      mockInvoke.mockImplementation(async (command: string) => {
+        switch (command) {
+          case 'get_app_version':
+            return version;
+          case 'is_flatpak':
+          case 'is_mas':
+          case 'is_ms_store':
+          case 'is_msi':
+            return false;
+          case 'get_platform':
+            return 'darwin';
+          default:
+            return null;
+        }
+      });
+    }
+
+    it('returns isBeta when a stable install checks the beta channel', async () => {
+      mockInstalledVersion('3.0.4');
+      await import('../tauri-api');
+      window.tauriAPI.setUpdateChannel('beta');
+
+      const result = await window.tauriAPI.checkForUpdates();
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          hasUpdate: false,
+          isBeta: true,
+          currentVersion: '3.0.4',
+        })
+      );
+      expect(mockUpdaterCheck).toHaveBeenCalledWith({ target: 'darwin-beta' });
+    });
+
+    it('returns stable messaging when a beta install checks the stable channel', async () => {
+      mockInstalledVersion('3.0.5-beta.1');
+      await import('../tauri-api');
+      window.tauriAPI.setUpdateChannel('stable');
+
+      const result = await window.tauriAPI.checkForUpdates();
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          hasUpdate: false,
+          isBeta: false,
+          currentVersion: '3.0.5-beta.1',
+        })
+      );
+      expect(mockUpdaterCheck).toHaveBeenCalledWith();
+    });
+
+    it('keeps a newer update when an older check rejects', async () => {
+      mockInstalledVersion('3.0.4');
+      let rejectOld!: (error: Error) => void;
+      mockUpdaterCheck.mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectOld = reject;
+          })
+      );
+      const update = {
+        version: '3.0.5',
+        body: '',
+        close: vi.fn().mockResolvedValue(undefined),
+        download: vi.fn().mockResolvedValue(undefined),
+      };
+      mockUpdaterCheck.mockResolvedValueOnce(update);
+      await import('../tauri-api');
+      const old = window.tauriAPI.checkForUpdates();
+      await vi.waitFor(() => expect(mockUpdaterCheck).toHaveBeenCalledTimes(1));
+      await window.tauriAPI.checkForUpdates();
+      rejectOld(new Error('old network request failed'));
+      await old;
+      await expect(window.tauriAPI.downloadUpdate()).resolves.toEqual({ success: true });
+      expect(update.download).toHaveBeenCalledTimes(1);
+      expect(update.close).not.toHaveBeenCalled();
+    });
+
+    it('does not announce readiness at Finished before verification resolves', async () => {
+      mockInstalledVersion('3.0.4');
+      let resolveDownload!: () => void;
+      const verified = new Promise<void>((resolve) => {
+        resolveDownload = resolve;
+      });
+      const update = {
+        version: '3.0.5',
+        body: '',
+        close: vi.fn().mockResolvedValue(undefined),
+        download: vi.fn(async (callback: (event: unknown) => void) => {
+          callback({ event: 'Finished' });
+          await verified;
+        }),
+        install: vi.fn().mockResolvedValue(undefined),
+      };
+      mockUpdaterCheck.mockResolvedValue(update);
+      await import('../tauri-api');
+      const downloaded = vi.fn();
+      window.tauriAPI.onUpdateDownloaded(downloaded);
+      await window.tauriAPI.checkForUpdates();
+      const downloading = window.tauriAPI.downloadUpdate();
+      await Promise.resolve();
+      expect(downloaded).not.toHaveBeenCalled();
+      expect((await window.tauriAPI.installUpdate()).success).toBe(false);
+      expect(update.install).not.toHaveBeenCalled();
+      resolveDownload();
+      await downloading;
+      expect(downloaded).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not invalidate an in-flight download when a second check arrives', async () => {
+      mockInstalledVersion('3.0.4');
+      let releaseDownload!: () => void;
+      const downloadRelease = new Promise<void>((resolve) => {
+        releaseDownload = resolve;
+      });
+      const update = {
+        version: '3.0.5',
+        body: '',
+        download: vi.fn(async (callback: (event: unknown) => void) => {
+          callback({ event: 'Started', data: { contentLength: 10 } });
+          await downloadRelease;
+          callback({ event: 'Finished', data: {} });
+        }),
+        install: vi.fn().mockResolvedValue(undefined),
+      };
+      mockUpdaterCheck.mockResolvedValue(update);
+      await import('../tauri-api');
+
+      await expect(window.tauriAPI.checkForUpdates()).resolves.toEqual(
+        expect.objectContaining({ hasUpdate: true })
+      );
+      const downloading = window.tauriAPI.downloadUpdate();
+      await Promise.resolve();
+      await expect(window.tauriAPI.checkForUpdates()).resolves.toEqual(
+        expect.objectContaining({ hasUpdate: true, latestVersion: '3.0.5' })
+      );
+      releaseDownload();
+      await expect(downloading).resolves.toEqual({ success: true });
+    });
+  });
+
+  describe('search hidden policy', () => {
+    it('forwards includeHidden to search_files', async () => {
+      mockInvoke.mockResolvedValue([]);
+      await import('../tauri-api');
+      await window.tauriAPI.searchFiles('/tmp', 'q', undefined, 'op-1', true);
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'search_files',
+        expect.objectContaining({ includeHidden: true, dirPath: '/tmp', query: 'q' })
+      );
+    });
+
+    it('maps backend isHidden onto search results', async () => {
+      mockInvoke.mockResolvedValue([
+        {
+          name: 'config',
+          path: '/repo/.git/config',
+          isDirectory: false,
+          size: 10,
+          modified: 1,
+          extension: '',
+          isHidden: false,
+        },
+        {
+          name: '.env',
+          path: '/repo/.env',
+          isDirectory: false,
+          size: 4,
+          modified: 1,
+          extension: 'env',
+          isHidden: true,
+        },
+      ]);
+      await import('../tauri-api');
+      const result = await window.tauriAPI.searchFiles('/repo', 'e');
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.results[0]?.isHidden).toBe(false);
+      expect(result.results[1]?.isHidden).toBe(true);
     });
   });
 });

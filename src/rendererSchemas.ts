@@ -72,6 +72,7 @@ export const RawSearchResultSchema = z.object({
   modified: z.number(),
   extension: z.string(),
   matchContext: z.string().nullable().optional(),
+  isHidden: z.boolean().optional(),
 });
 export type RawSearchResult = z.infer<typeof RawSearchResultSchema>;
 

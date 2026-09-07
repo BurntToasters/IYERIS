@@ -373,24 +373,17 @@ const {
   setupBreadcrumbListeners,
   hideBreadcrumbMenu,
   addToDirectoryHistory,
-  showDirectoryHistoryDropdown,
   hideDirectoryHistoryDropdown,
-  clearDirectoryHistory,
   getBreadcrumbMenuElement,
   isBreadcrumbMenuOpen,
   initSearchListeners,
   closeSearch,
   openSearch,
-  performSearch,
   cleanupSearch,
-  showSearchHistoryDropdown,
   hideSearchHistoryDropdown,
-  clearSearchHistory,
   getSearchStatusText,
   isSearchModeActive,
   getSearchInputElement,
-  setSearchQuery,
-  focusSearchInput,
   updateContentSearchToggle,
   updateSearchPlaceholder,
   previewController,
@@ -1802,9 +1795,11 @@ function setupMoreActionsMenu() {
   const btnEl = btn;
 
   function closeMenu() {
+    const restoreFocus = menuEl.contains(document.activeElement);
     menuEl.style.display = 'none';
     btnEl.setAttribute('aria-expanded', 'false');
     menuEl.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
+    if (restoreFocus) btnEl.focus({ preventScroll: true });
   }
 
   btn.addEventListener('click', (e) => {
@@ -1892,7 +1887,6 @@ function setupMoreActionsMenu() {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closeMenu();
-      btn.focus();
     }
   });
 }
@@ -2083,6 +2077,27 @@ async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
     .catch(ignoreError);
 }
 
+late.getOrderedFiles = () => {
+  if (currentSettings.dualPaneEnabled && currentSettings.activePane === 'right')
+    return dualPane.getSecondaryPaneItems();
+  if (viewMode === 'column')
+    return Array.from(getActiveFileGridScope()?.querySelectorAll<HTMLElement>('.file-item') ?? [])
+      .map((item) => late.getFileByPath(item.dataset.path || ''))
+      .filter((item): item is FileItem => item !== undefined);
+  return fileRenderController.getOrderedFiles();
+};
+late.ensureItemRendered = (path) => {
+  if (
+    viewMode !== 'column' &&
+    !(currentSettings.dualPaneEnabled && currentSettings.activePane === 'right')
+  )
+    return fileRenderController.ensureItemRendered(path);
+  return (
+    Array.from(getActiveFileGridScope()?.querySelectorAll<HTMLElement>('.file-item') ?? []).find(
+      (item) => item.dataset.path === path
+    ) ?? null
+  );
+};
 late.navigateTo = navigateTo;
 late.refresh = refresh;
 late.renderFiles = renderFiles;
@@ -2168,15 +2183,15 @@ async function applyViewMode() {
 
 const VIEW_TOGGLE_CONFIG: Record<ViewMode, { svg: string; title: string }> = {
   list: {
-    svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/></svg>`,
+    svg: `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/></svg>`,
     title: 'Switch to Column View',
   },
   column: {
-    svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/></svg>`,
+    svg: `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/></svg>`,
     title: 'Switch to Grid View',
   },
   grid: {
-    svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/></svg>`,
+    svg: `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/></svg>`,
     title: 'Switch to List View',
   },
 };
@@ -2344,16 +2359,7 @@ for (const [id, handler] of [
   });
 }
 
-function bindHistoryDropdownOnFocus(element: HTMLElement | null, showDropdown: () => void): void {
-  if (!element) return;
-  element.addEventListener('focus', () => {
-    if (currentSettings.enableSearchHistory) showDropdown();
-  });
-}
-
 const searchInputElement = getSearchInputElement();
-bindHistoryDropdownOnFocus(searchInputElement, showSearchHistoryDropdown);
-bindHistoryDropdownOnFocus(addressInput, showDirectoryHistoryDropdown);
 
 dualPane.setupListeners();
 
@@ -2374,38 +2380,6 @@ document.addEventListener('mousedown', (e) => {
   }
   if (!isClickInsideDirectoryDropdown && !isClickOnAddressInput) {
     hideDirectoryHistoryDropdown();
-  }
-
-  const historyItem = target.closest<HTMLElement>('.history-item');
-  if (historyItem) {
-    if (historyItem.dataset.query) {
-      e.preventDefault();
-      setSearchQuery(historyItem.dataset.query);
-      setTimeout(() => focusSearchInput(), 0);
-      hideSearchHistoryDropdown();
-      performSearch();
-      return;
-    }
-    if (historyItem.dataset.path) {
-      e.preventDefault();
-      navigateTo(historyItem.dataset.path);
-      hideDirectoryHistoryDropdown();
-      return;
-    }
-  }
-
-  const historyClear = target.closest<HTMLElement>('.history-clear');
-  if (historyClear) {
-    let clearAction: (() => void) | null = null;
-    if (historyClear.dataset.action === 'clear-search') {
-      clearAction = clearSearchHistory;
-    } else if (historyClear.dataset.action === 'clear-directory') {
-      clearAction = clearDirectoryHistory;
-    }
-    if (clearAction) {
-      e.preventDefault();
-      clearAction();
-    }
   }
 });
 

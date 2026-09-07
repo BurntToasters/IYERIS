@@ -65,6 +65,29 @@ describe('tauriAPI conflict handling', () => {
     );
   });
 
+  it('preserves punctuation in conflict filenames', async () => {
+    mockInvoke
+      .mockRejectedValueOnce(new Error('CONFLICT: report (2025) [draft].txt'))
+      .mockResolvedValueOnce(undefined);
+    mockMessage.mockResolvedValueOnce('Replace');
+
+    await import('../tauri-api');
+
+    const result = await window.tauriAPI.copyItems(['/tmp/source'], '/dest', 'ask');
+
+    expect(result).toEqual({ success: true });
+    expect(mockMessage).toHaveBeenCalledWith(
+      '"report (2025) [draft].txt" already exists in this location.',
+      expect.objectContaining({ title: 'Copy Conflict' })
+    );
+    expect(mockInvoke).toHaveBeenLastCalledWith(
+      'copy_items',
+      expect.objectContaining({
+        conflictResolutions: { 'report (2025) [draft].txt': 'overwrite' },
+      })
+    );
+  });
+
   it('passes compression advanced options as a JSON object to native code', async () => {
     mockInvoke.mockResolvedValueOnce(undefined);
 

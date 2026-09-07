@@ -10,6 +10,29 @@ interface SettingsUiDeps {
   saveSettings: () => Promise<void>;
 }
 
+function getSettingsCardTitle(card: HTMLElement): string {
+  const explicitTitle = card.querySelector('.settings-card-title')?.textContent?.trim();
+  if (explicitTitle) return explicitTitle;
+  const header = card.querySelector('.settings-card-header');
+  const textTitle = Array.from(header?.childNodes ?? [])
+    .filter((node) => node.nodeType === Node.TEXT_NODE)
+    .map((node) => node.textContent?.trim() ?? '')
+    .filter(Boolean)
+    .join(' ');
+  return textTitle || 'settings section';
+}
+
+function setSettingsCardExpanded(card: HTMLElement, expanded: boolean): void {
+  card.classList.toggle('collapsed', !expanded);
+  const toggle = card.querySelector<HTMLElement>('.settings-card-toggle');
+  if (!toggle) return;
+  const cardTitle = getSettingsCardTitle(card);
+  toggle.setAttribute('aria-expanded', String(expanded));
+  toggle.setAttribute('aria-label', `${expanded ? 'Collapse' : 'Expand'} ${cardTitle}`);
+  const glyph = toggle.querySelector('span');
+  if (glyph) glyph.textContent = expanded ? '▾' : '▸';
+}
+
 export function createSettingsUiController(deps: SettingsUiDeps) {
   let settingsSavedState: SettingsFormState | null = null;
   let settingsRedoState: SettingsFormState | null = null;
@@ -254,6 +277,20 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
 
   function ensureSettingsTabDecorations(): void {
     document.querySelectorAll('.settings-tab').forEach((tab) => {
+      const tabId = tab.getAttribute('data-tab');
+      if (tabId) {
+        tab.id ||= `settings-tab-${tabId}`;
+        tab.setAttribute('role', 'tab');
+        tab.setAttribute('aria-controls', `tab-${tabId}`);
+        (tab as HTMLElement).tabIndex = tab.classList.contains('active') ? 0 : -1;
+        const panel = document.getElementById(`tab-${tabId}`);
+        if (panel) {
+          panel.setAttribute('role', 'tabpanel');
+          panel.setAttribute('aria-labelledby', tab.id);
+          panel.toggleAttribute('hidden', !panel.classList.contains('active'));
+        }
+      }
+
       if (!tab.querySelector('.settings-tab-label')) {
         const label = document.createElement('span');
         label.className = 'settings-tab-label';
@@ -274,12 +311,14 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
         const count = document.createElement('span');
         count.className = 'settings-tab-count';
         count.textContent = '0';
+        count.setAttribute('aria-hidden', 'true');
         tab.appendChild(count);
       }
 
       if (!tab.querySelector('.settings-tab-dot')) {
         const dot = document.createElement('span');
         dot.className = 'settings-tab-dot';
+        dot.setAttribute('aria-hidden', 'true');
         tab.appendChild(dot);
       }
     });
@@ -288,24 +327,29 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
   function activateSettingsTab(tabId: string, skipSearchUpdate = false): void {
     const tabs = document.querySelectorAll('.settings-tab');
     const sections = document.querySelectorAll('.settings-section');
+    const tab = document.querySelector(`.settings-tab[data-tab="${tabId}"]`) as HTMLElement | null;
+    const section = document.getElementById(`tab-${tabId}`);
+    if (!tab || !section || tab.classList.contains('search-hidden')) return;
+    const focusedTab = (document.activeElement as Element | null)?.closest('.settings-tab');
 
     tabs.forEach((t) => {
       t.classList.remove('active');
       t.setAttribute('aria-selected', 'false');
+      (t as HTMLElement).tabIndex = -1;
     });
-    sections.forEach((s) => s.classList.remove('active'));
+    sections.forEach((s) => {
+      s.classList.remove('active');
+      s.toggleAttribute('hidden', true);
+      (s as HTMLElement).style.display = 'none';
+    });
 
-    const tab = document.querySelector(`.settings-tab[data-tab="${tabId}"]`);
-    const section = document.getElementById(`tab-${tabId}`);
-    tab?.classList.add('active');
-    tab?.setAttribute('aria-selected', 'true');
-    section?.classList.add('active');
-
-    if (!settingsSearchTerm) {
-      sections.forEach((s) => {
-        (s as HTMLElement).style.display = s === section ? 'block' : 'none';
-      });
-    }
+    tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
+    tab.tabIndex = 0;
+    section.classList.add('active');
+    section.removeAttribute('hidden');
+    section.style.display = 'block';
+    if (focusedTab) tab.focus();
 
     if (!skipSearchUpdate && settingsSearchTerm) {
       applySettingsSearch(settingsSearchTerm);
@@ -347,7 +391,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
   function initSettingsCardUI(): void {
     document
       .querySelectorAll('.settings-section:not(#tab-about) .settings-card')
-      .forEach((card) => {
+      .forEach((card, cardIndex) => {
         if (card.querySelector('.settings-card-body')) return;
 
         const header = card.querySelector('.settings-card-header') as HTMLElement | null;
@@ -372,11 +416,18 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
         const toggle = document.createElement('button');
         toggle.className = 'settings-card-toggle';
         toggle.type = 'button';
-        toggle.setAttribute('aria-expanded', 'true');
-        toggle.innerHTML = '<span>▾</span>';
+        const initiallyExpanded = !card.classList.contains('collapsed');
+        toggle.setAttribute('aria-expanded', String(initiallyExpanded));
+        const cardTitle = getSettingsCardTitle(card as HTMLElement);
+        toggle.setAttribute(
+          'aria-label',
+          `${initiallyExpanded ? 'Collapse' : 'Expand'} ${cardTitle}`
+        );
+        const toggleGlyph = document.createElement('span');
+        toggleGlyph.textContent = initiallyExpanded ? '▾' : '▸';
+        toggle.appendChild(toggleGlyph);
         toggle.addEventListener('click', () => {
-          card.classList.toggle('collapsed');
-          toggle.setAttribute('aria-expanded', String(!card.classList.contains('collapsed')));
+          setSettingsCardExpanded(card as HTMLElement, card.classList.contains('collapsed'));
         });
 
         const actions = document.createElement('div');
@@ -387,6 +438,8 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
 
         const body = document.createElement('div');
         body.className = 'settings-card-body';
+        body.id = `settings-card-body-${cardIndex}`;
+        toggle.setAttribute('aria-controls', body.id);
         let node = header.nextSibling;
         while (node) {
           const next = node.nextSibling;
@@ -454,9 +507,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
         card.classList.toggle('search-hidden', !cardHasMatch);
         if (settingsSearchTerm && cardHasMatch) {
           if (card.classList.contains('collapsed')) {
-            card.classList.remove('collapsed');
-            const toggle = card.querySelector('.settings-card-toggle');
-            toggle?.setAttribute('aria-expanded', 'true');
+            setSettingsCardExpanded(card as HTMLElement, true);
           }
         }
       });
@@ -464,12 +515,9 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
       const sectionId = section.id.replace('tab-', '');
       tabMatchCount.set(sectionId, sectionMatches);
 
-      if (!settingsSearchTerm) {
-        const isActive = section.classList.contains('active');
-        (section as HTMLElement).style.display = isActive ? 'block' : 'none';
-      } else {
-        (section as HTMLElement).style.display = sectionMatches > 0 ? 'block' : 'none';
-      }
+      const isActive = section.classList.contains('active');
+      section.toggleAttribute('hidden', !isActive);
+      (section as HTMLElement).style.display = isActive ? 'block' : 'none';
     });
 
     const countButton = document.getElementById(
@@ -486,7 +534,10 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
       const countEl = tab.querySelector('.settings-tab-count');
       if (countEl) countEl.textContent = String(count);
       tab.classList.toggle('has-matches', settingsSearchTerm.length > 0 && count > 0);
-      tab.classList.toggle('search-hidden', settingsSearchTerm.length > 0 && count === 0);
+      tab.classList.toggle(
+        'search-hidden',
+        settingsSearchTerm.length > 0 && totalMatches > 0 && count === 0
+      );
     });
 
     if (settingsSearchTerm && totalMatches === 0) {
@@ -524,9 +575,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
 
     const card = firstMatch.closest('.settings-card') as HTMLElement | null;
     if (card && card.classList.contains('collapsed')) {
-      card.classList.remove('collapsed');
-      const toggle = card.querySelector('.settings-card-toggle');
-      toggle?.setAttribute('aria-expanded', 'true');
+      setSettingsCardExpanded(card, true);
     }
 
     firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -766,6 +815,34 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
         const tabId = tab.getAttribute('data-tab');
         if (tabId) {
           activateSettingsTab(tabId);
+        }
+      });
+      tab.addEventListener('keydown', (event) => {
+        if (!(event instanceof KeyboardEvent)) return;
+        const visibleTabs = Array.from(
+          document.querySelectorAll<HTMLElement>('.settings-tab')
+        ).filter(
+          (candidate) => !candidate.classList.contains('search-hidden') && !candidate.hidden
+        );
+        if (visibleTabs.length === 0) return;
+        const currentIndex = Math.max(0, visibleTabs.indexOf(tab as HTMLElement));
+        let next: HTMLElement | undefined;
+        if (event.key === 'ArrowDown') {
+          next = visibleTabs[(currentIndex + 1) % visibleTabs.length];
+        } else if (event.key === 'ArrowUp') {
+          next = visibleTabs[(currentIndex - 1 + visibleTabs.length) % visibleTabs.length];
+        } else if (event.key === 'Home') {
+          next = visibleTabs[0];
+        } else if (event.key === 'End') {
+          next = visibleTabs.at(-1);
+        } else {
+          return;
+        }
+        event.preventDefault();
+        const nextId = next?.dataset.tab;
+        if (next && nextId) {
+          activateSettingsTab(nextId);
+          next.focus();
         }
       });
     });

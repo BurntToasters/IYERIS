@@ -133,7 +133,10 @@ function stripCommentMarker(line, state) {
 
   if (trimmed.startsWith('<!--')) {
     const closes = trimmed.includes('-->');
-    const text = trimmed.replace(/^<!--\s?/, '').replace(/\s*-->.*$/, '').trim();
+    const text = trimmed
+      .replace(/^<!--\s?/, '')
+      .replace(/\s*-->.*$/, '')
+      .trim();
     if (!closes) state.kind = 'html';
     return { isDoc: false, text };
   }
@@ -188,10 +191,7 @@ function lintSource(filePath, source, options) {
     }
 
     const normalizedText = parsed.text.replace(URL_PATTERN, '<url>');
-    if (
-      normalizedText.length > options.maxLength &&
-      !EXEMPT_BLOCK_PATTERN.test(parsed.text)
-    ) {
+    if (normalizedText.length > options.maxLength && !EXEMPT_BLOCK_PATTERN.test(parsed.text)) {
       findings.push({
         line: index + 1,
         message: `Comment text is ${normalizedText.length} characters (maximum ${options.maxLength}); shorten or wrap it`,
@@ -219,7 +219,9 @@ async function main() {
   }
 
   if (findingCount > 0) {
-    console.error(`\n${findingCount} concise-comment lint ${findingCount === 1 ? 'error' : 'errors'}.`);
+    console.error(
+      `\n${findingCount} concise-comment lint ${findingCount === 1 ? 'error' : 'errors'}.`
+    );
     process.exitCode = 1;
     return;
   }

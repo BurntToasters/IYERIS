@@ -14,7 +14,9 @@ const repoRoot = resolve(__dirname, '..');
 const packageJsonPath = resolve(repoRoot, 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 const appVersion = packageJson.version ?? 'unknown';
-const scriptVersion = '1.1.0';
+const scriptVersion = '1.4.0';
+export const MIN_FRONTEND_TESTS = 3_113;
+export const MAX_CHILD_OUTPUT_BYTES = 8 * 1024 * 1024;
 
 const colors = {
   reset: '\x1b[0m',
@@ -68,8 +70,9 @@ function createStepPlan({
   npm = getNpmCommand(),
   rustTimeout = rustTimeoutMs,
   cargoManifest = 'src-tauri/Cargo.toml',
+  includeAudits = true,
 } = {}) {
-  return [
+  const plan = [
     { name: 'typecheck', label: 'TypeCheck', command: npm, args: ['run', 'typecheck'] },
     {
       name: 'typecheckTest',
@@ -77,10 +80,41 @@ function createStepPlan({
       command: npm,
       args: ['run', 'typecheck:test'],
     },
+    {
+      name: 'typecheckNode',
+      label: 'TypeCheck(Node)',
+      command: npm,
+      args: ['run', 'typecheck:node'],
+    },
     { name: 'lint', label: 'Lint', command: npm, args: ['run', 'lint:prod'] },
     { name: 'lintTest', label: 'Lint(Test)', command: npm, args: ['run', 'lint:test'] },
     { name: 'lintScripts', label: 'Lint(Scripts)', command: npm, args: ['run', 'lint:scripts'] },
+    { name: 'lintComments', label: 'Lint(Comments)', command: npm, args: ['run', 'lint:comments'] },
     { name: 'format', label: 'Format', command: npm, args: ['run', 'format:check'] },
+    {
+      name: 'bundleBudget',
+      label: 'Bundle Budget',
+      command: npm,
+      args: ['run', 'test:bundle'],
+    },
+    {
+      name: 'versionSync',
+      label: 'Version Sync',
+      command: npm,
+      args: ['run', 'check:version-sync'],
+    },
+    {
+      name: 'docsPolicy',
+      label: 'Docs Policy',
+      command: npm,
+      args: ['run', 'check:docs-policy'],
+    },
+    {
+      name: 'releaseWorkflow',
+      label: 'Release Workflow',
+      command: npm,
+      args: ['run', 'check:release-workflow'],
+    },
     {
       name: 'nativePolicy',
       label: 'Native Policy',
@@ -155,6 +189,23 @@ function createStepPlan({
       timeout: rustTimeout,
     },
   ];
+  if (includeAudits) {
+    const releaseAssetsIndex = plan.findIndex((step) => step.name === 'releaseAssets');
+    plan.splice(
+      releaseAssetsIndex + 1,
+      0,
+      { name: 'npmAudit', label: 'npm Audit', command: npm, args: ['run', 'audit'] },
+      {
+        name: 'cargoAudit',
+        label: 'Cargo Audit',
+        command: 'cargo',
+        args: ['audit'],
+        cwd: 'src-tauri',
+        timeout: rustTimeout,
+      }
+    );
+  }
+  return plan;
 }
 
 function createInitialResults(plan = createStepPlan()) {
@@ -188,15 +239,20 @@ function runCommand(step, results, { spawn = spawnSync, log = console.log } = {}
   const useShell = process.platform === 'win32' && /\.cmd$/i.test(step.command);
   const timeout = step.timeout ?? defaultTimeoutMs;
   const run = spawn(step.command, step.args, {
+    cwd: step.cwd ? resolve(repoRoot, step.cwd) : repoRoot,
     encoding: 'utf8',
     stdio: 'pipe',
     shell: useShell,
     windowsHide: true,
     timeout,
+    maxBuffer: MAX_CHILD_OUTPUT_BYTES,
   });
   const output = `${run.stdout || ''}${run.stderr || ''}`;
   if (step.parser) step.parser(output, results);
-  if (!run.error && run.status === 0) {
+  const testCountBelowMinimum =
+    step.name === 'test' &&
+    (!Number.isFinite(results.test.passed) || results.test.passed < MIN_FRONTEND_TESTS);
+  if (!run.error && run.status === 0 && !testCountBelowMinimum) {
     results[step.name].status = 'passed';
     log(`${colors.green}✓ ${step.name} passed${colors.reset}\n`);
     return true;
@@ -204,9 +260,11 @@ function runCommand(step, results, { spawn = spawnSync, log = console.log } = {}
   results[step.name].status = 'failed';
   const reason = run.error
     ? run.error.message
-    : run.status === null
-      ? `signal ${run.signal || 'unknown'}`
-      : `exit code ${run.status}`;
+    : testCountBelowMinimum
+      ? `only ${results.test.passed ?? 'an unknown number of'} frontend tests passed; minimum is ${MIN_FRONTEND_TESTS}`
+      : run.status === null
+        ? `signal ${run.signal || 'unknown'}`
+        : `exit code ${run.status}`;
   log(`${colors.red}✗ ${step.name} failed (${reason})${colors.reset}`);
   printTail(output, log);
   log('');
@@ -254,6 +312,7 @@ function main({
   listBlockingPaths = blockingReleaseWorkingTreePaths,
   root = repoRoot,
   log = console.log,
+  allowProof = true,
 } = {}) {
   clearProof(root);
   const results = createInitialResults(plan);
@@ -263,6 +322,10 @@ function main({
   }
   const exitCode = printSummary(results, plan, log);
   if (exitCode !== 0) return exitCode;
+  if (!allowProof) {
+    log('Release quality-gate proof not recorded because network audits were skipped.');
+    return exitCode;
+  }
   if (recordProof(root)) {
     log('Release quality-gate proof recorded for this clean commit.');
   } else {
@@ -284,7 +347,13 @@ function isDirectExecution() {
 }
 
 if (isDirectExecution()) {
-  process.exit(main());
+  const skipAudits = process.argv.slice(2).includes('--skip-audits');
+  process.exit(
+    main({
+      plan: createStepPlan({ includeAudits: !skipAudits }),
+      allowProof: !skipAudits,
+    })
+  );
 }
 
 export {

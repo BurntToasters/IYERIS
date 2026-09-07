@@ -113,6 +113,8 @@ import {
 } from './rendererElements.js';
 
 export interface LateBound {
+  getOrderedFiles(): FileItem[];
+  ensureItemRendered(path: string): HTMLElement | null;
   navigateTo(path: string, force?: boolean, trigger?: string): Promise<void>;
   refresh(reason?: string): void;
   renderFiles(files: FileItem[], highlight?: string): void;
@@ -505,6 +507,7 @@ export function wireControllers(deps: WiringDeps) {
       void deps.late.navigateTo(pathValue);
     },
     createDirectoryOperationId,
+    cancelDirectoryContents: (operationId) => window.tauriAPI.cancelDirectoryContents(operationId),
     nameCollator: NAME_COLLATOR,
     getFolderIcon: (p: string) => folderIconPickerController.getFolderIcon(p),
     getDragOperation,
@@ -559,6 +562,8 @@ export function wireControllers(deps: WiringDeps) {
   });
 
   const selectionController = createSelectionController({
+    getOrderedFiles: () => deps.late.getOrderedFiles(),
+    ensureItemRendered: (path) => deps.late.ensureItemRendered(path),
     getSelectedItems: () => deps.getSelectedItems(),
     setSelectedItems: (items) => {
       deps.setSelectedItems(items);
@@ -671,6 +676,8 @@ export function wireControllers(deps: WiringDeps) {
   } = hoverCardController;
 
   const typeaheadController = createTypeaheadController({
+    getOrderedFiles: () => deps.late.getOrderedFiles(),
+    ensureItemRendered: (path) => deps.late.ensureItemRendered(path),
     getFileItems: () => getFileItemsArray(),
     clearSelection,
     getSelectedItems: () => deps.getSelectedItems(),
@@ -884,8 +891,15 @@ export function wireControllers(deps: WiringDeps) {
     updateBreadcrumb,
     updateNavigationButtons: () => deps.late.updateNavigationButtons(),
     setHomeViewActive: (active) => deps.late.setHomeViewActive(active),
-    navigateTo: (pathValue, force) => {
-      void deps.late.navigateTo(pathValue, force, 'tab');
+    navigateTo: (pathValue, force) => deps.late.navigateTo(pathValue, force, 'tab'),
+    onSelectionRestored: () => {
+      for (const item of fileGrid.querySelectorAll<HTMLElement>('.file-item')) {
+        const selected = deps.getSelectedItems().has(item.dataset.path || '');
+        item.classList.toggle('selected', selected);
+        item.setAttribute('aria-selected', String(selected));
+      }
+      deps.late.updateStatusBar();
+      ensureActiveItem();
     },
     watchDirectory: (pathValue) => {
       window.tauriAPI.watchDirectory(pathValue).catch(ignoreError);
@@ -1034,6 +1048,7 @@ export function wireControllers(deps: WiringDeps) {
     onModalClose: deactivateModal,
     refresh: (reason?: string) => deps.late.refresh(reason),
     navigateTo: (pathValue) => deps.late.navigateTo(pathValue),
+    cancelScan: () => window.tauriAPI.cancelFileOperation('duplicate-scan'),
     generateOperationId,
     addOperation,
     updateOperation,
@@ -1187,10 +1202,6 @@ export function wireControllers(deps: WiringDeps) {
   renderShortcutsModal = shortcutsUi.renderShortcutsModal;
 
   function showShortcutsModal() {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-
     const shortcutsModal = document.getElementById('shortcuts-modal');
     if (shortcutsModal) {
       shortcutsModal.style.display = 'flex';

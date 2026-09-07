@@ -35,6 +35,8 @@ export function createRecentFilesController(deps: RecentFilesDeps) {
     currentSettings.recentFiles.forEach((filePath) => {
       const recentItem = document.createElement('div');
       recentItem.className = 'nav-item recent-item';
+      recentItem.setAttribute('role', 'button');
+      recentItem.tabIndex = 0;
       const pathParts = filePath.split(/[/\\]/);
       const name = pathParts[pathParts.length - 1] || filePath;
       const icon = getFileIcon(name);
@@ -45,8 +47,15 @@ export function createRecentFilesController(deps: RecentFilesDeps) {
       <span class="nav-label" title="${escapeHtml(filePath)}">${escapeHtml(name)}</span>
     `;
 
-      recentItem.addEventListener('click', () => {
+      const openRecent = () => {
         void deps.openPath(filePath, name, false);
+      };
+      recentItem.setAttribute('aria-label', `Open recent file: ${name}`);
+      recentItem.addEventListener('click', openRecent);
+      recentItem.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openRecent();
       });
 
       recentList.appendChild(recentItem);

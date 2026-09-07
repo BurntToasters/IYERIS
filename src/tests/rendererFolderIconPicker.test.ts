@@ -29,7 +29,7 @@ function setupDOM() {
   document.body.innerHTML = `
     <div id="folder-icon-modal" style="display:none">
       <span id="folder-icon-path"></span>
-      <div id="folder-icon-grid"></div>
+      <div id="folder-icon-grid" role="listbox" aria-label="Folder icon choices"></div>
     </div>
   `;
 }
@@ -56,6 +56,31 @@ describe('createFolderIconPickerController', () => {
       const grid = document.getElementById('folder-icon-grid')!;
       const options = grid.querySelectorAll('.folder-icon-option');
       expect(options.length).toBeGreaterThan(0);
+      expect(grid.getAttribute('role')).toBe('listbox');
+      expect(options[0]?.getAttribute('role')).toBe('option');
+      expect(options[0]?.getAttribute('aria-label')).toMatch(/^Folder icon:/u);
+    });
+
+    it('supports roving keyboard navigation across icon choices', () => {
+      const { deps } = createDeps();
+      const ctrl = createFolderIconPickerController(deps as any);
+
+      ctrl.showFolderIconPicker('/home/user/Documents');
+
+      const options = Array.from(
+        document.querySelectorAll<HTMLButtonElement>('.folder-icon-option')
+      );
+      expect(options[0]?.tabIndex).toBe(0);
+      options[0]?.focus();
+      options[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+      expect(document.activeElement).toBe(options[1]);
+      expect(options[0]?.tabIndex).toBe(-1);
+      expect(options[1]?.tabIndex).toBe(0);
+
+      options[1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+      expect(document.activeElement).toBe(options.at(-1));
+      options.at(-1)?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      expect(document.activeElement).toBe(options[0]);
     });
 
     it('extracts the last segment of a unix path for the path display', () => {

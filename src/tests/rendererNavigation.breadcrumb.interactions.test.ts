@@ -14,6 +14,7 @@ const mockSetHtml = vi.hoisted(() =>
 
 vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
+  ignoreError: () => {},
 }));
 
 vi.mock('../rendererDom.js', () => ({
@@ -60,6 +61,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     homeViewPath: 'home-view',
     navigateTo: vi.fn(),
     createDirectoryOperationId: vi.fn(() => 'op-1'),
+    cancelDirectoryContents: vi.fn().mockResolvedValue({ success: true }),
     nameCollator: new Intl.Collator(),
     getFolderIcon: vi.fn(() => '📁'),
     getDragOperation: vi.fn(() => 'copy' as const),
@@ -207,7 +209,7 @@ describe('NavigationController — extended3', () => {
       }
     });
 
-    it('Escape key on address input restores breadcrumb mode and blurs', () => {
+    it('Escape closes history first, then restores breadcrumb mode and blurs', () => {
       const deps = createDeps();
       const ctrl = createNavigationController(deps as any);
       ctrl.updateBreadcrumb('/workspace');
@@ -216,6 +218,10 @@ describe('NavigationController — extended3', () => {
       ctrl.toggleBreadcrumbMode();
       const input = document.getElementById('address-input') as HTMLInputElement;
       const blurSpy = vi.spyOn(input, 'blur');
+
+      dispatchKeydown(input, 'Escape');
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+      expect(blurSpy).not.toHaveBeenCalled();
 
       dispatchKeydown(input, 'Escape');
 
@@ -327,6 +333,94 @@ describe('NavigationController — extended3', () => {
       dispatchKeydown(menu, 'ArrowUp');
       dispatchKeydown(menu, 'Home');
       dispatchKeydown(menu, 'End');
+    });
+
+    it('cancels an in-flight listing when the menu closes', async () => {
+      let resolveListing!: (value: { success: boolean; contents: never[] }) => void;
+      const listing = new Promise<{ success: boolean; contents: never[] }>((resolve) => {
+        resolveListing = resolve;
+      });
+      window.tauriAPI.getDirectoryContents = vi.fn(() => listing) as any;
+      const deps = createDeps();
+      const ctrl = createNavigationController(deps as any);
+      ctrl.updateBreadcrumb('/workspace');
+      const caret = document.querySelector('.breadcrumb-caret') as HTMLButtonElement;
+
+      const opening = ctrl.showBreadcrumbMenu('/workspace', caret);
+      await flushPromises();
+      ctrl.hideBreadcrumbMenu();
+
+      expect(deps.cancelDirectoryContents).toHaveBeenCalledWith('op-1');
+      resolveListing({ success: true, contents: [] });
+      await opening;
+      expect(document.getElementById('breadcrumb-menu')!.style.display).toBe('none');
+    });
+
+    it('does not let a closed same-path request overwrite a reopened menu', async () => {
+      let resolveFirst!: (value: { success: boolean; contents: never[] }) => void;
+      let resolveSecond!: (value: { success: boolean; contents: never[] }) => void;
+      window.tauriAPI.getDirectoryContents = vi
+        .fn()
+        .mockImplementationOnce(
+          () =>
+            new Promise<{ success: boolean; contents: never[] }>((resolve) => {
+              resolveFirst = resolve;
+            })
+        )
+        .mockImplementationOnce(
+          () =>
+            new Promise<{ success: boolean; contents: never[] }>((resolve) => {
+              resolveSecond = resolve;
+            })
+        ) as any;
+      const deps = createDeps();
+      deps.createDirectoryOperationId.mockReturnValueOnce('op-old').mockReturnValueOnce('op-new');
+      const ctrl = createNavigationController(deps as any);
+      ctrl.updateBreadcrumb('/workspace');
+      const caret = document.querySelector('.breadcrumb-caret') as HTMLButtonElement;
+
+      const first = ctrl.showBreadcrumbMenu('/workspace', caret);
+      await flushPromises();
+      ctrl.hideBreadcrumbMenu();
+      const second = ctrl.showBreadcrumbMenu('/workspace', caret);
+      await flushPromises();
+
+      resolveFirst({ success: false, contents: [] });
+      await first;
+      expect(document.getElementById('breadcrumb-menu')!.textContent).toContain('Loading');
+
+      resolveSecond({ success: true, contents: [] });
+      await second;
+      expect(document.getElementById('breadcrumb-menu')!.textContent).toContain('No subfolders');
+    });
+
+    it('cancels folder listing and resets old anchor when collapsed menu replaces it', async () => {
+      let resolveListing!: (value: { success: boolean; contents: never[] }) => void;
+      window.tauriAPI.getDirectoryContents = vi.fn(
+        () =>
+          new Promise<{ success: boolean; contents: never[] }>((resolve) => {
+            resolveListing = resolve;
+          })
+      ) as any;
+      const deps = createDeps();
+      const ctrl = createNavigationController(deps as any);
+      const container = document.getElementById('breadcrumb-container')!;
+      Object.defineProperty(container, 'clientWidth', { configurable: true, value: 100 });
+      Object.defineProperty(container, 'scrollWidth', { configurable: true, value: 500 });
+      ctrl.updateBreadcrumb('/one/two/three/four');
+      ctrl.setupBreadcrumbListeners();
+      const caret = container.querySelector('.breadcrumb-caret') as HTMLButtonElement;
+      const opening = ctrl.showBreadcrumbMenu('/one', caret);
+      await flushPromises();
+
+      const overflow = container.querySelector('.breadcrumb-overflow') as HTMLButtonElement;
+      overflow.click();
+
+      expect(deps.cancelDirectoryContents).toHaveBeenCalledWith('op-1');
+      expect(caret.getAttribute('aria-expanded')).toBe('false');
+      expect(overflow.getAttribute('aria-expanded')).toBe('true');
+      resolveListing({ success: true, contents: [] });
+      await opening;
     });
   });
 
@@ -723,6 +817,9 @@ describe('NavigationController — extended3', () => {
       expect(items.length).toBe(2);
       expect((items[0] as HTMLElement).dataset.path).toBe('/home/user');
       expect((items[1] as HTMLElement).dataset.path).toBe('/tmp');
+      expect(items[0]!.getAttribute('role')).toBe('option');
+      expect(items[0]!.getAttribute('aria-selected')).toBe('false');
+      expect(items[0]!.id).toBe('directory-history-option-0');
     });
 
     it('showDirectoryHistoryDropdown renders clear button with data-action', () => {
@@ -735,6 +832,64 @@ describe('NavigationController — extended3', () => {
       const clearBtn = dropdown.querySelector('.history-clear') as HTMLElement;
       expect(clearBtn).not.toBeNull();
       expect(clearBtn.dataset.action).toBe('clear-directory');
+    });
+
+    it('supports keyboard wrapping, Home/End, Enter, and ARIA state', () => {
+      const deps = createDeps();
+      deps.settings.directoryHistory = ['/home/user', '/tmp'];
+      const ctrl = createNavigationController(deps as any);
+      ctrl.updateBreadcrumb('/workspace');
+      ctrl.setupBreadcrumbListeners();
+      ctrl.toggleBreadcrumbMode();
+
+      const input = document.getElementById('address-input') as HTMLInputElement;
+      const options = Array.from(
+        document.querySelectorAll<HTMLElement>('#directory-history-dropdown [role="option"]')
+      );
+      options.forEach((option) => {
+        Object.defineProperty(option, 'scrollIntoView', { value: vi.fn(), configurable: true });
+      });
+
+      dispatchKeydown(input, 'End');
+      expect(input.getAttribute('aria-activedescendant')).toBe(options.at(-1)?.id);
+      dispatchKeydown(input, 'ArrowDown');
+      expect(input.getAttribute('aria-activedescendant')).toBe(options[0]?.id);
+      expect(options[0]!.getAttribute('aria-selected')).toBe('true');
+      dispatchKeydown(input, 'Enter');
+      expect(deps.navigateTo).toHaveBeenCalledWith('/home/user');
+      expect(input.getAttribute('aria-expanded')).toBe('false');
+    });
+
+    it('uses same direct action for pointer navigation', () => {
+      const deps = createDeps();
+      deps.settings.directoryHistory = ['/pointer'];
+      const ctrl = createNavigationController(deps as any);
+      ctrl.updateBreadcrumb('/workspace');
+      ctrl.setupBreadcrumbListeners();
+      ctrl.showDirectoryHistoryDropdown();
+
+      document.querySelector<HTMLElement>('.history-item')!.click();
+
+      expect(deps.navigateTo).toHaveBeenCalledWith('/pointer');
+      expect(document.getElementById('directory-history-dropdown')!.style.display).toBe('none');
+    });
+
+    it('reports navigation failures and still restores visible breadcrumb focus', async () => {
+      const deps = createDeps();
+      deps.settings.directoryHistory = ['/missing'];
+      deps.navigateTo.mockRejectedValue(new Error('Folder is unavailable'));
+      const ctrl = createNavigationController(deps as any);
+      ctrl.updateBreadcrumb('/workspace');
+      ctrl.setupBreadcrumbListeners();
+      ctrl.showDirectoryHistoryDropdown();
+
+      document.querySelector<HTMLElement>('.history-item')!.click();
+      await flushPromises();
+      await flushPromises();
+
+      const breadcrumb = document.querySelector('.breadcrumb-label');
+      expect(deps.showToast).toHaveBeenCalledWith('Folder is unavailable', 'Navigation', 'error');
+      expect(document.activeElement).toBe(breadcrumb);
     });
   });
 

@@ -290,6 +290,7 @@ export interface IpcSuccess {
 }
 
 export interface IpcError {
+  conflictResolutions?: Record<string, 'rename' | 'skip' | 'overwrite'>;
   success: false;
   error: string;
 }
@@ -415,6 +416,7 @@ export interface IndexEntry {
   isFile: boolean;
   size: number;
   modified: Date;
+  isHidden?: boolean;
 }
 
 export interface AdvancedCompressOptions {
@@ -466,8 +468,18 @@ export interface UndoBatchRenameAction {
   data: { renames: Array<{ oldPath: string; newPath: string }> };
 }
 
+export interface UndoCopyAction {
+  type: 'copy';
+  data: { entries: Array<{ sourcePath: string; destPath: string; fingerprint: string }> };
+}
+
 export type UndoAction =
-  UndoCreateAction | UndoRenameAction | UndoMoveAction | UndoTrashAction | UndoBatchRenameAction;
+  | UndoCopyAction
+  | UndoCreateAction
+  | UndoRenameAction
+  | UndoMoveAction
+  | UndoTrashAction
+  | UndoBatchRenameAction;
 
 export interface UpdateInfo {
   version: string;
@@ -619,18 +631,21 @@ export interface TauriAPI {
     dirPath: string,
     query: string,
     filters?: SearchFilters,
-    operationId?: string
+    operationId?: string,
+    includeHidden?: boolean
   ) => Promise<SearchResponse>;
   searchFilesWithContent: (
     dirPath: string,
     query: string,
     filters?: SearchFilters,
-    operationId?: string
+    operationId?: string,
+    includeHidden?: boolean
   ) => Promise<ContentSearchResponse>;
   searchFilesWithContentGlobal: (
     query: string,
     filters?: SearchFilters,
-    operationId?: string
+    operationId?: string,
+    includeHidden?: boolean
   ) => Promise<ContentSearchResponse>;
   getDiskSpace: (drivePath: string) => Promise<DiskSpaceResponse>;
   restartAsAdmin: () => Promise<IpcResult>;
@@ -639,8 +654,18 @@ export interface TauriAPI {
   elevatedMove: (sourcePath: string, destPath: string) => Promise<IpcResult>;
   elevatedDelete: (itemPath: string) => Promise<IpcResult>;
   elevatedRename: (itemPath: string, newName: string) => Promise<IpcResult>;
-  elevatedCopyBatch: (sourcePaths: string[], destPath: string) => Promise<IpcResult>;
-  elevatedMoveBatch: (sourcePaths: string[], destPath: string) => Promise<IpcResult>;
+  elevatedCopyBatch: (
+    sourcePaths: string[],
+    destPath: string,
+    conflictBehavior?: 'ask' | 'rename' | 'skip' | 'overwrite',
+    conflictResolutions?: Record<string, 'rename' | 'skip' | 'overwrite'>
+  ) => Promise<IpcResult>;
+  elevatedMoveBatch: (
+    sourcePaths: string[],
+    destPath: string,
+    conflictBehavior?: 'ask' | 'rename' | 'skip' | 'overwrite',
+    conflictResolutions?: Record<string, 'rename' | 'skip' | 'overwrite'>
+  ) => Promise<IpcResult>;
   elevatedDeleteBatch: (itemPaths: string[]) => Promise<IpcResult>;
   resolveShortcut: (
     shortcutPath: string

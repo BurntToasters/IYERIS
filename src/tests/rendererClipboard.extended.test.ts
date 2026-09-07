@@ -281,7 +281,11 @@ describe('createClipboardController — extended', () => {
           operation: 'copy',
           paths: ['/sys/file.txt'],
         }),
-        copyItems: vi.fn().mockResolvedValue({ success: false, error: 'permission denied' }),
+        copyItems: vi.fn().mockResolvedValue({
+          success: false,
+          error: 'permission denied',
+          conflictResolutions: { 'file.txt': 'rename' },
+        }),
         elevatedCopyBatch: vi.fn().mockResolvedValue({ success: false, error: '' }),
       });
       const deps = createDeps();
@@ -289,7 +293,9 @@ describe('createClipboardController — extended', () => {
 
       await ctrl.pasteFromClipboard();
 
-      expect(tauriApi.elevatedCopyBatch).toHaveBeenCalledWith(['/sys/file.txt'], '/dest');
+      expect(tauriApi.elevatedCopyBatch).toHaveBeenCalledWith(['/sys/file.txt'], '/dest', 'ask', {
+        'file.txt': 'rename',
+      });
       expect(deps.showToast).toHaveBeenCalledWith('Elevated copy failed', 'Error', 'error', [
         expect.objectContaining({ label: 'Retry' }),
       ]);
@@ -363,7 +369,12 @@ describe('createClipboardController — extended', () => {
 
       await ctrl.pasteFromClipboard();
 
-      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(['/a.txt'], '/dest');
+      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(
+        ['/a.txt'],
+        '/dest',
+        'ask',
+        undefined
+      );
       expect(deps.showToast).toHaveBeenCalledWith('Elevated operation failed', 'Error', 'error');
     });
 
@@ -382,7 +393,12 @@ describe('createClipboardController — extended', () => {
       await ctrl.pasteFromClipboard();
 
       expect(deps.showConfirm).toHaveBeenCalled();
-      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(['/sys/file.txt'], '/dest');
+      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(
+        ['/sys/file.txt'],
+        '/dest',
+        'ask',
+        undefined
+      );
       expect(deps.showToast).toHaveBeenCalledWith('1 item moved (elevated)', 'Success', 'success');
     });
   });
@@ -541,7 +557,12 @@ describe('createClipboardController — extended', () => {
       await ctrl.pasteIntoFolder('/target');
 
       expect(deps.showConfirm).toHaveBeenCalled();
-      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(['/sys/file.txt'], '/target');
+      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(
+        ['/sys/file.txt'],
+        '/target',
+        'ask',
+        undefined
+      );
       expect(deps.showToast).toHaveBeenCalledWith('1 item moved (elevated)', 'Success', 'success');
     });
 
@@ -600,7 +621,12 @@ describe('createClipboardController — extended', () => {
 
       await ctrl.pasteIntoFolder('/target');
 
-      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(['/a.txt'], '/target');
+      expect(tauriApi.elevatedMoveBatch).toHaveBeenCalledWith(
+        ['/a.txt'],
+        '/target',
+        'ask',
+        undefined
+      );
       expect(deps.showToast).toHaveBeenCalledWith('Elevated operation failed', 'Error', 'error');
     });
 
@@ -652,7 +678,12 @@ describe('createClipboardController — extended', () => {
       await ctrl.duplicateItems(['/a.txt']);
 
       expect(deps.showConfirm).toHaveBeenCalled();
-      expect(tauriApi.elevatedCopyBatch).toHaveBeenCalledWith(['/a.txt'], '/dest');
+      expect(tauriApi.elevatedCopyBatch).toHaveBeenCalledWith(
+        ['/a.txt'],
+        '/dest',
+        'rename',
+        undefined
+      );
       expect(deps.showToast).toHaveBeenCalledWith(
         '1 item duplicated (elevated)',
         'Success',
@@ -695,7 +726,12 @@ describe('createClipboardController — extended', () => {
 
       await ctrl.duplicateItems(['/a.txt']);
 
-      expect(tauriApi.elevatedCopyBatch).toHaveBeenCalledWith(['/a.txt'], '/dest');
+      expect(tauriApi.elevatedCopyBatch).toHaveBeenCalledWith(
+        ['/a.txt'],
+        '/dest',
+        'rename',
+        undefined
+      );
       expect(deps.showToast).toHaveBeenCalledWith('Elevated duplicate failed', 'Error', 'error');
     });
   });

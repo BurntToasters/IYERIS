@@ -24,10 +24,6 @@ interface SettingsModalDeps {
 
 export function createSettingsModalController(deps: SettingsModalDeps) {
   async function showSettingsModal() {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-
     const settingsModal = document.getElementById('settings-modal');
     deps.setSuppressSettingsTracking(true);
 

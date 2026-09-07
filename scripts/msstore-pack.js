@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 
@@ -37,9 +37,11 @@ function toFourPartVersion(semver) {
   return parts.slice(0, 4).join('.');
 }
 
-function run(cmd, opts = {}) {
-  console.log(`> ${cmd}`);
-  execSync(cmd, { stdio: 'inherit', cwd: ROOT, ...opts });
+function run(command, args, opts = {}) {
+  console.log(`> ${command} ${args.map((arg) => JSON.stringify(arg)).join(' ')}`);
+  const executable =
+    process.platform === 'win32' && command === 'makeappx' ? 'makeappx.exe' : command;
+  execFileSync(executable, args, { stdio: 'inherit', cwd: ROOT, ...opts });
 }
 
 function ensureDir(dir) {
@@ -138,7 +140,7 @@ for (const { arch, msixArch, rustTarget } of targets) {
   const msixOut = path.join(MSSTORE_DIR, msixName);
   if (fs.existsSync(msixOut)) fs.unlinkSync(msixOut);
 
-  run(`makeappx pack /d "${packDir}" /p "${msixOut}" /nv`);
+  run('makeappx', ['pack', '/d', packDir, '/p', msixOut, '/nv']);
 
   fs.rmSync(packDir, { recursive: true, force: true });
 
@@ -164,7 +166,7 @@ if (msixPaths.length > 1) {
     fs.copyFileSync(msixPath, path.join(bundleDir, path.basename(msixPath)));
   }
 
-  run(`makeappx bundle /d "${bundleDir}" /p "${bundleOut}"`);
+  run('makeappx', ['bundle', '/d', bundleDir, '/p', bundleOut]);
   fs.rmSync(bundleDir, { recursive: true, force: true });
 
   if (fs.existsSync(bundleOut)) {

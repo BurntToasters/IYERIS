@@ -1,3 +1,4 @@
+import type { FileItem } from '../types';
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -45,6 +46,30 @@ describe('rendererTypeahead', () => {
   });
 
   describe('handleInput', () => {
+    it('finds a matching filename beyond mounted rows', () => {
+      const files = Array.from(
+        { length: 15000 },
+        (_, i) =>
+          ({ path: `/files/${i}`, name: i === 14999 ? 'zebra.txt' : `file${i}.txt` }) as FileItem
+      );
+      const selected = new Set<string>();
+      const mount = vi.fn((path: string) => {
+        const item = createFileItem('zebra.txt', path);
+        document.body.appendChild(item);
+        return item;
+      });
+      const controller = createTypeaheadController({
+        ...makeDeps(),
+        getOrderedFiles: () => files,
+        ensureItemRendered: mount,
+        getSelectedItems: () => selected,
+      });
+      controller.handleInput('z');
+      expect(mount).toHaveBeenCalledWith('/files/14999');
+      expect([...selected]).toEqual(['/files/14999']);
+      controller.reset();
+    });
+
     it('shows indicator with typed character', () => {
       const deps = makeDeps();
       const ctrl = createTypeaheadController(deps);

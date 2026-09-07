@@ -32,6 +32,10 @@ export default defineConfig({
         // Wires Tauri window focus + DOM visibility; the native focus path cannot
         // be driven from jsdom. Partially exercised via rendererBootstrap.test.ts.
         'src/rendererActivityState.ts',
+        // pdf.js itself and canvas painting are browser-only. The module's DOM,
+        // timeout, pixel-budget, cancellation, and lifecycle contracts are
+        // nevertheless covered directly by rendererPdfViewer.test.ts using a
+        // dependency-injected pdf.js facade.
         'src/rendererPdfViewer.ts',
         // Roughly half of this module is generateVideoThumbnail /
         // generateAudioWaveform, which need real video decoding, AudioContext and

@@ -122,12 +122,19 @@ export function createColumnViewController(deps: ColumnViewDeps) {
 
       if (isWindows) {
         // Normalize forward-slashes so Windows paths like C:/foo work too.
-        const parts = deps.getCurrentPath().replace(/\//g, '\\').split('\\').filter(Boolean);
-        for (let i = 0; i < parts.length; i++) {
-          if (i === 0) {
-            columnPaths.push(parts[0] + '\\');
-          } else {
-            columnPaths.push(parts.slice(0, i + 1).join('\\'));
+        const normalized = deps.getCurrentPath().replace(/\//g, '\\');
+        const parts = normalized.split('\\').filter(Boolean);
+        if (normalized.startsWith('\\\\')) {
+          if (parts.length >= 2) {
+            const root = `\\\\${parts[0]}\\${parts[1]}`;
+            columnPaths.push(root + '\\');
+            for (let i = 2; i < parts.length; i++) {
+              columnPaths.push(root + '\\' + parts.slice(2, i + 1).join('\\'));
+            }
+          }
+        } else {
+          for (let i = 0; i < parts.length; i++) {
+            columnPaths.push(i === 0 ? parts[0] + '\\' : parts.slice(0, i + 1).join('\\'));
           }
         }
       } else {
@@ -458,7 +465,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       : deps.getFileIcon(fileItem.name);
 
     const symlinkBadge = fileItem.isSymlink
-      ? '<span class="symlink-badge" aria-label="Symbolic link">⤳</span>'
+      ? '<span class="symlink-badge" role="img" aria-label="Symbolic link">⤳</span>'
       : '';
 
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe

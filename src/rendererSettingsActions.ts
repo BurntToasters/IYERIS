@@ -123,6 +123,7 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
         if (!file) return;
 
         try {
+          if (file.size > 8 * 1024 * 1024) throw new Error('Settings file exceeds 8 MiB limit');
           const text = await file.text();
           const parsed: unknown = JSON.parse(text);
           if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -138,7 +139,6 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
           }
 
           const nextSettings = { ...deps.getCurrentSettings(), ...validatedSettings };
-          deps.setCurrentSettings(nextSettings);
           const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
           if (!saveResult.success) {
             deps.showToast(
@@ -149,6 +149,7 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
             return;
           }
 
+          deps.setCurrentSettings(nextSettings);
           await deps.hideSettingsModal();
           deps.showSettingsModal();
           deps.showToast(

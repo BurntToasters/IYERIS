@@ -1,6 +1,6 @@
 [package]
 name = "iyeris"
-version = "3.0.4"
+version = "3.0.5-beta.1"
 description = "A beautiful cross-platform file explorer."
 authors = ["BurntToasters <code@rosie.run>"]
 edition = "2021"
@@ -12,10 +12,8 @@ mas = []
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
-[dev-dependencies]
-tempfile = "3"
-
 [dependencies]
+tempfile = "3"
 tauri = { version = "2", features = ["tray-icon", "protocol-asset", "image-png"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -64,9 +62,11 @@ core-foundation = "0.9"
 winreg = "0.55"
 windows = { version = "0.58", features = [
     "Win32_Foundation",
+    "Win32_Security",
     "Win32_Graphics_Gdi",
     "Win32_Storage_FileSystem",
     "Win32_System_Console",
+    "Win32_System_Threading",
     "Win32_System_Com",
     "Win32_System_Com_StructuredStorage",
     "Win32_System_DataExchange",

@@ -36,6 +36,45 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
         hideFolderIconPicker();
       }
     });
+    // Treat the icon choices as a roving-focus listbox. Native buttons keep
+    // Enter/Space activation, while arrow/Home/End navigation makes the grid
+    // usable without tabbing through every icon.
+    grid.addEventListener('keydown', (e) => {
+      if (
+        e.key !== 'ArrowDown' &&
+        e.key !== 'ArrowUp' &&
+        e.key !== 'ArrowLeft' &&
+        e.key !== 'ArrowRight' &&
+        e.key !== 'Home' &&
+        e.key !== 'End'
+      ) {
+        return;
+      }
+      const options = Array.from(grid.querySelectorAll<HTMLButtonElement>('.folder-icon-option'));
+      if (options.length === 0) return;
+      e.preventDefault();
+      const activeIndex = options.indexOf(document.activeElement as HTMLButtonElement);
+      const currentIndex =
+        activeIndex >= 0
+          ? activeIndex
+          : Math.max(
+              0,
+              options.findIndex((option) => option.getAttribute('aria-selected') === 'true')
+            );
+      const nextIndex =
+        e.key === 'Home'
+          ? 0
+          : e.key === 'End'
+            ? options.length - 1
+            : (currentIndex +
+                (e.key === 'ArrowUp' || e.key === 'ArrowLeft' ? -1 : 1) +
+                options.length) %
+              options.length;
+      options.forEach((option, index) => {
+        option.tabIndex = index === nextIndex ? 0 : -1;
+      });
+      options[nextIndex]?.focus({ preventScroll: true });
+    });
   }
 
   function showFolderIconPicker(folderPath: string) {
@@ -57,12 +96,13 @@ export function createFolderIconPickerController(deps: FolderIconPickerDeps) {
     const currentIcon =
       normalizedIcon && isOneOf(normalizedIcon, FOLDER_ICON_OPTIONS) ? normalizedIcon : undefined;
 
-    grid.innerHTML = FOLDER_ICON_OPTIONS.map((iconName) => {
+    grid.innerHTML = FOLDER_ICON_OPTIONS.map((iconName, index) => {
       const isSelected = currentIcon === iconName;
+      const isTabStop = isSelected || (!currentIcon && index === 0);
       return `
-      <div class="folder-icon-option${isSelected ? ' selected' : ''}" data-icon="${iconName}">
+      <button type="button" class="folder-icon-option${isSelected ? ' selected' : ''}" data-icon="${iconName}" role="option" aria-label="Folder icon: ${iconName}" aria-selected="${isSelected}" tabindex="${isTabStop ? '0' : '-1'}">
         ${deps.twemojiImg(iconName, 'twemoji')}
-      </div>
+      </button>
     `;
     }).join('');
 

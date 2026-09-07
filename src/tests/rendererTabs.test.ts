@@ -369,7 +369,7 @@ describe('createTabsController', () => {
       expect(deps.navigateTo).not.toHaveBeenCalled();
     });
 
-    it('restores cached files instead of navigating', async () => {
+    it('reloads inactive tabs even when a cached listing exists', async () => {
       const deps = createMockDeps();
       deps._settings.tabState = {
         tabs: [
@@ -399,12 +399,45 @@ describe('createTabsController', () => {
       const tab2 = tabs.find((t) => t.id === 'tab-2')!;
       tab2.cachedFiles = [{ name: 'cached.txt' } as any];
 
-      ctrl.switchToTab('tab-2');
-      await vi.waitFor(() => {
-        expect(deps.renderFiles).toHaveBeenCalled();
-      });
+      await ctrl.switchToTab('tab-2');
+      expect(deps.navigateTo).toHaveBeenCalledWith('/two', true);
+      expect(deps.renderFiles).not.toHaveBeenCalled();
+    });
 
-      expect(deps.navigateTo).not.toHaveBeenCalled();
+    it('restores only existing selection after the fresh listing clears selection', async () => {
+      const deps = createMockDeps();
+      deps._settings.tabState = {
+        tabs: [
+          {
+            id: 'a',
+            path: '/a',
+            history: ['/a'],
+            historyIndex: 0,
+            selectedItems: [],
+            scrollPosition: 0,
+          },
+          {
+            id: 'b',
+            path: '/b',
+            history: ['/b'],
+            historyIndex: 0,
+            selectedItems: ['/b/kept', '/b/deleted'],
+            scrollPosition: 120,
+          },
+        ],
+        activeTabId: 'a',
+      };
+      deps.navigateTo.mockImplementation(async () => {
+        deps.setSelectedItems(new Set());
+        deps.setAllFiles([{ path: '/b/kept' }, { path: '/b/new' }]);
+      });
+      const restored = vi.fn();
+      const controller = createTabsController({ ...deps, onSelectionRestored: restored });
+      controller.initializeTabs();
+      controller.switchToTab('b');
+      await vi.waitFor(() => expect(restored).toHaveBeenCalledTimes(1));
+      expect([...deps.getSelectedItems()]).toEqual(['/b/kept']);
+      expect(deps.getFileViewScrollTop()).toBe(120);
     });
 
     it('closes search and resets typeahead when search mode is active', () => {
@@ -477,7 +510,7 @@ describe('createTabsController', () => {
       await vi.waitFor(() => {
         expect(deps.navigateTo).toHaveBeenCalledWith('/missing', true);
       });
-      expect(cachedTab.cachedFiles).toBeUndefined();
+      expect(deps.renderFiles).not.toHaveBeenCalled();
     });
 
     it('falls back to navigate when cached tab validation throws', async () => {
@@ -515,10 +548,10 @@ describe('createTabsController', () => {
       await vi.waitFor(() => {
         expect(deps.navigateTo).toHaveBeenCalledWith('/broken', true);
       });
-      expect(cachedTab.cachedFiles).toBeUndefined();
+      expect(deps.renderFiles).not.toHaveBeenCalled();
     });
 
-    it('restores home tab from cache without watching directory', async () => {
+    it('refreshes home tabs through navigation', async () => {
       const deps = createMockDeps();
       deps._settings.tabState = {
         tabs: [
@@ -551,13 +584,13 @@ describe('createTabsController', () => {
       ctrl.switchToTab('tab-home');
 
       await vi.waitFor(() => {
-        expect(deps.setHomeViewActive).toHaveBeenCalledWith(true);
+        expect(deps.navigateTo).toHaveBeenCalledWith('~~HOME~~', true);
       });
       expect(deps.watchDirectory).not.toHaveBeenCalled();
       expect(deps.renderFiles).not.toHaveBeenCalled();
     });
 
-    it('restores cached tab in column mode and updates git info', async () => {
+    it('refreshes column tabs through navigation', async () => {
       const deps = createMockDeps() as any;
       deps.getViewMode = () => 'column';
       deps.fetchGitStatusAsync = vi.fn();
@@ -594,10 +627,9 @@ describe('createTabsController', () => {
       ctrl.switchToTab('tab-col');
 
       await vi.waitFor(() => {
-        expect(deps.renderColumnView).toHaveBeenCalled();
+        expect(deps.navigateTo).toHaveBeenCalledWith('/repo', true);
       });
-      expect(deps.fetchGitStatusAsync).toHaveBeenCalledWith('/repo');
-      expect(deps.updateGitBranch).toHaveBeenCalledWith('/repo');
+      expect(deps.renderFiles).not.toHaveBeenCalled();
     });
   });
 

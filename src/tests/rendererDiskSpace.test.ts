@@ -45,16 +45,16 @@ describe('createDiskSpaceController', () => {
     });
 
     it('getCachedDiskSpace returns null for uncached path', () => {
-      expect(ctrl.getCachedDiskSpace('/')).toBeNull();
+      expect(ctrl.getCachedDiskSpace('/home/user')).toBeNull();
     });
 
     it('clearCache resets state', () => {
       ctrl.clearCache();
-      expect(ctrl.getCachedDiskSpace('/')).toBeNull();
+      expect(ctrl.getCachedDiskSpace('/home/user')).toBeNull();
     });
   });
 
-  describe('getUnixDrivePath logic', () => {
+  describe('native filesystem lookup for Unix paths', () => {
     it('resolves / for regular unix paths', async () => {
       vi.useFakeTimers();
       const getDiskSpace = vi.fn().mockResolvedValue({ success: true, total: 1e12, free: 5e11 });
@@ -74,7 +74,7 @@ describe('createDiskSpaceController', () => {
 
       await vi.advanceTimersByTimeAsync(400);
 
-      expect(getDiskSpace).toHaveBeenCalledWith('/');
+      expect(getDiskSpace).toHaveBeenCalledWith('/home/user/Documents');
       vi.useRealTimers();
       vi.unstubAllGlobals();
     });
@@ -97,7 +97,7 @@ describe('createDiskSpaceController', () => {
       await ctrl.updateDiskSpace();
       await vi.advanceTimersByTimeAsync(400);
 
-      expect(getDiskSpace).toHaveBeenCalledWith('/Volumes/MyDrive');
+      expect(getDiskSpace).toHaveBeenCalledWith('/Volumes/MyDrive/folder/subfolder');
       vi.useRealTimers();
       vi.unstubAllGlobals();
     });
@@ -120,7 +120,7 @@ describe('createDiskSpaceController', () => {
       await ctrl.updateDiskSpace();
       await vi.advanceTimersByTimeAsync(400);
 
-      expect(getDiskSpace).toHaveBeenCalledWith('/media/user');
+      expect(getDiskSpace).toHaveBeenCalledWith('/media/user/USB/Documents');
       vi.useRealTimers();
       vi.unstubAllGlobals();
     });
@@ -143,7 +143,7 @@ describe('createDiskSpaceController', () => {
       await ctrl.updateDiskSpace();
       await vi.advanceTimersByTimeAsync(400);
 
-      expect(getDiskSpace).toHaveBeenCalledWith('/mnt/data');
+      expect(getDiskSpace).toHaveBeenCalledWith('/mnt/data/files');
       vi.useRealTimers();
       vi.unstubAllGlobals();
     });
@@ -166,7 +166,7 @@ describe('createDiskSpaceController', () => {
       await ctrl.updateDiskSpace();
       await vi.advanceTimersByTimeAsync(400);
 
-      expect(getDiskSpace).toHaveBeenCalledWith('/run/media/user/USB');
+      expect(getDiskSpace).toHaveBeenCalledWith('/run/media/user/USB/stuff');
       vi.useRealTimers();
       vi.unstubAllGlobals();
     });
@@ -282,7 +282,7 @@ describe('createDiskSpaceController', () => {
       await vi.advanceTimersByTimeAsync(400);
       expect(getDiskSpace).toHaveBeenCalledTimes(1);
 
-      const cached = ctrl.getCachedDiskSpace('/');
+      const cached = ctrl.getCachedDiskSpace('/home/user');
       expect(cached).toEqual({ total: 1e12, free: 5e11 });
 
       vi.useRealTimers();
@@ -331,10 +331,10 @@ describe('createDiskSpaceController', () => {
 
       await ctrl.updateDiskSpace();
       await vi.advanceTimersByTimeAsync(400);
-      expect(ctrl.getCachedDiskSpace('/')).toEqual({ total: 1e12, free: 5e11 });
+      expect(ctrl.getCachedDiskSpace('/home/user')).toEqual({ total: 1e12, free: 5e11 });
 
       vi.setSystemTime(new Date('2026-01-01T00:01:01Z'));
-      expect(ctrl.getCachedDiskSpace('/')).toBeNull();
+      expect(ctrl.getCachedDiskSpace('/home/user')).toBeNull();
     });
 
     it('evicts oldest cache entry when cache reaches max size', async () => {
@@ -382,7 +382,7 @@ describe('createDiskSpaceController', () => {
       await vi.advanceTimersByTimeAsync(400);
 
       ctrl.clearCache();
-      expect(ctrl.getCachedDiskSpace('/')).toBeNull();
+      expect(ctrl.getCachedDiskSpace('/home/user')).toBeNull();
 
       vi.useRealTimers();
       vi.unstubAllGlobals();
@@ -505,7 +505,7 @@ describe('createDiskSpaceController', () => {
       await vi.advanceTimersByTimeAsync(400);
 
       expect(getDiskSpace).toHaveBeenCalledTimes(1);
-      expect(getDiskSpace).toHaveBeenCalledWith('/mnt/data');
+      expect(getDiskSpace).toHaveBeenCalledWith('/mnt/data/files');
     });
 
     it('ignores stale async result when current drive has changed', async () => {

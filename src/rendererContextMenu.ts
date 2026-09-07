@@ -51,6 +51,8 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   let contextMenuData: FileItem | null = null;
   let contextMenuFocusedIndex = -1;
   let emptySpaceMenuFocusedIndex = -1;
+  let contextMenuReturnFocus: HTMLElement | null = null;
+  let emptySpaceMenuReturnFocus: HTMLElement | null = null;
 
   let elContextMenu: HTMLElement | null = null;
   let elEmptySpaceContextMenu: HTMLElement | null = null;
@@ -348,8 +350,11 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     const contextMenu = elContextMenu;
 
     if (!contextMenu) return;
-
     hideEmptySpaceContextMenu();
+    if (!contextMenu.contains(document.activeElement)) {
+      contextMenuReturnFocus =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
 
     contextMenuData = item;
     contextMenuFocusedIndex = -1;
@@ -410,6 +415,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   function hideContextMenu() {
     ensureElements();
     if (elContextMenu) {
+      const restoreFocus = elContextMenu.contains(document.activeElement);
       elContextMenu.style.display = 'none';
       elContextMenu.querySelectorAll<HTMLElement>('.context-submenu').forEach((submenu) => {
         submenu.style.display = '';
@@ -422,14 +428,19 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       contextMenuData = null;
       clearContextMenuFocus(elContextMenu);
       contextMenuFocusedIndex = -1;
+      if (restoreFocus) contextMenuReturnFocus?.focus({ preventScroll: true });
+      contextMenuReturnFocus = null;
     }
   }
 
   function showEmptySpaceContextMenu(x: number, y: number) {
     ensureElements();
     if (!elEmptySpaceContextMenu) return;
-
     hideContextMenu();
+    if (!elEmptySpaceContextMenu.contains(document.activeElement)) {
+      emptySpaceMenuReturnFocus =
+        document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    }
 
     emptySpaceMenuFocusedIndex = -1;
     elEmptySpaceContextMenu.style.display = 'block';
@@ -445,9 +456,12 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   function hideEmptySpaceContextMenu() {
     ensureElements();
     if (elEmptySpaceContextMenu) {
+      const restoreFocus = elEmptySpaceContextMenu.contains(document.activeElement);
       elEmptySpaceContextMenu.style.display = 'none';
       clearContextMenuFocus(elEmptySpaceContextMenu);
       emptySpaceMenuFocusedIndex = -1;
+      if (restoreFocus) emptySpaceMenuReturnFocus?.focus({ preventScroll: true });
+      emptySpaceMenuReturnFocus = null;
     }
   }
 
@@ -843,6 +857,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         panel.replaceChildren();
         for (const app of result.apps) {
           const btn = document.createElement('button');
+          btn.type = 'button';
           btn.className = 'context-menu-item';
           btn.setAttribute('role', 'menuitem');
           btn.setAttribute('tabindex', '0');

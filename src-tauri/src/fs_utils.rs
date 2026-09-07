@@ -1,8 +1,12 @@
 use std::collections::HashSet;
 use std::fs;
+#[cfg(not(windows))]
+use std::io::{Read, Write};
 use std::path::Path;
 
 const MAX_COPY_DEPTH: usize = 128;
+#[cfg(not(windows))]
+const COPY_BUFFER_BYTES: usize = 1024 * 1024;
 
 #[cfg(unix)]
 fn inode_key(meta: &fs::Metadata) -> (u64, u64) {
@@ -10,6 +14,7 @@ fn inode_key(meta: &fs::Metadata) -> (u64, u64) {
     (meta.dev(), meta.ino())
 }
 
+#[cfg(test)]
 pub fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
     let mut visited = HashSet::new();
     copy_dir_recursive_inner(src, dest, &mut visited, 0)
@@ -27,6 +32,7 @@ pub fn copy_dir_recursive_cancellable(
     copy_dir_recursive_inner_cancellable(src, dest, &mut visited, 0, is_cancelled)
 }
 
+#[cfg(test)]
 fn copy_dir_recursive_inner(
     src: &Path,
     dest: &Path,
@@ -54,6 +60,13 @@ fn copy_dir_recursive_inner_cancellable(
         ));
     }
 
+    let source_meta = fs::symlink_metadata(src).map_err(|e| e.to_string())?;
+    if source_meta.file_type().is_symlink() || !source_meta.is_dir() {
+        return Err(format!(
+            "Refusing to recursively copy a non-directory source: {}",
+            src.display()
+        ));
+    }
     let canonical = src
         .canonicalize()
         .map_err(|e| format!("Failed to resolve path {}: {}", src.display(), e))?;
@@ -65,28 +78,41 @@ fn copy_dir_recursive_inner_cancellable(
 
     #[cfg(unix)]
     {
-        let meta = fs::symlink_metadata(src).map_err(|e| e.to_string())?;
-        let ik = inode_key(&meta);
+        let ik = inode_key(&source_meta);
         log::debug!("[fs_utils] Visiting inode {:?} at {}", ik, src.display());
     }
 
-    fs::create_dir_all(dest).map_err(|e| format!("Failed to create directory: {}", e))?;
+    let created_destination = match fs::symlink_metadata(dest) {
+        Ok(meta) if meta.file_type().is_symlink() || !meta.is_dir() => {
+            return Err(format!(
+                "Refusing to copy through unsafe destination: {}",
+                dest.display()
+            ));
+        }
+        Ok(_) => false,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let builder = fs::DirBuilder::new();
+            #[cfg(unix)]
+            let mut builder = builder;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::DirBuilderExt;
+                builder.mode(0o700);
+            }
+            builder
+                .create(dest)
+                .map_err(|e| format!("Failed to create directory: {}", e))?;
+            true
+        }
+        Err(error) => return Err(format!("Failed to inspect destination: {}", error)),
+    };
 
     for entry_result in fs::read_dir(src).map_err(|e| e.to_string())? {
         if is_cancelled() {
             return Err("Operation cancelled".to_string());
         }
-        let entry = match entry_result {
-            Ok(e) => e,
-            Err(err) => {
-                log::warn!(
-                    "[fs_utils] Skipping unreadable entry in {}: {}",
-                    src.display(),
-                    err
-                );
-                continue;
-            }
-        };
+        let entry =
+            entry_result.map_err(|error| format!("Cannot read {}: {}", src.display(), error))?;
         let entry_path = entry.path();
         let target = dest.join(entry.file_name());
         let meta = fs::symlink_metadata(&entry_path).map_err(|e| e.to_string())?;
@@ -102,10 +128,77 @@ fn copy_dir_recursive_inner_cancellable(
                 is_cancelled,
             )?;
         } else {
-            fs::copy(&entry_path, &target).map_err(|e| e.to_string())?;
+            copy_file_cancellable(&entry_path, &target, is_cancelled)?;
         }
     }
+    if created_destination {
+        crate::copy_metadata::preserve_directory(src, dest, is_cancelled)?;
+    }
     Ok(())
+}
+
+/// Copy one regular file in bounded chunks so cancellation remains responsive
+/// even for multi-gigabyte files. Destination is create-new to avoid following
+/// a symlink planted after the operation was planned.
+#[cfg(not(windows))]
+pub fn copy_file_cancellable(
+    src: &Path,
+    dest: &Path,
+    is_cancelled: &impl Fn() -> bool,
+) -> Result<(), String> {
+    if is_cancelled() {
+        return Err("Operation cancelled".to_string());
+    }
+    let mut input = crate::file_operations::open_regular_read(src)
+        .map_err(|e| format!("Failed to open source: {}", e))?;
+    let metadata = input.metadata().map_err(|e| e.to_string())?;
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut output = options
+        .open(dest)
+        .map_err(|e| format!("Failed to create destination: {}", e))?;
+    let mut buffer = vec![0u8; COPY_BUFFER_BYTES];
+    let result = (|| -> Result<(), String> {
+        let mut remaining = metadata.len();
+        loop {
+            if is_cancelled() {
+                return Err("Operation cancelled".to_string());
+            }
+            let limit = (remaining.saturating_add(1)).min(buffer.len() as u64) as usize;
+            let read = input
+                .read(&mut buffer[..limit])
+                .map_err(|e| format!("Failed to read source: {}", e))?;
+            if read as u64 > remaining || (read == 0 && remaining != 0) {
+                return Err("Source changed while copying".to_string());
+            }
+            remaining -= read as u64;
+            if read == 0 {
+                break;
+            }
+            output
+                .write_all(&buffer[..read])
+                .map_err(|e| format!("Failed to write destination: {}", e))?;
+        }
+        let after = input.metadata().map_err(|error| error.to_string())?;
+        if after.len() != metadata.len() || after.modified().ok() != metadata.modified().ok() {
+            return Err("Source changed while copying".to_string());
+        }
+        crate::copy_metadata::preserve(&input, &output, is_cancelled)?;
+        output
+            .sync_all()
+            .map_err(|e| format!("Failed to flush destination: {}", e))?;
+        Ok(())
+    })();
+    drop(output);
+    if result.is_err() {
+        let _ = fs::remove_file(dest);
+    }
+    result
 }
 
 fn copy_symlink(source: &Path, target: &Path) -> Result<(), String> {
@@ -146,6 +239,24 @@ mod tests {
     use std::fs;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::sync::Arc;
+
+    #[cfg(unix)]
+    #[test]
+    fn copy_preserves_private_and_executable_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+        let temp = tempfile::tempdir().unwrap();
+        for mode in [0o600, 0o700] {
+            let source = temp.path().join(format!("source-{mode}"));
+            let destination = temp.path().join(format!("destination-{mode}"));
+            fs::write(&source, b"private").unwrap();
+            fs::set_permissions(&source, fs::Permissions::from_mode(mode)).unwrap();
+            copy_file_cancellable(&source, &destination, &|| false).unwrap();
+            assert_eq!(
+                fs::metadata(destination).unwrap().permissions().mode() & 0o777,
+                mode
+            );
+        }
+    }
 
     #[test]
     fn copies_nested_directory_tree() {
@@ -277,4 +388,95 @@ mod tests {
             "leaf content"
         );
     }
+}
+
+#[cfg(windows)]
+pub fn copy_file_cancellable(
+    source: &Path,
+    destination: &Path,
+    cancelled: &impl Fn() -> bool,
+) -> Result<(), String> {
+    use std::{ffi::c_void, os::windows::io::AsRawHandle};
+    use windows::{
+        core::HSTRING,
+        Win32::{
+            Foundation::HANDLE,
+            Storage::FileSystem::{
+                CopyFileExW, GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+                LPPROGRESS_ROUTINE_CALLBACK_REASON,
+            },
+        },
+    };
+    if cancelled() {
+        return Err("Operation cancelled".to_string());
+    }
+    let input = crate::file_operations::open_regular_read(source)?;
+    let mut expected = BY_HANDLE_FILE_INFORMATION::default();
+    unsafe { GetFileInformationByHandle(HANDLE(input.as_raw_handle()), &mut expected) }
+        .map_err(|error| error.to_string())?;
+    struct Context<'a, F> {
+        cancelled: &'a F,
+        expected: BY_HANDLE_FILE_INFORMATION,
+        changed: bool,
+    }
+    unsafe extern "system" fn progress<F: Fn() -> bool>(
+        _: i64,
+        _: i64,
+        _: i64,
+        _: i64,
+        _: u32,
+        _: LPPROGRESS_ROUTINE_CALLBACK_REASON,
+        source: HANDLE,
+        _: HANDLE,
+        data: *const c_void,
+    ) -> u32 {
+        let context = &mut *data.cast_mut().cast::<Context<'_, F>>();
+        let mut actual = BY_HANDLE_FILE_INFORMATION::default();
+        if GetFileInformationByHandle(source, &mut actual).is_err()
+            || actual.dwVolumeSerialNumber != context.expected.dwVolumeSerialNumber
+            || actual.nFileIndexHigh != context.expected.nFileIndexHigh
+            || actual.nFileIndexLow != context.expected.nFileIndexLow
+        {
+            context.changed = true;
+            return 1; // PROGRESS_CANCEL deletes partial output.
+        }
+        u32::from(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(context.cancelled))
+                .unwrap_or(true),
+        )
+    }
+    fn run<F: Fn() -> bool>(
+        source: &Path,
+        destination: &Path,
+        context: &mut Context<'_, F>,
+    ) -> windows::core::Result<()> {
+        unsafe {
+            CopyFileExW(
+                &HSTRING::from(source.as_os_str()),
+                &HSTRING::from(destination.as_os_str()),
+                Some(progress::<F>),
+                Some(std::ptr::from_mut(context).cast()),
+                None,
+                0x1 | 0x800, // COPY_FILE_FAIL_IF_EXISTS | COPY_FILE_COPY_SYMLINK
+            )
+        }
+    }
+    let mut context = Context {
+        cancelled,
+        expected,
+        changed: false,
+    };
+    let result = run(source, destination, &mut context);
+    if context.changed {
+        return Err("Source changed while copying".to_string());
+    }
+    if cancelled() {
+        return Err("Operation cancelled".to_string());
+    }
+    result.map_err(|error| format!("Cannot copy file and native streams: {error}"))?;
+    if let Err(error) = crate::copy_metadata::preserve_windows_acl(source, destination) {
+        let _ = fs::remove_file(destination);
+        return Err(error);
+    }
+    Ok(())
 }

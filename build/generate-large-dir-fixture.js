@@ -1,13 +1,18 @@
-const fs = require('fs/promises');
-const os = require('os');
-const path = require('path');
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { performance } from 'node:perf_hooks';
+import { fileURLToPath } from 'node:url';
+import { isDirectExecution } from '../scripts/direct-execution.js';
 
-const SCRIPT_VERSION = '1.0.0';
-const DEFAULT_FILE_COUNT = 15000;
-const DEFAULT_DIR_BUCKETS = 60;
-const DEFAULT_EMPTY_FOLDER_COUNT = 300;
-const DEFAULT_HIDDEN_EVERY = 41;
+const SCRIPT_VERSION = '2.0.0';
+export const DEFAULT_FILE_COUNT = 15_000;
+export const DEFAULT_FOLDER_COUNT = 300;
+export const DEFAULT_BUCKET_COUNT = 60;
+export const DEFAULT_HIDDEN_EVERY = 41;
 const WRITE_BATCH_SIZE = 300;
+const FIXTURE_MARKER_VERSION = 1;
+const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const TEXT_EXTENSIONS = new Set(['txt', 'md', 'json', 'ts', 'js', 'csv', 'log']);
 const EXTENSIONS = [
@@ -28,65 +33,65 @@ const EXTENSIONS = [
   'log',
 ];
 
-function parsePositiveInt(value, fallback) {
-  if (value == null) return fallback;
-  const parsed = Number.parseInt(String(value), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+function parseInteger(flag, value, { minimum = 0 } = {}) {
+  if (value === undefined) throw new Error(`${flag} requires a value`);
+  if (!/^\d+$/u.test(value)) throw new Error(`${flag} must be an integer`);
+  const parsed = Number(value);
+  if (!Number.isSafeInteger(parsed) || parsed < minimum) {
+    throw new Error(`${flag} must be at least ${minimum}`);
+  }
+  return parsed;
 }
 
-function parseArgs(argv) {
-  const args = argv.slice(2);
+export function parseArgs(argv) {
   const result = {
     output: '',
     files: DEFAULT_FILE_COUNT,
-    buckets: DEFAULT_DIR_BUCKETS,
-    folders: DEFAULT_EMPTY_FOLDER_COUNT,
+    folders: DEFAULT_FOLDER_COUNT,
+    buckets: DEFAULT_BUCKET_COUNT,
     hiddenEvery: DEFAULT_HIDDEN_EVERY,
+    layout: 'flat',
     clean: false,
+    help: false,
   };
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-    const next = args[i + 1];
-
-    if (arg === '--output' && next) {
-      result.output = next;
-      i++;
-      continue;
-    }
-    if (arg === '--files' && next) {
-      result.files = parsePositiveInt(next, result.files);
-      i++;
-      continue;
-    }
-    if (arg === '--buckets' && next) {
-      result.buckets = parsePositiveInt(next, result.buckets);
-      i++;
-      continue;
-    }
-    if (arg === '--folders' && next) {
-      result.folders = parsePositiveInt(next, result.folders);
-      i++;
-      continue;
-    }
-    if (arg === '--hidden-every' && next) {
-      result.hiddenEvery = parsePositiveInt(next, result.hiddenEvery);
-      i++;
-      continue;
-    }
+  for (let index = 2; index < argv.length; index += 1) {
+    const arg = argv[index];
+    const next = argv[index + 1];
     if (arg === '--clean') {
       result.clean = true;
-      continue;
-    }
-    if (arg === '--help' || arg === '-h') {
+    } else if (arg === '--help' || arg === '-h') {
       result.help = true;
+    } else if (arg === '--output') {
+      if (!next) throw new Error('--output requires a value');
+      result.output = next;
+      index += 1;
+    } else if (arg === '--files') {
+      result.files = parseInteger(arg, next);
+      index += 1;
+    } else if (arg === '--folders') {
+      result.folders = parseInteger(arg, next);
+      index += 1;
+    } else if (arg === '--buckets') {
+      result.buckets = parseInteger(arg, next, { minimum: 1 });
+      index += 1;
+    } else if (arg === '--hidden-every') {
+      result.hiddenEvery = parseInteger(arg, next);
+      index += 1;
+    } else if (arg === '--layout') {
+      if (next !== 'flat' && next !== 'nested') {
+        throw new Error('--layout must be flat or nested');
+      }
+      result.layout = next;
+      index += 1;
+    } else {
+      throw new Error(`Unknown option: ${arg}`);
     }
   }
 
-  if (!result.output) {
-    result.output = path.join(os.tmpdir(), `iyeris-large-dir-fixture-${Date.now()}`);
-  }
-  result.output = path.resolve(result.output);
+  result.output = path.resolve(
+    result.output || path.join(os.tmpdir(), `iyeris-large-dir-fixture-${Date.now()}`)
+  );
   return result;
 }
 
@@ -97,93 +102,257 @@ Usage:
   npm run smoke:perf:fixture -- [options]
 
 Options:
-  --output <path>        Target directory. Default: temp directory.
-  --files <count>        Number of files to create. Default: ${DEFAULT_FILE_COUNT}
-  --buckets <count>      Number of top-level buckets. Default: ${DEFAULT_DIR_BUCKETS}
-  --folders <count>      Number of empty folders. Default: ${DEFAULT_EMPTY_FOLDER_COUNT}
-  --hidden-every <n>     Every nth file is hidden. Default: ${DEFAULT_HIDDEN_EVERY}
-  --clean                Remove target directory before generation.
+  --output <path>        Target directory. Default: new temp directory.
+  --files <count>        Files to create. Default: ${DEFAULT_FILE_COUNT}
+  --folders <count>      Folders to create. Default: ${DEFAULT_FOLDER_COUNT}
+  --layout flat|nested   Flat load fixture or recursive fixture. Default: flat
+  --buckets <count>      Nested-layout buckets. Default: ${DEFAULT_BUCKET_COUNT}
+  --hidden-every <n>     Every nth file hidden; 0 disables. Default: ${DEFAULT_HIDDEN_EVERY}
+  --clean                Replace a fixture owned by this generator.
   --help                 Show this message.
 `);
 }
 
-function buildFileContent(index, extension) {
+function fileContent(index, extension) {
   if (!TEXT_EXTENSIONS.has(extension)) return '';
   return `fixture-index:${index}\nfixture-ext:${extension}\n`;
 }
 
-async function ensureWritableTarget(outputDir, clean) {
-  if (clean) {
-    await fs.rm(outputDir, { recursive: true, force: true });
-  }
-  await fs.mkdir(outputDir, { recursive: true });
+export function fixtureMarkerPath(output) {
+  return `${output}.iyeris-perf-fixture.json`;
 }
 
-async function createBucketDirs(outputDir, bucketCount) {
-  const dirs = [];
-  for (let i = 0; i < bucketCount; i++) {
-    const bucket = path.join(outputDir, `bucket-${String(i).padStart(3, '0')}`);
-    dirs.push(bucket);
+function assertSafeTarget(output) {
+  const protectedPaths = new Set([
+    path.parse(output).root,
+    path.resolve(os.homedir()),
+    path.resolve(REPO_ROOT),
+  ]);
+  if (protectedPaths.has(path.resolve(output))) {
+    throw new Error(`Refusing to use protected path as fixture target: ${output}`);
   }
-  await Promise.all(dirs.map((dirPath) => fs.mkdir(dirPath, { recursive: true })));
-  return dirs;
 }
 
-function buildFilePlan(bucketDirs, fileCount, hiddenEvery) {
-  const plan = [];
-  for (let i = 0; i < fileCount; i++) {
-    const extension = EXTENSIONS[i % EXTENSIONS.length];
-    const bucket = bucketDirs[i % bucketDirs.length];
-    const isHidden = hiddenEvery > 0 && i % hiddenEvery === 0;
-    const stem = isHidden
-      ? `.hidden-${String(i).padStart(6, '0')}`
-      : `item-${String(i).padStart(6, '0')}`;
-    const filePath = path.join(bucket, `${stem}.${extension}`);
-    plan.push({
-      index: i,
-      extension,
-      filePath,
-    });
-  }
-  return plan;
+function fixtureIdentity(stats) {
+  return {
+    dev: stats.dev,
+    ino: stats.ino,
+    birthtimeMs: stats.birthtimeMs,
+  };
 }
 
-async function writeFilesInBatches(plan) {
-  for (let i = 0; i < plan.length; i += WRITE_BATCH_SIZE) {
-    const batch = plan.slice(i, i + WRITE_BATCH_SIZE);
+async function hasOwnedMarker(output, stats) {
+  try {
+    const marker = JSON.parse(await fs.readFile(fixtureMarkerPath(output), 'utf8'));
+    return (
+      marker.version === FIXTURE_MARKER_VERSION &&
+      marker.output === path.resolve(output) &&
+      marker.identity?.dev === stats.dev &&
+      marker.identity?.ino === stats.ino &&
+      marker.identity?.birthtimeMs === stats.birthtimeMs
+    );
+  } catch {
+    return false;
+  }
+}
+
+async function assertSafeMarker(output) {
+  try {
+    const markerStats = await fs.lstat(fixtureMarkerPath(output));
+    if (markerStats.isSymbolicLink() || !markerStats.isFile()) {
+      throw new Error('Refusing to use an unsafe fixture ownership marker');
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+}
+
+async function prepareTarget(output, clean) {
+  assertSafeTarget(output);
+  await assertSafeMarker(output);
+  const markerPath = fixtureMarkerPath(output);
+  let existing = null;
+  try {
+    existing = await fs.lstat(output);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+
+  if (existing?.isSymbolicLink()) {
+    throw new Error('Refusing to use a symbolic link as fixture target');
+  }
+  if (existing && !existing.isDirectory()) {
+    throw new Error('Refusing to use a non-directory fixture target');
+  }
+  if (existing && !(await hasOwnedMarker(output, existing))) {
+    throw new Error('Refusing to use an existing unmarked directory as fixture target');
+  }
+  if (existing && !clean) {
+    throw new Error('Fixture target already exists; pass --clean to replace it');
+  }
+  if (clean && existing) {
+    await fs.rm(output, { recursive: true, force: true });
+  }
+  // Marker is a sibling of the fixture directory. Remove any old regular
+  // marker before reserving a fresh one; never truncate a path that could
+  // have been swapped to a symlink after the lstat check.
+  try {
+    await fs.unlink(markerPath);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  await fs.mkdir(output, { recursive: true });
+  const created = await fs.lstat(output);
+  const marker = `${JSON.stringify({
+    version: FIXTURE_MARKER_VERSION,
+    output: path.resolve(output),
+    identity: fixtureIdentity(created),
+  })}\n`;
+  const handle = await fs.open(markerPath, 'wx');
+  try {
+    await handle.writeFile(marker, 'utf8');
+  } finally {
+    await handle.close();
+  }
+}
+
+async function createBuckets(output, count) {
+  const buckets = Array.from({ length: count }, (_, index) =>
+    path.join(output, `bucket-${String(index).padStart(3, '0')}`)
+  );
+  await Promise.all(buckets.map((bucket) => fs.mkdir(bucket, { recursive: true })));
+  return buckets;
+}
+
+export function buildFilePlan(parentDirs, fileCount, hiddenEvery) {
+  return Array.from({ length: fileCount }, (_, index) => {
+    const extension = EXTENSIONS[index % EXTENSIONS.length];
+    const parent = parentDirs[index % parentDirs.length];
+    const hidden = hiddenEvery > 0 && index % hiddenEvery === 0;
+    const stem = `${hidden ? '.hidden' : 'item'}-${String(index).padStart(6, '0')}`;
+    return { index, extension, filePath: path.join(parent, `${stem}.${extension}`) };
+  });
+}
+
+async function writeFiles(plan) {
+  for (let index = 0; index < plan.length; index += WRITE_BATCH_SIZE) {
+    const batch = plan.slice(index, index + WRITE_BATCH_SIZE);
     await Promise.all(
       batch.map((entry) =>
-        fs.writeFile(entry.filePath, buildFileContent(entry.index, entry.extension))
+        fs.writeFile(entry.filePath, fileContent(entry.index, entry.extension), { flag: 'wx' })
       )
     );
   }
 }
 
-async function createEmptyFolders(outputDir, folderCount) {
-  const root = path.join(outputDir, 'folders');
-  await fs.mkdir(root, { recursive: true });
-  const tasks = [];
-  for (let i = 0; i < folderCount; i++) {
-    const level1 = path.join(root, `group-${String(i % 25).padStart(2, '0')}`);
-    const folderPath = path.join(level1, `folder-${String(i).padStart(4, '0')}`);
-    tasks.push(fs.mkdir(folderPath, { recursive: true }));
-  }
-  await Promise.all(tasks);
+async function createFolders(output, count, layout) {
+  const folders = Array.from({ length: count }, (_, index) => {
+    const name = `folder-${String(index).padStart(4, '0')}`;
+    return layout === 'flat'
+      ? path.join(output, name)
+      : path.join(output, 'folders', `group-${String(index % 25).padStart(2, '0')}`, name);
+  });
+  await Promise.all(folders.map((folder) => fs.mkdir(folder, { recursive: true })));
 }
 
-async function generateFixture(options) {
-  await ensureWritableTarget(options.output, options.clean);
-  const bucketDirs = await createBucketDirs(options.output, options.buckets);
-  const filePlan = buildFilePlan(bucketDirs, options.files, options.hiddenEvery);
-  await writeFilesInBatches(filePlan);
-  await createEmptyFolders(options.output, options.folders);
+async function scanFixture(output, { signal, onEntry } = {}) {
+  let files = 0;
+  let folders = 0;
+  let fixtureIndexMatches = 0;
+  let visitedEntries = 0;
+  const pending = [output];
+  while (pending.length > 0) {
+    if (signal?.aborted) throw new Error('Fixture scan cancelled');
+    const current = pending.pop();
+    if (!current) break;
+    const entries = await fs.readdir(current, { withFileTypes: true });
+    for (const entry of entries) {
+      visitedEntries += 1;
+      onEntry?.(visitedEntries);
+      if (signal?.aborted) throw new Error('Fixture scan cancelled');
+      if (entry.isDirectory()) {
+        folders += 1;
+        pending.push(path.join(current, entry.name));
+      } else if (entry.isFile()) {
+        files += 1;
+        if (entry.name.includes('item-0001')) fixtureIndexMatches += 1;
+      }
+      if (visitedEntries % 256 === 0) {
+        await new Promise((resolve) => setImmediate(resolve));
+      }
+    }
+  }
+  return { files, folders, fixtureIndexMatches, visitedEntries };
+}
+
+async function measureFixture(output, rssBefore) {
+  const listStarted = performance.now();
+  const directEntries = await fs.readdir(output, { withFileTypes: true });
+  const listMs = performance.now() - listStarted;
+
+  const searchStarted = performance.now();
+  const scan = await scanFixture(output);
+  const searchMs = performance.now() - searchStarted;
+
+  const controller = new AbortController();
+  const cancelAfterEntries = Math.min(256, scan.visitedEntries);
+  let cancelRequestedAt = performance.now();
+  let cancellationObserved = false;
+  if (cancelAfterEntries === 0) controller.abort();
+  try {
+    await scanFixture(output, {
+      signal: controller.signal,
+      onEntry: (visitedEntries) => {
+        if (!controller.signal.aborted && visitedEntries >= cancelAfterEntries) {
+          cancelRequestedAt = performance.now();
+          controller.abort();
+        }
+      },
+    });
+  } catch (error) {
+    if (controller.signal.aborted && error?.message === 'Fixture scan cancelled') {
+      cancellationObserved = true;
+    } else {
+      throw error;
+    }
+  }
+  const cancellationLatencyMs = performance.now() - cancelRequestedAt;
 
   return {
+    directEntries: directEntries.length,
+    files: scan.files,
+    folders: scan.folders,
+    fixtureIndexMatches: scan.fixtureIndexMatches,
+    listMs,
+    searchMs,
+    cancellationObserved,
+    cancelAfterEntries,
+    cancellationLatencyMs,
+    rssDeltaBytes: process.memoryUsage().rss - rssBefore,
+  };
+}
+
+export async function generateFixture(options) {
+  const started = performance.now();
+  const rssBefore = process.memoryUsage().rss;
+  await prepareTarget(options.output, options.clean);
+  const parents =
+    options.layout === 'flat'
+      ? [options.output]
+      : await createBuckets(options.output, options.buckets);
+  const filePlan = buildFilePlan(parents, options.files, options.hiddenEvery);
+  await writeFiles(filePlan);
+  await createFolders(options.output, options.folders, options.layout);
+  const generationMs = performance.now() - started;
+  const measurements = await measureFixture(options.output, rssBefore);
+  return {
     output: options.output,
+    layout: options.layout,
     files: options.files,
-    bucketDirs: options.buckets,
-    emptyFolders: options.folders,
-    hiddenEvery: options.hiddenEvery,
+    folders: options.folders,
+    buckets: options.layout === 'nested' ? options.buckets : 0,
+    generationMs,
+    measurements,
   };
 }
 
@@ -191,43 +360,33 @@ function printSummary(summary) {
   console.log('IYERIS Large Directory Fixture Generator');
   console.log(`Script Version: ${SCRIPT_VERSION}`);
   console.log(`Output: ${summary.output}`);
+  console.log(`Layout: ${summary.layout}`);
   console.log(`Files: ${summary.files.toLocaleString()}`);
-  console.log(`Bucket Dirs: ${summary.bucketDirs}`);
-  console.log(`Empty Folders: ${summary.emptyFolders}`);
-  console.log(`Hidden Every: ${summary.hiddenEvery}`);
-  console.log('');
-  console.log('Suggested smoke test steps:');
-  console.log(`1. Open IYERIS and navigate to "${summary.output}"`);
-  console.log('2. Toggle list/grid/column view and verify responsiveness stays acceptable');
-  console.log('3. Confirm performance mode behaviors still apply (reduced animation/effects)');
+  console.log(`Folders: ${summary.folders.toLocaleString()}`);
+  if (summary.buckets) console.log(`Buckets: ${summary.buckets}`);
+  console.log(`Generation: ${summary.generationMs.toFixed(1)} ms`);
+  console.log(`Direct listing: ${summary.measurements.listMs.toFixed(1)} ms`);
+  console.log(`Recursive name search: ${summary.measurements.searchMs.toFixed(1)} ms`);
+  console.log(
+    `Cancellation observed: ${summary.measurements.cancellationObserved ? 'yes' : 'no'} after ${summary.measurements.cancelAfterEntries} entries (${summary.measurements.cancellationLatencyMs.toFixed(3)} ms)`
+  );
+  console.log(`RSS delta: ${summary.measurements.rssDeltaBytes.toLocaleString()} bytes`);
+  console.log(`Safety marker: ${fixtureMarkerPath(summary.output)}`);
+  console.log(`Open this path in IYERIS: ${summary.output}`);
 }
 
-async function main() {
-  const options = parseArgs(process.argv);
+export async function main(argv = process.argv) {
+  const options = parseArgs(argv);
   if (options.help) {
     printHelp();
-    return 0;
+    return;
   }
-
-  const summary = await generateFixture(options);
-  printSummary(summary);
-  return 0;
+  printSummary(await generateFixture(options));
 }
 
-module.exports = {
-  parseArgs,
-  generateFixture,
-  buildFilePlan,
-  main,
-};
-
-if (require.main === module) {
-  main()
-    .then((code) => process.exit(code))
-    .catch((error) => {
-      console.error(
-        `Failed to generate fixture: ${error && error.message ? error.message : error}`
-      );
-      process.exit(1);
-    });
+if (isDirectExecution(import.meta.url)) {
+  main().catch((error) => {
+    console.error(`Failed to generate fixture: ${error?.message || error}`);
+    process.exitCode = 1;
+  });
 }

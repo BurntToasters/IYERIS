@@ -35,6 +35,7 @@ function createDeps(overrides: Record<string, unknown> = {}) {
     onModalClose: vi.fn(),
     refresh: vi.fn(),
     navigateTo: vi.fn(),
+    cancelScan: vi.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -98,6 +99,30 @@ describe('rendererDuplicateFinder', () => {
     const deleteBtn = document.getElementById('duplicate-finder-delete-btn') as HTMLButtonElement;
     expect(exportBtn.disabled).toBe(false);
     expect(deleteBtn.disabled).toBe(false);
+  });
+
+  it('cancels an in-flight scan when the finder closes', async () => {
+    let resolveScan: ((value: unknown) => void) | undefined;
+    (window.tauriAPI.findDuplicateFiles as ReturnType<typeof vi.fn>).mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveScan = resolve;
+      })
+    );
+    const deps = createDeps({ cancelScan: vi.fn().mockResolvedValue(undefined) });
+    const ctrl = createDuplicateFinderController(deps as any);
+    const opening = ctrl.openDuplicateFinderModal();
+
+    await vi.waitFor(() => {
+      expect(window.tauriAPI.findDuplicateFiles).toHaveBeenCalledTimes(1);
+    });
+    ctrl.closeDuplicateFinderModal();
+
+    expect(deps.cancelScan).toHaveBeenCalledTimes(1);
+    expect((document.getElementById('duplicate-finder-modal') as HTMLElement).style.display).toBe(
+      'none'
+    );
+    resolveScan?.({ success: true, groups: [] });
+    await opening;
   });
 
   it('exports selected groups to clipboard', async () => {

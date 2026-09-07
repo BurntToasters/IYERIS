@@ -329,6 +329,11 @@
                   id="address-input"
                   placeholder="Enter path..."
                   aria-label="Address"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-haspopup="listbox"
+                  aria-controls="directory-history-dropdown"
+                  aria-expanded="false"
                 />
               </div>
               <div
@@ -358,6 +363,11 @@
                   placeholder="Search files..."
                   maxlength="500"
                   aria-label="Search files"
+                  role="combobox"
+                  aria-autocomplete="list"
+                  aria-haspopup="listbox"
+                  aria-controls="search-history-dropdown"
+                  aria-expanded="false"
                 />
                 <button
                   class="search-filter-toggle"
@@ -367,7 +377,13 @@
                   aria-expanded="false"
                   aria-controls="search-filters-panel"
                 >
-                  <svg width="14" height="14" viewBox="0 0 16 16">
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 16 16"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
                     <path
                       d="M1 2 L6 8 L6 14 L10 12 L10 8 L15 2 Z"
                       fill="none"
@@ -791,7 +807,7 @@
                   id="empty-new-folder-btn"
                   aria-label="Create new folder"
                 >
-                  <span class="twemoji" data-icon="1f4c1" alt="📁" aria-hidden="true"></span>
+                  <span class="twemoji" data-icon="1f4c1" aria-hidden="true"></span>
                   <span>New Folder</span>
                 </button>
                 <button
@@ -799,7 +815,7 @@
                   id="empty-new-file-btn"
                   aria-label="Create new file"
                 >
-                  <span class="twemoji" data-icon="1f5c3" alt="🗃️" aria-hidden="true"></span>
+                  <span class="twemoji" data-icon="1f5c3" aria-hidden="true"></span>
                   <span>New File</span>
                 </button>
               </div>
@@ -1076,19 +1092,64 @@
                   <div class="grid-header">X</div>
 
                   <div class="grid-label">Owner</div>
-                  <input type="checkbox" id="perm-ur" data-perm="owner-read" />
-                  <input type="checkbox" id="perm-uw" data-perm="owner-write" />
-                  <input type="checkbox" id="perm-ux" data-perm="owner-execute" />
+                  <input
+                    type="checkbox"
+                    id="perm-ur"
+                    data-perm="owner-read"
+                    aria-label="Owner read permission"
+                  />
+                  <input
+                    type="checkbox"
+                    id="perm-uw"
+                    data-perm="owner-write"
+                    aria-label="Owner write permission"
+                  />
+                  <input
+                    type="checkbox"
+                    id="perm-ux"
+                    data-perm="owner-execute"
+                    aria-label="Owner execute permission"
+                  />
 
                   <div class="grid-label">Group</div>
-                  <input type="checkbox" id="perm-gr" data-perm="group-read" />
-                  <input type="checkbox" id="perm-gw" data-perm="group-write" />
-                  <input type="checkbox" id="perm-gx" data-perm="group-execute" />
+                  <input
+                    type="checkbox"
+                    id="perm-gr"
+                    data-perm="group-read"
+                    aria-label="Group read permission"
+                  />
+                  <input
+                    type="checkbox"
+                    id="perm-gw"
+                    data-perm="group-write"
+                    aria-label="Group write permission"
+                  />
+                  <input
+                    type="checkbox"
+                    id="perm-gx"
+                    data-perm="group-execute"
+                    aria-label="Group execute permission"
+                  />
 
                   <div class="grid-label">Others</div>
-                  <input type="checkbox" id="perm-or" data-perm="others-read" />
-                  <input type="checkbox" id="perm-ow" data-perm="others-write" />
-                  <input type="checkbox" id="perm-ox" data-perm="others-execute" />
+                  <input
+                    type="checkbox"
+                    id="perm-or"
+                    data-perm="others-read"
+                    aria-label="Others read permission"
+                  />
+                  <input
+                    type="checkbox"
+                    id="perm-ow"
+                    data-perm="others-write"
+                    aria-label="Others write permission"
+                  />
+                  <input
+                    type="checkbox"
+                    id="perm-ox"
+                    data-perm="others-execute"
+                    aria-label="Others execute permission"
+                  />
                 </div>
                 <div class="posix-octal-actions">
                   <label for="posix-octal-input">Octal:</label>
@@ -1123,7 +1184,11 @@
             <div class="utility-section utility-checksum-section">
               <h4>Checksum Calculator</h4>
               <div class="checksum-controls">
-                <select id="utility-checksum-algo" class="drawer-select">
+                <select
+                  id="utility-checksum-algo"
+                  class="drawer-select"
+                  aria-label="Checksum algorithm"
+                >
                   <option value="sha256">SHA-256</option>
                   <option value="md5">MD5</option>
                   <option value="blake3">Blake3</option>
@@ -1137,6 +1202,7 @@
                   id="utility-checksum-value"
                   class="checksum-value-area"
                   readonly
+                  aria-label="Checksum result"
                   placeholder="Result hash will appear here..."
                 ></textarea>
                 <button
@@ -1633,8 +1699,13 @@
         <div class="modal-content duplicate-finder-content">
           <div class="duplicate-finder-controls">
             <div class="duplicate-finder-field duplicate-finder-field-root">
-              <label for="duplicate-finder-root">Scan root</label>
-              <div class="duplicate-finder-root" id="duplicate-finder-root" title=""></div>
+              <span id="duplicate-finder-root-label">Scan root</span>
+              <output
+                class="duplicate-finder-root"
+                id="duplicate-finder-root"
+                aria-labelledby="duplicate-finder-root-label"
+                title=""
+              ></output>
             </div>
             <div class="duplicate-finder-field">
               <label for="duplicate-finder-min-size">Minimum file size (MB)</label>
@@ -1959,7 +2030,7 @@
         </div>
         <div class="modal-content batch-rename-content">
           <div class="batch-rename-mode-selector">
-            <label class="batch-rename-label">Mode</label>
+            <label class="batch-rename-label" for="batch-rename-mode">Mode</label>
             <select id="batch-rename-mode" class="settings-select">
               <option value="find-replace">Find &amp; Replace</option>
               <option value="sequential">Sequential Numbering</option>
@@ -2083,53 +2154,112 @@
           <button class="modal-close" id="settings-close" aria-label="Close">✕</button>
         </div>
         <div class="modal-content settings-content" id="settings-content">
-          <div class="settings-sidebar" role="tablist" aria-label="Settings categories">
+          <div
+            class="settings-sidebar"
+            role="tablist"
+            aria-label="Settings categories"
+            aria-orientation="vertical"
+          >
             <div class="settings-sidebar-section">
               <button
                 class="settings-tab active"
+                id="settings-tab-appearance"
                 data-tab="appearance"
                 role="tab"
                 aria-selected="true"
+                aria-controls="tab-appearance"
+                tabindex="0"
               >
                 <span class="twemoji" data-icon="1f3a8" alt="🎨"></span>
                 Appearance
               </button>
-              <button class="settings-tab" data-tab="view" role="tab" aria-selected="false">
+              <button
+                class="settings-tab"
+                id="settings-tab-view"
+                data-tab="view"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-view"
+                tabindex="-1"
+              >
                 <span class="twemoji" data-icon="1f441" alt="👁️"></span>
                 View
               </button>
               <button
                 class="settings-tab"
+                id="settings-tab-accessibility"
                 data-tab="accessibility"
                 role="tab"
                 aria-selected="false"
+                aria-controls="tab-accessibility"
+                tabindex="-1"
               >
                 <span class="twemoji" data-icon="267f" alt="♿"></span>
                 Accessibility
               </button>
-              <button class="settings-tab" data-tab="startup" role="tab" aria-selected="false">
+              <button
+                class="settings-tab"
+                id="settings-tab-startup"
+                data-tab="startup"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-startup"
+                tabindex="-1"
+              >
                 <span class="twemoji" data-icon="1f680" alt="🚀"></span>
                 Startup
               </button>
             </div>
             <div class="settings-sidebar-section">
               <span class="settings-sidebar-label">System</span>
-              <button class="settings-tab" data-tab="data" role="tab" aria-selected="false">
+              <button
+                class="settings-tab"
+                id="settings-tab-data"
+                data-tab="data"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-data"
+                tabindex="-1"
+              >
                 <span class="twemoji" data-icon="1f4be" alt="💾"></span>
                 Data
               </button>
-              <button class="settings-tab" data-tab="indexing" role="tab" aria-selected="false">
+              <button
+                class="settings-tab"
+                id="settings-tab-indexing"
+                data-tab="indexing"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-indexing"
+                tabindex="-1"
+              >
                 <span class="twemoji" data-icon="1f50d" alt="🔍"></span>
                 File Indexing
               </button>
-              <button class="settings-tab" data-tab="advanced" role="tab" aria-selected="false">
+              <button
+                class="settings-tab"
+                id="settings-tab-advanced"
+                data-tab="advanced"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-advanced"
+                tabindex="-1"
+              >
                 <span class="twemoji" data-icon="2699" alt="⚙️"></span>
                 Advanced
               </button>
             </div>
             <div class="settings-sidebar-spacer"></div>
             <div class="settings-sidebar-section">
-              <button class="settings-tab" data-tab="about" role="tab" aria-selected="false">
+              <button
+                class="settings-tab"
+                id="settings-tab-about"
+                data-tab="about"
+                role="tab"
+                aria-selected="false"
+                aria-controls="tab-about"
+                tabindex="-1"
+              >
                 <span class="twemoji" data-icon="2139" alt="ℹ️"></span>
                 About
               </button>
@@ -2183,7 +2313,12 @@
                 </div>
               </div>
             </div>
-            <div class="settings-section active" id="tab-appearance">
+            <div
+              class="settings-section active"
+              id="tab-appearance"
+              role="tabpanel"
+              aria-labelledby="settings-tab-appearance"
+            >
               <h4>
                 <span class="settings-section-title">
                   <span class="twemoji" data-icon="1f3a8" alt="🎨"></span>
@@ -2224,7 +2359,11 @@
                     </p>
                   </div>
                   <label class="toggle-switch">
-                    <input type="checkbox" id="system-theme-toggle" />
+                    <input
+                      type="checkbox"
+                      id="system-theme-toggle"
+                      aria-label="Match System Appearance"
+                    />
                     <span class="toggle-slider"></span>
                   </label>
                 </div>
@@ -2300,7 +2439,13 @@
               </div>
             </div>
 
-            <div class="settings-section" id="tab-view">
+            <div
+              class="settings-section"
+              id="tab-view"
+              role="tabpanel"
+              aria-labelledby="settings-tab-view"
+              hidden
+            >
               <h4>
                 <span class="settings-section-title">
                   <span class="twemoji" data-icon="1f441" alt="👁️"></span>
@@ -2645,7 +2790,7 @@
                   <div class="setting-info">
                     <label for="max-preview-size-input">Max Preview File Size (MB)</label>
                     <p class="setting-description">
-                      Maximum file size to load in preview (1-500 MB)
+                      Maximum file size to load in preview (1-50 MB)
                     </p>
                   </div>
                   <input
@@ -2653,7 +2798,7 @@
                     id="max-preview-size-input"
                     class="settings-input"
                     min="1"
-                    max="500"
+                    max="50"
                     value="50"
                   />
                 </div>
@@ -2828,7 +2973,13 @@
               </div>
             </div>
 
-            <div class="settings-section" id="tab-startup">
+            <div
+              class="settings-section"
+              id="tab-startup"
+              role="tabpanel"
+              aria-labelledby="settings-tab-startup"
+              hidden
+            >
               <h4>
                 <span class="settings-section-title">
                   <span class="twemoji" data-icon="1f680" alt="🚀"></span>
@@ -2883,6 +3034,7 @@
                       class="modal-button compact"
                       id="browse-startup-path-btn"
                       title="Browse for folder"
+                      aria-label="Browse for startup folder"
                     >
                       <span class="twemoji" data-icon="1f4c1" alt="📁"></span>
                     </button>
@@ -2891,7 +3043,13 @@
               </div>
             </div>
 
-            <div class="settings-section" id="tab-accessibility">
+            <div
+              class="settings-section"
+              id="tab-accessibility"
+              role="tabpanel"
+              aria-labelledby="settings-tab-accessibility"
+              hidden
+            >
               <h4>
                 <span class="settings-section-title">
                   <span class="twemoji" data-icon="267f" alt="♿"></span>
@@ -3023,7 +3181,13 @@
               </div>
             </div>
 
-            <div class="settings-section" id="tab-data">
+            <div
+              class="settings-section"
+              id="tab-data"
+              role="tabpanel"
+              aria-labelledby="settings-tab-data"
+              hidden
+            >
               <h4>
                 <span class="settings-section-title">
                   <span class="twemoji" data-icon="1f4be" alt="💾"></span>
@@ -3048,6 +3212,7 @@
                     class="modal-button compact"
                     id="open-settings-folder-btn"
                     title="Open folder"
+                    aria-label="Open settings folder"
                   >
                     <span class="twemoji" data-icon="1f4c2" alt="📂"></span>
                   </button>
@@ -3107,7 +3272,13 @@
               </div>
             </div>
 
-            <div class="settings-section" id="tab-indexing">
+            <div
+              class="settings-section"
+              id="tab-indexing"
+              role="tabpanel"
+              aria-labelledby="settings-tab-indexing"
+              hidden
+            >
               <h4>
                 <span class="settings-section-title">
                   <span class="twemoji" data-icon="1f50d" alt="🔍"></span>
@@ -3220,7 +3391,13 @@
               </div>
             </div>
 
-            <div class="settings-section" id="tab-advanced">
+            <div
+              class="settings-section"
+              id="tab-advanced"
+              role="tabpanel"
+              aria-labelledby="settings-tab-advanced"
+              hidden
+            >
               <h4>
                 <span class="settings-section-title">
                   <span class="twemoji" data-icon="2699" alt="⚙️"></span>
@@ -3418,7 +3595,13 @@
               </div>
             </div>
 
-            <div class="settings-section" id="tab-about">
+            <div
+              class="settings-section"
+              id="tab-about"
+              role="tabpanel"
+              aria-labelledby="settings-tab-about"
+              hidden
+            >
               <h4>
                 <span class="settings-section-title">
                   <span class="twemoji" data-icon="2139" alt="ℹ️"></span>
@@ -3466,7 +3649,14 @@
                 <div class="settings-card-header">Links</div>
                 <div class="about-links">
                   <button class="about-link-btn" id="about-github-btn">
-                    <svg width="20" height="20" viewBox="0 0 16 16" fill="currentColor">
+                    <svg
+                      width="20"
+                      height="20"
+                      viewBox="0 0 16 16"
+                      fill="currentColor"
+                      aria-hidden="true"
+                      focusable="false"
+                    >
                       <path
                         d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"
                       />
@@ -3624,7 +3814,7 @@
         ></span>
         <span id="status-selected" style="display: none"></span>
         <span id="status-search" class="status-search" style="display: none">
-          <span class="twemoji" data-icon="1f50d" alt="🔍" aria-hidden="true"></span>
+          <span class="twemoji" data-icon="1f50d" aria-hidden="true"></span>
           <span id="status-search-text"></span>
         </span>
         <span id="status-operation" class="status-operation" style="display: none">
@@ -3637,7 +3827,7 @@
           style="display: none"
           title="Clipboard contents"
         >
-          <span class="twemoji" data-icon="1f4cb" alt="📋" aria-hidden="true"></span>
+          <span class="twemoji" data-icon="1f4cb" aria-hidden="true"></span>
           <span id="status-clipboard-text" class="status-clipboard-text"></span>
         </span>
       </div>
@@ -3857,6 +4047,7 @@
                   <input
                     type="text"
                     id="theme-accent-color-text"
+                    aria-label="Accent color hex value"
                     class="glass-input color-text"
                     value="#0078d4"
                     maxlength="7"
@@ -3870,6 +4061,7 @@
                   <input
                     type="text"
                     id="theme-bg-primary-text"
+                    aria-label="Background color hex value"
                     class="glass-input color-text"
                     value="#1a1a1a"
                     maxlength="7"
@@ -3886,6 +4078,7 @@
                   <input
                     type="text"
                     id="theme-bg-secondary-text"
+                    aria-label="Secondary background color hex value"
                     class="glass-input color-text"
                     value="#252525"
                     maxlength="7"
@@ -3899,6 +4092,7 @@
                   <input
                     type="text"
                     id="theme-text-primary-text"
+                    aria-label="Text color hex value"
                     class="glass-input color-text"
                     value="#ffffff"
                     maxlength="7"
@@ -3915,6 +4109,7 @@
                   <input
                     type="text"
                     id="theme-text-secondary-text"
+                    aria-label="Secondary text color hex value"
                     class="glass-input color-text"
                     value="#b0b0b0"
                     maxlength="7"
@@ -3928,6 +4123,7 @@
                   <input
                     type="text"
                     id="theme-glass-bg-text"
+                    aria-label="Glass overlay color hex value"
                     class="glass-input color-text"
                     value="#ffffff"
                     maxlength="7"
@@ -3941,6 +4137,7 @@
                   <input
                     type="text"
                     id="theme-glass-border-text"
+                    aria-label="Glass border color hex value"
                     class="glass-input color-text"
                     value="#ffffff"
                     maxlength="7"
@@ -3957,6 +4154,7 @@
                   <input
                     type="text"
                     id="theme-icon-hue-text"
+                    aria-label="Icon hue hex value"
                     class="glass-input color-text"
                     value="#0078d4"
                     maxlength="7"
@@ -4085,7 +4283,12 @@
         </div>
         <div class="modal-body folder-icon-body">
           <p class="folder-icon-path" id="folder-icon-path"></p>
-          <div class="folder-icon-grid" id="folder-icon-grid"></div>
+          <div
+            class="folder-icon-grid"
+            id="folder-icon-grid"
+            role="listbox"
+            aria-label="Folder icon choices"
+          ></div>
         </div>
         <div class="modal-footer">
           <button class="modal-button secondary" id="folder-icon-reset">Reset to Default</button>
@@ -4201,6 +4404,7 @@
         role="dialog"
         aria-modal="true"
         aria-live="polite"
+        aria-label="Guided tour"
       >
         <div class="tour-tooltip-header">
           <span id="tour-step-count" class="tour-step-count">Step 1 of 1</span>
@@ -4279,7 +4483,7 @@
             ></div>
           </div>
           <div class="command-palette-empty" id="command-palette-empty" style="display: none">
-            <span class="twemoji-large" data-icon="1f50d" alt="🔍" aria-hidden="true"></span>
+            <span class="twemoji-large" data-icon="1f50d" aria-hidden="true"></span>
             <p>No commands found</p>
             <small>Try a different search term</small>
           </div>

@@ -305,7 +305,7 @@ describe('rendererSettingsModal', () => {
       expect(document.querySelector('.settings-section')!.classList.contains('active')).toBe(true);
     });
 
-    it('blurs active element before showing', async () => {
+    it('preserves the opener so modal lifecycle can restore focus', async () => {
       const btn = document.createElement('button');
       document.body.appendChild(btn);
       btn.focus();
@@ -313,7 +313,7 @@ describe('rendererSettingsModal', () => {
       const deps = makeDeps();
       const ctrl = createSettingsModalController(deps as any);
       await ctrl.showSettingsModal();
-      expect(blurSpy).toHaveBeenCalled();
+      expect(blurSpy).not.toHaveBeenCalled();
     });
 
     it('displays modal and calls lifecycle deps', async () => {

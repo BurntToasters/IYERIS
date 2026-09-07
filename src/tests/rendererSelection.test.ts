@@ -391,3 +391,39 @@ describe('createSelectionController', () => {
     });
   });
 });
+
+describe('selection across unmounted rows', () => {
+  it('selects all 15,000 entries and mounts End without losing the full range', () => {
+    const grid = document.createElement('div');
+    grid.id = 'file-grid';
+    document.body.replaceChildren(grid);
+    const files = Array.from(
+      { length: 15000 },
+      (_, index) => ({ path: `/files/${index}` }) as FileItem
+    );
+    const deps = createMockDeps();
+    const mount = (path: string) => {
+      const element = document.createElement('div');
+      element.className = 'file-item';
+      element.dataset.path = path;
+      element.scrollIntoView = vi.fn();
+      grid.replaceChildren(element);
+      return element;
+    };
+    mount(files[0]!.path);
+    const controller = createSelectionController({
+      ...deps,
+      getOrderedFiles: () => files,
+      ensureItemRendered: mount,
+    });
+    controller.selectAll();
+    expect(deps._selectedItems.size).toBe(15000);
+    controller.selectFirstItem(false);
+    controller.selectLastItem(true);
+    expect(deps._selectedItems.size).toBe(15000);
+    expect(document.activeElement?.getAttribute('data-path')).toBe('/files/14999');
+    controller.selectLastItem(false);
+    expect([...deps._selectedItems]).toEqual(['/files/14999']);
+    controller.destroy();
+  });
+});

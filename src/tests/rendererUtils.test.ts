@@ -6,8 +6,14 @@ import {
   encodeFileUrl,
   getFileDataUrlWithCache,
   clearPreviewDataUrlCache,
+  EMOJI_ICON_MAPPINGS,
+  PreviewDataUrlCache,
+  renderIcon,
+  SUPPORTED_ICON_NAMES,
   twemojiImg,
 } from '../rendererUtils';
+import { FOLDER_ICON_VALUES } from '../constants';
+import { FILE_ICON_MAP } from '../fileTypes';
 
 beforeAll(() => {
   (globalThis as Record<string, unknown>).window = {
@@ -155,6 +161,15 @@ describe('rendererPath.extname', () => {
 });
 
 describe('rendererPath.join', () => {
+  it('preserves UNC roots and normalizes mixed separators', () => {
+    expect(rendererPath.join('\\\\server\\share', 'folder/file.zip')).toBe(
+      '\\\\server\\share\\folder\\file.zip'
+    );
+    expect(rendererPath.join('\\\\server\\share\\', 'archive.zip')).toBe(
+      '\\\\server\\share\\archive.zip'
+    );
+  });
+
   it('joins segments with forward slash', () => {
     expect(rendererPath.join('a', 'b', 'c')).toBe('a/b/c');
   });
@@ -209,11 +224,13 @@ describe('encodeFileUrl', () => {
 });
 
 describe('twemojiImg', () => {
-  it('returns svg tag with correct classes and aria-label', () => {
+  it('makes icons decorative by default', () => {
     const result = twemojiImg('📁');
     expect(result).toContain('<svg');
     expect(result).toContain('class="twemoji"');
-    expect(result).toContain('aria-label="folder"');
+    expect(result).toContain('aria-hidden="true"');
+    expect(result).toContain('focusable="false"');
+    expect(result).not.toContain('aria-label=');
   });
 
   it('uses custom className', () => {
@@ -223,7 +240,9 @@ describe('twemojiImg', () => {
 
   it('uses custom alt text as aria-label', () => {
     const result = twemojiImg('📁', 'twemoji', 'my folder');
+    expect(result).toContain('role="img"');
     expect(result).toContain('aria-label="my folder"');
+    expect(result).not.toContain('aria-hidden=');
   });
 
   it('escapes custom alt text in svg attributes', () => {
@@ -234,12 +253,36 @@ describe('twemojiImg', () => {
 
   it('handles emoji directly and resolves it to Lucide icon', () => {
     const result = twemojiImg('📁');
-    expect(result).toContain('aria-label="folder"');
+    expect(result).toContain('aria-hidden="true"');
     expect(result).toContain('<svg');
+  });
+
+  it('renders every registry, file, folder, and emoji-mapped icon', () => {
+    const reachableNames = new Set([
+      ...FOLDER_ICON_VALUES,
+      ...Object.values(FILE_ICON_MAP),
+      ...Object.values(EMOJI_ICON_MAPPINGS),
+    ]);
+    for (const name of reachableNames) {
+      expect(SUPPORTED_ICON_NAMES, name).toContain(name);
+      expect(renderIcon(name), name).toMatch(/^<svg /);
+    }
+    for (const name of SUPPORTED_ICON_NAMES) {
+      expect(renderIcon(name), name).toMatch(/^<svg /);
+    }
+    for (const codepoint of Object.keys(EMOJI_ICON_MAPPINGS)) {
+      expect(renderIcon(codepoint), codepoint).toMatch(/^<svg /);
+    }
+  });
+
+  it('falls back to File for unknown names', () => {
+    expect(renderIcon('not-a-real-icon')).toBe(renderIcon('file'));
   });
 });
 
 describe('getFileDataUrlWithCache', () => {
+  const request = (fingerprint = '1:1', maxBytes = 1024) => ({ fingerprint, maxBytes });
+
   beforeEach(() => {
     clearPreviewDataUrlCache();
     getFileDataUrlMock = vi.fn(async (filePath: string) => ({
@@ -252,8 +295,8 @@ describe('getFileDataUrlWithCache', () => {
   });
 
   it('returns cached value on second lookup', async () => {
-    const first = await getFileDataUrlWithCache('/a.txt');
-    const second = await getFileDataUrlWithCache('/a.txt');
+    const first = await getFileDataUrlWithCache('/a.txt', request());
+    const second = await getFileDataUrlWithCache('/a.txt', request());
 
     expect(first).toBe('data:/a.txt');
     expect(second).toBe('data:/a.txt');
@@ -262,28 +305,28 @@ describe('getFileDataUrlWithCache', () => {
 
   it('returns null for unsuccessful responses', async () => {
     getFileDataUrlMock.mockResolvedValueOnce({ success: false });
-    await expect(getFileDataUrlWithCache('/bad.txt')).resolves.toBeNull();
+    await expect(getFileDataUrlWithCache('/bad.txt', request())).resolves.toBeNull();
   });
 
   it('evicts oldest entry after cache limit is exceeded', async () => {
     for (let i = 0; i < 65; i += 1) {
-      await getFileDataUrlWithCache(`/file-${i}.txt`);
+      await getFileDataUrlWithCache(`/file-${i}.txt`, request(`${i}:1`));
     }
     expect(getFileDataUrlMock).toHaveBeenCalledTimes(65);
 
-    await getFileDataUrlWithCache('/file-0.txt');
+    await getFileDataUrlWithCache('/file-0.txt', request('0:1'));
     expect(getFileDataUrlMock).toHaveBeenCalledTimes(66);
   });
 
   it('clears cache when requested', async () => {
-    await getFileDataUrlWithCache('/clear-me.txt');
+    await getFileDataUrlWithCache('/clear-me.txt', request());
     clearPreviewDataUrlCache();
-    await getFileDataUrlWithCache('/clear-me.txt');
+    await getFileDataUrlWithCache('/clear-me.txt', request());
 
     expect(getFileDataUrlMock).toHaveBeenCalledTimes(2);
   });
 
-  it('refreshes existing key when duplicate requests race', async () => {
+  it('deduplicates identical in-flight reads', async () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -293,11 +336,108 @@ describe('getFileDataUrlWithCache', () => {
       return { success: true, dataUrl: 'data:/race.txt' };
     });
 
-    const p1 = getFileDataUrlWithCache('/race.txt');
-    const p2 = getFileDataUrlWithCache('/race.txt');
+    const p1 = getFileDataUrlWithCache('/race.txt', request());
+    const p2 = getFileDataUrlWithCache('/race.txt', request());
     release();
 
     await expect(Promise.all([p1, p2])).resolves.toEqual(['data:/race.txt', 'data:/race.txt']);
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects stale fingerprints and entries from looser limits', async () => {
+    await getFileDataUrlWithCache('/changing.txt', request('10:1', 2048));
+    await getFileDataUrlWithCache('/changing.txt', request('10:2', 2048));
+    await getFileDataUrlWithCache('/changing.txt', request('10:2', 1024));
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('retries after a failed read', async () => {
+    getFileDataUrlMock.mockResolvedValueOnce({ success: false });
+    await expect(getFileDataUrlWithCache('/retry.txt', request())).resolves.toBeNull();
+    await expect(getFileDataUrlWithCache('/retry.txt', request())).resolves.toBe('data:/retry.txt');
     expect(getFileDataUrlMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries after a rejected read', async () => {
+    getFileDataUrlMock.mockRejectedValueOnce(new Error('IPC unavailable'));
+    await expect(getFileDataUrlWithCache('/retry-error.txt', request())).rejects.toThrow(
+      'IPC unavailable'
+    );
+    await expect(getFileDataUrlWithCache('/retry-error.txt', request())).resolves.toBe(
+      'data:/retry-error.txt'
+    );
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not repopulate after clear during an in-flight read', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    getFileDataUrlMock.mockImplementationOnce(async () => {
+      await gate;
+      return { success: true, dataUrl: 'data:/pending.txt' };
+    });
+    const pending = getFileDataUrlWithCache('/pending.txt', request());
+    clearPreviewDataUrlCache();
+    release();
+    await pending;
+    await getFileDataUrlWithCache('/pending.txt', request());
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not let an older out-of-order read replace the latest fingerprint', async () => {
+    let resolveOld!: (value: { success: boolean; dataUrl: string }) => void;
+    let resolveNew!: (value: { success: boolean; dataUrl: string }) => void;
+    let call = 0;
+    getFileDataUrlMock.mockImplementation(
+      () =>
+        new Promise<{ success: boolean; dataUrl: string }>((resolve) => {
+          call += 1;
+          if (call === 1) resolveOld = resolve;
+          else resolveNew = resolve;
+        })
+    );
+
+    const oldRead = getFileDataUrlWithCache('/changing.txt', request('10:old'));
+    const newRead = getFileDataUrlWithCache('/changing.txt', request('10:new'));
+    await vi.waitFor(() => expect(getFileDataUrlMock).toHaveBeenCalledTimes(2));
+    resolveNew({ success: true, dataUrl: 'data:new' });
+    await expect(newRead).resolves.toBe('data:new');
+    resolveOld({ success: true, dataUrl: 'data:old' });
+    await expect(oldRead).resolves.toBe('data:old');
+
+    await expect(getFileDataUrlWithCache('/changing.txt', request('10:new'))).resolves.toBe(
+      'data:new'
+    );
+    expect(getFileDataUrlMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('PreviewDataUrlCache', () => {
+  const request = (fingerprint: string, maxBytes = 100) => ({ fingerprint, maxBytes });
+
+  it('evicts by LRU order', () => {
+    const cache = new PreviewDataUrlCache(2, 100);
+    cache.set('a', 'data:aaaa', request('a'));
+    cache.set('b', 'data:bbbb', request('b'));
+    expect(cache.get('a', request('a'))).toBe('data:aaaa');
+    cache.set('c', 'data:cccc', request('c'));
+    expect(cache.get('b', request('b'))).toBeNull();
+    expect(cache.get('a', request('a'))).toBe('data:aaaa');
+  });
+
+  it('evicts entries to stay inside UTF-16 memory budget', () => {
+    const cache = new PreviewDataUrlCache(10, 20);
+    cache.set('a', 'data:aaaa', request('a'));
+    cache.set('b', 'data:bbbb', request('b'));
+    expect(cache.get('a', request('a'))).toBeNull();
+    expect(cache.get('b', request('b'))).toBe('data:bbbb');
+  });
+
+  it('never caches one entry larger than memory budget', () => {
+    const cache = new PreviewDataUrlCache(10, 4);
+    cache.set('a', 'data:aaa', request('a'));
+    expect(cache.get('a', request('a'))).toBeNull();
   });
 });

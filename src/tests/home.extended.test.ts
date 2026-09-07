@@ -637,7 +637,9 @@ describe('createHomeController - renderHomeDrives', () => {
     }>);
 
     const drives = document.getElementById('home-drives')!;
-    expect(drives.querySelectorAll('.home-drive-card').length).toBe(1);
+    const card = drives.querySelector<HTMLElement>('.home-drive-card');
+    expect(card).not.toBeNull();
+    expect(card?.getAttribute('aria-label')).toBe('Open drive Root');
   });
 
   it('hides drives section when showDrives is false', async () => {

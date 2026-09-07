@@ -160,7 +160,9 @@ describe('rendererPropertiesDialog', () => {
 
       const content = document.getElementById('properties-content')!;
       expect(content.innerHTML).toContain('<code>rwxr-xr-x</code>');
-      expect((document.getElementById('perm-octal-input') as HTMLInputElement).value).toBe('755');
+      const octalInput = document.getElementById('perm-octal-input') as HTMLInputElement;
+      expect(octalInput.value).toBe('755');
+      expect(octalInput.getAttribute('aria-label')).toBe('Octal permissions');
       expect(content.innerHTML).toContain('alice:staff');
     });
 

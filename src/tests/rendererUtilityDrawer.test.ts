@@ -610,6 +610,13 @@ describe('rendererUtilityDrawer', () => {
     const favoritesCard = body?.querySelector('.favorites-card');
     const removeBtn = favoritesCard?.querySelector('.btn-remove') as HTMLButtonElement;
     expect(removeBtn).toBeTruthy();
+    expect(removeBtn.getAttribute('aria-label')).toBe('Remove Favorites widget');
+    expect(favoritesCard?.querySelector('.btn-left')?.getAttribute('aria-label')).toBe(
+      'Move Favorites left'
+    );
+    expect(favoritesCard?.querySelector('.btn-right')?.getAttribute('aria-label')).toBe(
+      'Move Favorites right'
+    );
     removeBtn.click();
 
     await settlePendingWork();

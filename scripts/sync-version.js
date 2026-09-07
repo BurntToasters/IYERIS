@@ -7,11 +7,29 @@ import { fileURLToPath } from 'url';
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const version = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8')).version;
 
+function writeFileAtomic(filePath, content) {
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  let ownsTemporaryPath = false;
+  try {
+    fs.writeFileSync(temporaryPath, content, { encoding: 'utf8', flag: 'wx' });
+    ownsTemporaryPath = true;
+    fs.renameSync(temporaryPath, filePath);
+  } finally {
+    if (ownsTemporaryPath) {
+      try {
+        fs.unlinkSync(temporaryPath);
+      } catch {
+        // The rename succeeded, so there is no temporary file left to clean.
+      }
+    }
+  }
+}
+
 const tauriConf = path.join(root, 'src-tauri', 'tauri.conf.json');
 const conf = JSON.parse(fs.readFileSync(tauriConf, 'utf-8'));
 if (conf.version !== version) {
   conf.version = version;
-  fs.writeFileSync(tauriConf, JSON.stringify(conf, null, 2) + '\n');
+  writeFileAtomic(tauriConf, JSON.stringify(conf, null, 2) + '\n');
   console.log(`tauri.conf.json → ${version}`);
 }
 
@@ -33,7 +51,7 @@ if (packageSectionMatch) {
 }
 
 if (updated !== cargo) {
-  fs.writeFileSync(cargoPath, updated);
+  writeFileAtomic(cargoPath, updated);
   console.log(`Cargo.toml      → ${version}`);
 }
 
@@ -48,7 +66,7 @@ if (fs.existsSync(cargoLockPath)) {
   );
   const lockMatch = cargoLock.match(lockPackagePattern);
   if (lockMatch && !lockMatch[0].includes(`version = "${version}"`)) {
-    fs.writeFileSync(cargoLockPath, cargoLock.replace(lockPackagePattern, `$1"${version}"`));
+    writeFileAtomic(cargoLockPath, cargoLock.replace(lockPackagePattern, `$1"${version}"`));
     console.log(`Cargo.lock      → ${version}`);
   }
 }

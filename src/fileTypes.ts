@@ -1,4 +1,6 @@
-export const FILE_ICON_MAP: Record<string, string> = {
+import type { SupportedIconName } from './rendererUtils.js';
+
+export const FILE_ICON_MAP: Record<string, SupportedIconName> = {
   jpg: 'image',
   jpeg: 'image',
   png: 'image',

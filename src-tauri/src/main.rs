@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod archive;
+mod cancellation;
+mod copy_metadata;
 mod directory;
 mod elevated;
 mod file_operations;
@@ -20,7 +22,7 @@ mod watcher;
 mod window_snap;
 
 use std::collections::HashMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Mutex;
@@ -61,14 +63,245 @@ pub(crate) fn make_temp_path(path: &Path, purpose: &str) -> PathBuf {
     path.with_extension(extension)
 }
 
+/// Reserve a unique temporary sibling without following a pre-existing
+/// symlink. Callers must keep the returned file handle until they are ready to
+/// write; the path is only used for the final atomic rename/cleanup.
+pub(crate) fn create_secure_temp_file(
+    path: &Path,
+    purpose: &str,
+) -> Result<(PathBuf, std::fs::File), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Temporary file has no parent directory".to_string())?;
+    let parent_metadata = std::fs::symlink_metadata(parent).map_err(|error| {
+        format!(
+            "Failed to inspect temporary-file parent {}: {}",
+            parent.display(),
+            error
+        )
+    })?;
+    if parent_metadata.file_type().is_symlink() || !parent_metadata.is_dir() {
+        return Err(format!(
+            "Temporary-file parent is not a real directory: {}",
+            parent.display()
+        ));
+    }
+    for _ in 0..32 {
+        let candidate = make_temp_path(path, purpose);
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .read(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => return Ok((candidate, file)),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Failed to create secure temporary file {}: {}",
+                    candidate.display(),
+                    error
+                ));
+            }
+        }
+    }
+    Err("Unable to reserve a unique temporary file".to_string())
+}
+
+/// Publish a fully-written temporary file over a regular destination.
+///
+/// `std::fs::rename` replaces an existing file on Unix, but returns
+/// `AlreadyExists` on Windows. Keep the replacement atomic on both platforms
+/// so settings, indexes, thumbnails, and native integration files can be
+/// refreshed repeatedly without a delete-then-write gap.
+pub(crate) fn atomic_replace_file(temp: &Path, destination: &Path) -> Result<(), String> {
+    if let Ok(metadata) = std::fs::symlink_metadata(destination) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(format!(
+                "Refusing to replace unsafe destination: {}",
+                destination.display()
+            ));
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows::core::PCWSTR;
+        use windows::Win32::Storage::FileSystem::{
+            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        };
+
+        let from: Vec<u16> = temp
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        let to: Vec<u16> = destination
+            .as_os_str()
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+        // SAFETY: both buffers are valid, NUL-terminated UTF-16 strings owned
+        // for the duration of the call.
+        unsafe {
+            MoveFileExW(
+                PCWSTR(from.as_ptr()),
+                PCWSTR(to.as_ptr()),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        }
+        .map_err(|error| format!("Failed to publish {}: {}", destination.display(), error))
+    }
+
+    #[cfg(not(windows))]
+    {
+        std::fs::rename(temp, destination)
+            .map_err(|error| format!("Failed to publish {}: {}", destination.display(), error))
+    }
+}
+
+/// Ensure a directory exists without traversing a symlinked component. The
+/// standard `create_dir_all` follows symlinks in existing parents, which is
+/// unsafe for app-owned state paths that may be redirected by another local
+/// process. Create missing components one at a time and lstat each result.
+pub(crate) fn ensure_real_directory_tree(path: &Path, label: &str) -> Result<(), String> {
+    let mut missing = Vec::new();
+    let mut cursor = path;
+    let existing = loop {
+        match std::fs::symlink_metadata(cursor) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(format!(
+                        "{} is not a real directory: {}",
+                        label,
+                        cursor.display()
+                    ));
+                }
+                break cursor;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let name = cursor
+                    .file_name()
+                    .ok_or_else(|| format!("Cannot determine {} parent directory", label))?;
+                missing.push(name.to_os_string());
+                cursor = cursor
+                    .parent()
+                    .ok_or_else(|| format!("Cannot determine {} parent directory", label))?;
+            }
+            Err(error) => {
+                return Err(format!("Cannot inspect {}: {}", label, error));
+            }
+        }
+    };
+
+    ensure_no_symlink_components(existing, label)?;
+    let mut current = existing.to_path_buf();
+    for component in missing.iter().rev() {
+        current.push(component);
+        match std::fs::symlink_metadata(&current) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(format!(
+                        "{} is not a real directory: {}",
+                        label,
+                        current.display()
+                    ));
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                std::fs::create_dir(&current).map_err(|create_error| {
+                    format!(
+                        "Failed to create {} {}: {}",
+                        label,
+                        current.display(),
+                        create_error
+                    )
+                })?;
+                let metadata = std::fs::symlink_metadata(&current).map_err(|e| e.to_string())?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err(format!(
+                        "{} changed into an unsafe path: {}",
+                        label,
+                        current.display()
+                    ));
+                }
+            }
+            Err(error) => {
+                return Err(format!("Cannot inspect {}: {}", label, error));
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Reject a path that traverses any symbolic-link component. This is used for
+/// app-owned state paths where accepting a directory symlink could redirect a
+/// write outside the location the application selected. Callers pass an
+/// existing path (normally a parent directory), so every ancestor can be
+/// inspected with lstat semantics.
+pub(crate) fn ensure_no_symlink_components(path: &Path, label: &str) -> Result<(), String> {
+    if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err(format!("{} path contains a parent traversal", label));
+    }
+
+    let mut current = path;
+    loop {
+        let metadata = std::fs::symlink_metadata(current).map_err(|error| {
+            format!(
+                "Cannot inspect {} path {}: {}",
+                label,
+                current.display(),
+                error
+            )
+        })?;
+        #[cfg(target_os = "macos")]
+        let system_alias = matches!(current.to_str(), Some("/var" | "/tmp" | "/etc"))
+            && std::fs::read_link(current).ok().is_some_and(|target| {
+                target == Path::new("private").join(current.file_name().unwrap_or_default())
+                    || target == Path::new("/private").join(current.file_name().unwrap_or_default())
+            });
+        #[cfg(not(target_os = "macos"))]
+        let system_alias = false;
+        if metadata.file_type().is_symlink() && !system_alias {
+            return Err(format!(
+                "{} path traverses a symbolic link: {}",
+                label,
+                current.display()
+            ));
+        }
+        if current.parent().is_none() || current.parent() == Some(current) {
+            break;
+        }
+        current = current.parent().expect("parent checked above");
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_path(raw: &str, label: &str) -> Result<PathBuf, String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
+    if raw.trim().is_empty() {
         return Err(format!("{} path is required", label));
     }
-    let path = PathBuf::from(trimmed);
+    // IPC callers can otherwise force every path-taking command to copy and
+    // log arbitrarily large strings before the OS rejects them. Keep a
+    // generous cross-platform bound (well above native path limits) and
+    // reject embedded NULs before constructing a PathBuf.
+    const MAX_PATH_BYTES: usize = 1024 * 1024;
+    if raw.len() > MAX_PATH_BYTES {
+        return Err(format!(
+            "{} path exceeds the {} byte limit",
+            label, MAX_PATH_BYTES
+        ));
+    }
+    if raw.contains('\0') {
+        return Err(format!("{} path contains a NUL character", label));
+    }
+    let path = PathBuf::from(raw);
     if !path.is_absolute() {
-        return Err(format!("{} path must be absolute: {}", label, trimmed));
+        return Err(format!("{} path must be absolute: {}", label, raw));
     }
     Ok(path)
 }
@@ -90,7 +323,61 @@ pub(crate) fn validate_existing_path(raw: &str, label: &str) -> Result<PathBuf, 
 }
 
 pub(crate) fn ensure_not_root_path(path: &Path, action: &str) -> Result<(), String> {
-    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let canonical = match path.canonicalize() {
+        Ok(value) => value,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            // Copy/move destinations may not exist yet. Resolve the nearest
+            // existing parent without falling back to the raw path; reject
+            // symlink ancestors so a later privileged/mutating call cannot be
+            // redirected through a swapped parent.
+            let mut missing = Vec::new();
+            let mut cursor = path;
+            let existing = loop {
+                match std::fs::symlink_metadata(cursor) {
+                    Ok(metadata) => {
+                        if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                            return Err(format!(
+                                "Cannot safely resolve path before attempting to {}",
+                                action
+                            ));
+                        }
+                        break cursor;
+                    }
+                    Err(next_error) if next_error.kind() == std::io::ErrorKind::NotFound => {
+                        let name = cursor.file_name().ok_or_else(|| {
+                            format!("Cannot safely resolve path before attempting to {}", action)
+                        })?;
+                        missing.push(name.to_os_string());
+                        cursor = cursor.parent().ok_or_else(|| {
+                            format!("Cannot safely resolve path before attempting to {}", action)
+                        })?;
+                    }
+                    Err(next_error) => {
+                        return Err(format!(
+                            "Cannot safely resolve path before attempting to {}: {}",
+                            action, next_error
+                        ));
+                    }
+                }
+            };
+            let mut resolved = existing.canonicalize().map_err(|resolve_error| {
+                format!(
+                    "Cannot safely resolve path before attempting to {}: {}",
+                    action, resolve_error
+                )
+            })?;
+            for component in missing.iter().rev() {
+                resolved.push(component);
+            }
+            resolved
+        }
+        Err(error) => {
+            return Err(format!(
+                "Cannot safely resolve path before attempting to {}: {}",
+                action, error
+            ));
+        }
+    };
     if canonical.parent().is_none() {
         return Err(format!("Cannot {} a root directory", action));
     }
@@ -124,7 +411,19 @@ fn early_settings_path() -> Option<PathBuf> {
 
 fn read_early_setting_bool(key: &str) -> bool {
     early_settings_path()
-        .and_then(|path| std::fs::read_to_string(path).ok())
+        .and_then(|path| {
+            let file = file_operations::open_regular_read(&path).ok()?;
+            let size = file.metadata().ok()?.len();
+            const MAX_EARLY_SETTINGS_BYTES: u64 = 8 * 1024 * 1024;
+            if size > MAX_EARLY_SETTINGS_BYTES {
+                return None;
+            }
+            let mut content = String::with_capacity(size as usize);
+            file.take(MAX_EARLY_SETTINGS_BYTES.saturating_add(1))
+                .read_to_string(&mut content)
+                .ok()?;
+            (content.len() as u64 <= MAX_EARLY_SETTINGS_BYTES).then_some(content)
+        })
         .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
         .and_then(|json| json.get(key).and_then(|v| v.as_bool()))
         .unwrap_or(false)
@@ -341,6 +640,15 @@ fn setup_native_menu(app: &tauri::App) -> tauri::Result<()> {
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    if let Some(result) = elevated::handle_transfer_helper(&args) {
+        match result {
+            Ok(()) => std::process::exit(0),
+            Err(error) => {
+                eprintln!("{error}");
+                std::process::exit(1);
+            }
+        }
+    }
     let dev_mode = args.iter().any(|a| a == "--dev" || a == "--verbose");
     #[allow(unused_mut)]
     let mut start_minimized = has_minimized_launch_arg(&args);
@@ -473,7 +781,7 @@ fn main() {
         .setup(move |app| {
             log::debug!("[Setup] App setup starting");
             let settings_json =
-                settings::get_settings(app.handle().clone()).unwrap_or_else(|err| {
+                settings::get_settings_sync(app.handle().clone()).unwrap_or_else(|err| {
                     log::warn!(
                         "[Setup] Failed to read settings: {}; falling back to defaults",
                         err
@@ -771,13 +1079,20 @@ fn main() {
                         }
                     }
                 }
+                if let tauri::RunEvent::Exit = event {
+                    undo::discard_history_on_exit();
+                }
                 if let tauri::RunEvent::ExitRequested { .. } = event {
                     log::info!("[App] Exit requested — cleaning up");
                     indexer::cancel_build();
                     if let Some(state) = app_handle.try_state::<AppState>() {
-                        if let Ok(mut watchers) = state.watchers.lock() {
-                            watchers.clear();
-                        }
+                        let mut watchers = state.watchers.lock().unwrap_or_else(|poisoned| {
+                            log::warn!(
+                                "[App] watcher map mutex poisoned during shutdown; recovering"
+                            );
+                            poisoned.into_inner()
+                        });
+                        watchers.clear();
                     }
                 }
             });
@@ -792,6 +1107,31 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn validate_path_preserves_trailing_spaces() {
+        let temp = tempfile::tempdir().unwrap();
+        let intended = temp.path().join("report ");
+        let sibling = temp.path().join("report");
+        std::fs::write(&intended, b"selected").unwrap();
+        std::fs::write(&sibling, b"unselected").unwrap();
+        let validated = validate_path(intended.to_str().unwrap(), "File").unwrap();
+        assert_eq!(validated, intended);
+        assert_eq!(std::fs::read(validated).unwrap(), b"selected");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn state_directory_rejects_symlink_above_existing_parent() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let real = root.join("real");
+        std::fs::create_dir_all(real.join("existing")).unwrap();
+        std::os::unix::fs::symlink(&real, root.join("link")).unwrap();
+        assert!(ensure_real_directory_tree(&root.join("link/existing/new"), "State").is_err());
+        assert!(!real.join("existing/new").exists());
+    }
 
     #[test]
     fn make_temp_path_includes_purpose() {
@@ -822,6 +1162,13 @@ mod tests {
     #[test]
     fn validate_path_rejects_relative() {
         assert!(validate_path("relative/path", "Test").is_err());
+    }
+
+    #[test]
+    fn validate_path_rejects_nul_and_oversized_input() {
+        assert!(validate_path("/tmp/bad\0name", "Test").is_err());
+        let oversized = format!("/tmp/{}", "x".repeat(1_048_576));
+        assert!(validate_path(&oversized, "Test").is_err());
     }
 
     #[test]

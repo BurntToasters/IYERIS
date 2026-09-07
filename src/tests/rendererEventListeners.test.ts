@@ -1099,7 +1099,7 @@ describe('createEventListenersController', () => {
   });
 
   describe('address bar', () => {
-    it('navigates to entered path on Enter', () => {
+    it('does not duplicate path navigation owned by NavigationController', () => {
       const config = createMockConfig();
       const ctrl = createEventListenersController(config);
       ctrl.setupEventListeners();
@@ -1108,10 +1108,10 @@ describe('createEventListenersController', () => {
       input.value = '/usr/local/bin';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
-      expect(config.navigateTo).toHaveBeenCalledWith('/usr/local/bin');
+      expect(config.navigateTo).not.toHaveBeenCalled();
     });
 
-    it('navigates to home path when home label is entered', () => {
+    it('does not duplicate home navigation owned by NavigationController', () => {
       const config = createMockConfig();
       const ctrl = createEventListenersController(config);
       ctrl.setupEventListeners();
@@ -1120,7 +1120,7 @@ describe('createEventListenersController', () => {
       input.value = 'Home';
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
 
-      expect(config.navigateTo).toHaveBeenCalledWith('~home');
+      expect(config.navigateTo).not.toHaveBeenCalled();
     });
   });
 

@@ -261,7 +261,9 @@ export function createClipboardController(deps: ClipboardDeps) {
           });
           const elevResult = await window.tauriAPI.elevatedMoveBatch(
             systemClipboard.paths,
-            destPath
+            destPath,
+            conflictBehavior,
+            moveResult.conflictResolutions
           );
           if (elevResult.success) {
             completeQueued(operationId, 'done');
@@ -313,7 +315,9 @@ export function createClipboardController(deps: ClipboardDeps) {
           });
           const elevResult = await window.tauriAPI.elevatedCopyBatch(
             systemClipboard.paths,
-            destPath
+            destPath,
+            conflictBehavior,
+            copyResult.conflictResolutions
           );
           if (elevResult.success) {
             completeQueued(operationId, 'done');
@@ -563,8 +567,18 @@ export function createClipboardController(deps: ClipboardDeps) {
               status: 'active',
             });
             const elevResult = isCopy
-              ? await window.tauriAPI.elevatedCopyBatch(clipboardSnapshot.paths, folderPath)
-              : await window.tauriAPI.elevatedMoveBatch(clipboardSnapshot.paths, folderPath);
+              ? await window.tauriAPI.elevatedCopyBatch(
+                  clipboardSnapshot.paths,
+                  folderPath,
+                  conflictBehavior,
+                  result.conflictResolutions
+                )
+              : await window.tauriAPI.elevatedMoveBatch(
+                  clipboardSnapshot.paths,
+                  folderPath,
+                  conflictBehavior,
+                  result.conflictResolutions
+                );
             if (elevResult.success) {
               completeQueued(operationId, 'done');
               deps.showToast(
@@ -648,7 +662,12 @@ export function createClipboardController(deps: ClipboardDeps) {
               currentFile: 'Waiting for elevated permissions...',
               status: 'active',
             });
-            const elevResult = await window.tauriAPI.elevatedCopyBatch(paths, currentPath);
+            const elevResult = await window.tauriAPI.elevatedCopyBatch(
+              paths,
+              currentPath,
+              conflictBehavior,
+              result.conflictResolutions
+            );
             if (elevResult.success) {
               completeQueued(operationId, 'done');
               deps.showToast(
@@ -775,8 +794,18 @@ export function createClipboardController(deps: ClipboardDeps) {
               status: 'active',
             });
             const elevResult = isCopy
-              ? await window.tauriAPI.elevatedCopyBatch(clipboardSnapshot.paths, currentPath)
-              : await window.tauriAPI.elevatedMoveBatch(clipboardSnapshot.paths, currentPath);
+              ? await window.tauriAPI.elevatedCopyBatch(
+                  clipboardSnapshot.paths,
+                  currentPath,
+                  conflictBehavior,
+                  result.conflictResolutions
+                )
+              : await window.tauriAPI.elevatedMoveBatch(
+                  clipboardSnapshot.paths,
+                  currentPath,
+                  conflictBehavior,
+                  result.conflictResolutions
+                );
             if (elevResult.success) {
               completeQueued(operationId, 'done');
               deps.showToast(

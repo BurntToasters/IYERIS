@@ -52,6 +52,7 @@ interface TabsDeps {
   getViewMode: () => ViewMode;
 
   renderFiles: (files: FileItem[]) => void;
+  onSelectionRestored?: () => void;
   renderColumnView: () => void;
   updateBreadcrumb: (path: string) => void;
   updateNavigationButtons: () => void;
@@ -80,6 +81,7 @@ export function createTabsController(deps: TabsDeps) {
   const MAX_HISTORY_PER_TAB = 200;
   const closedTabPaths: string[] = [];
   let activeDismissHandler: ((e: MouseEvent) => void) | null = null;
+  let tabContextReturnFocus: HTMLElement | null = null;
   let dismissTimeoutId: ReturnType<typeof setTimeout> | null = null;
 
   function generateTabId(): string {
@@ -303,14 +305,18 @@ export function createTabsController(deps: TabsDeps) {
         ${tabIcon}
       </span>
       <span class="tab-title" title="${escapeHtml(tabTitle)}">${escapeHtml(folderName)}</span>
-      <button class="tab-close" title="Close Tab" aria-label="Close tab">&times;</button>
+      <button type="button" class="tab-close" title="Close Tab" aria-label="Close tab">&times;</button>
     `;
 
       tabList.appendChild(tabElement);
     });
   }
 
+  let pendingTabId: string | null = null;
+  let tabSwitchGeneration = 0;
+
   function snapshotCurrentTab() {
+    if (pendingTabId === deps.getActiveTabId()) return;
     const tabs = deps.getTabs();
     const currentTab = tabs.find((t) => t.id === deps.getActiveTabId());
     if (!currentTab) return;
@@ -338,6 +344,34 @@ export function createTabsController(deps: TabsDeps) {
     }
   }
 
+  function restoreTabView(tab: TabData): void {
+    const generation = ++tabSwitchGeneration;
+    const savedSelection = new Set(tab.selectedItems);
+    const savedScroll = tab.scrollPosition;
+    pendingTabId = tab.id;
+    deps.cancelDirectoryRequest?.();
+    if (tab.path) {
+      void (async () => {
+        try {
+          await deps.navigateTo(tab.path, true);
+          if (generation !== tabSwitchGeneration || deps.getActiveTabId() !== tab.id) return;
+          const validPaths = new Set(deps.getAllFiles().map((item) => item.path));
+          deps.setSelectedItems(
+            new Set([...savedSelection].filter((path) => validPaths.has(path)))
+          );
+          deps.onSelectionRestored?.();
+          deps.setFileViewScrollTop(savedScroll);
+        } catch (error) {
+          ignoreError(error);
+        } finally {
+          if (generation === tabSwitchGeneration) pendingTabId = null;
+        }
+      })();
+    } else {
+      pendingTabId = null;
+    }
+  }
+
   function switchToTab(tabId: string) {
     if (deps.getActiveTabId() === tabId || !deps.getTabsEnabled()) return;
 
@@ -356,71 +390,10 @@ export function createTabsController(deps: TabsDeps) {
     }
     deps.resetTypeahead?.();
 
-    if (newTab.path) {
-      if (newTab.cachedFiles !== undefined) {
-        deps.cancelDirectoryRequest?.();
-        // Validate directory still exists before restoring cached view
-        window.tauriAPI
-          .getItemProperties(newTab.path)
-          .then((result) => {
-            // Bail if the user switched away while this awaited (stale restore race).
-            if (deps.getActiveTabId() !== tabId) return;
-            if (result.success) {
-              restoreTabView(newTab);
-              updateTabCacheAccess(newTab.id);
-              deps.setFileViewScrollTop(newTab.scrollPosition);
-            } else {
-              // Directory no longer exists — clear cache and navigate fresh
-              delete newTab.cachedFiles;
-              Promise.resolve(deps.navigateTo(newTab.path, true)).catch(ignoreError);
-            }
-          })
-          .catch(() => {
-            if (deps.getActiveTabId() !== tabId) return;
-            delete newTab.cachedFiles;
-            Promise.resolve(deps.navigateTo(newTab.path, true)).catch(ignoreError);
-          });
-      } else {
-        void (async () => {
-          try {
-            await deps.navigateTo(newTab.path, true);
-            deps.setFileViewScrollTop(newTab.scrollPosition);
-          } catch (e) {
-            ignoreError(e);
-          }
-        })();
-      }
-    }
+    restoreTabView(newTab);
 
     renderTabs();
     debouncedSaveTabState();
-  }
-
-  function restoreTabView(tab: TabData) {
-    deps.setCurrentPath(tab.path);
-    const addressInput = deps.getAddressInput();
-    if (addressInput) addressInput.value = deps.getPathDisplayValue(tab.path);
-    deps.updateBreadcrumb(tab.path);
-    deps.updateNavigationButtons();
-
-    if (deps.isHomeViewPath(tab.path)) {
-      deps.setHomeViewActive(true);
-      return;
-    }
-
-    deps.setHomeViewActive(false);
-    deps.watchDirectory(tab.path);
-
-    if (deps.getViewMode() === 'column') {
-      deps.renderColumnView();
-    } else {
-      deps.renderFiles(tab.cachedFiles || []);
-    }
-
-    if (deps.getCurrentSettings().enableGitStatus) {
-      deps.fetchGitStatusAsync?.(tab.path);
-      deps.updateGitBranch?.(tab.path);
-    }
   }
 
   function debouncedSaveTabState() {
@@ -490,18 +463,7 @@ export function createTabsController(deps: TabsDeps) {
       deps.setHistoryIndex(nextTab.historyIndex);
       deps.setSelectedItems(new Set(nextTab.selectedItems));
 
-      if (nextTab.path) {
-        if (nextTab.cachedFiles !== undefined) {
-          deps.cancelDirectoryRequest?.();
-          restoreTabView(nextTab);
-        } else {
-          void deps.navigateTo(nextTab.path, true);
-        }
-      }
-
-      setTimeout(() => {
-        deps.setFileViewScrollTop(nextTab.scrollPosition);
-      }, 50);
+      restoreTabView(nextTab);
     }
 
     renderTabs();
@@ -561,15 +523,7 @@ export function createTabsController(deps: TabsDeps) {
       deps.setHistory([...keepTab.history]);
       deps.setHistoryIndex(keepTab.historyIndex);
       deps.setSelectedItems(new Set(keepTab.selectedItems));
-      if (keepTab.cachedFiles !== undefined) {
-        deps.cancelDirectoryRequest?.();
-        restoreTabView(keepTab);
-      } else {
-        void deps.navigateTo(keepTab.path, true);
-      }
-      setTimeout(() => {
-        deps.setFileViewScrollTop(keepTab.scrollPosition);
-      }, 50);
+      restoreTabView(keepTab);
     }
     renderTabs();
     debouncedSaveTabState();
@@ -598,15 +552,7 @@ export function createTabsController(deps: TabsDeps) {
       deps.setHistory([...lastTab.history]);
       deps.setHistoryIndex(lastTab.historyIndex);
       deps.setSelectedItems(new Set(lastTab.selectedItems));
-      if (lastTab.cachedFiles !== undefined) {
-        deps.cancelDirectoryRequest?.();
-        restoreTabView(lastTab);
-      } else {
-        void deps.navigateTo(lastTab.path, true);
-      }
-      setTimeout(() => {
-        deps.setFileViewScrollTop(lastTab.scrollPosition);
-      }, 50);
+      restoreTabView(lastTab);
     }
     renderTabs();
     debouncedSaveTabState();
@@ -622,6 +568,10 @@ export function createTabsController(deps: TabsDeps) {
 
   function showTabContextMenu(x: number, y: number, tabId: string): void {
     hideTabContextMenu();
+    tabContextReturnFocus =
+      Array.from(document.querySelectorAll<HTMLElement>('.tab-item[data-tab-id]')).find(
+        (tab) => tab.dataset.tabId === tabId
+      ) ?? null;
     const tabs = deps.getTabs();
     const tabIndex = tabs.findIndex((t) => t.id === tabId);
 
@@ -721,6 +671,7 @@ export function createTabsController(deps: TabsDeps) {
   }
 
   function hideTabContextMenu(): void {
+    const activeMenu = (document.activeElement as HTMLElement | null)?.closest('.tab-context-menu');
     if (dismissTimeoutId !== null) {
       clearTimeout(dismissTimeoutId);
       dismissTimeoutId = null;
@@ -730,6 +681,8 @@ export function createTabsController(deps: TabsDeps) {
       activeDismissHandler = null;
     }
     document.querySelectorAll('.tab-context-menu').forEach((el) => el.remove());
+    if (activeMenu) tabContextReturnFocus?.focus({ preventScroll: true });
+    tabContextReturnFocus = null;
   }
 
   function restoreClosedTab(): void {

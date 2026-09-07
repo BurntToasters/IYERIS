@@ -1,7 +1,10 @@
+import type { FileItem } from './types';
 import { getById } from './rendererDom.js';
 import { TYPEAHEAD_RESET_MS } from './rendererLocalConstants.js';
 
 type TypeaheadDeps = {
+  getOrderedFiles?: () => FileItem[];
+  ensureItemRendered?: (path: string) => HTMLElement | null;
   getFileItems: () => HTMLElement[];
   clearSelection: () => void;
   getSelectedItems: () => Set<string>;
@@ -60,24 +63,23 @@ export function createTypeaheadController(deps: TypeaheadDeps) {
     }, TYPEAHEAD_RESET_MS);
 
     const needle = typeaheadBuffer.toLowerCase();
-    const items = deps.getFileItems();
-    const startsWithNeedle = (item: HTMLElement) => {
-      const nameEl = item.querySelector('.file-name');
-      const text = nameEl?.textContent?.toLowerCase() || '';
-      return text.startsWith(needle);
-    };
-    const candidates = items.filter(startsWithNeedle);
+    const items =
+      deps.getOrderedFiles?.() ??
+      deps.getFileItems().map((item) => ({
+        path: item.dataset.path || '',
+        name: item.querySelector('.file-name')?.textContent || '',
+      }));
+    const candidates = items.filter((item) => item.name.toLowerCase().startsWith(needle));
     if (candidates.length === 0) return;
-
-    let match = candidates[0]!;
+    let candidate = candidates[0]!;
     if (cycleSingleLetter && candidates.length > 1) {
       const selectedPath = Array.from(deps.getSelectedItems())[0];
-      const currentIndex = candidates.findIndex(
-        (item) => item.getAttribute('data-path') === selectedPath
-      );
-      const nextIndex = currentIndex >= 0 ? (currentIndex + 1) % candidates.length : 0;
-      match = candidates[nextIndex]!;
+      const currentIndex = candidates.findIndex((item) => item.path === selectedPath);
+      candidate = candidates[(currentIndex + 1) % candidates.length]!;
     }
+    const match =
+      deps.ensureItemRendered?.(candidate.path) ??
+      deps.getFileItems().find((item) => (item.dataset.path || '') === candidate.path);
 
     if (match) {
       if (deps.selectSingleItem) {

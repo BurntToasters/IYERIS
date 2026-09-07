@@ -248,6 +248,7 @@ describe('rendererSettingsActions', () => {
         expect(deps.showToast).toHaveBeenCalledWith('disk full', 'Import', 'error');
       });
 
+      expect(deps.setCurrentSettings).not.toHaveBeenCalled();
       expect(deps.hideSettingsModal).not.toHaveBeenCalled();
       expect(deps.showSettingsModal).not.toHaveBeenCalled();
     });

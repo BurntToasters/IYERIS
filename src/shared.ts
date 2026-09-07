@@ -1,5 +1,3 @@
-import DOMPurify from 'dompurify';
-
 const ESCAPE_MAP: Record<string, string> = {
   '&': '&amp;',
   '<': '&lt;',
@@ -164,104 +162,19 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
 
 export const RESERVED_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
 
-export function sanitizeStringArray(value: unknown): string[] {
+export function sanitizeStringArray(
+  value: unknown,
+  maxItemLength = 4096,
+  maxTotalLength = 2 * 1024 * 1024
+): string[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item) => typeof item === 'string');
-}
-
-const DANGEROUS_TAGS = new Set([
-  'SCRIPT',
-  'IFRAME',
-  'OBJECT',
-  'EMBED',
-  'FORM',
-  'STYLE',
-  'LINK',
-  'META',
-  'BASE',
-  'NOSCRIPT',
-  'SVG',
-  'MATH',
-  'TEMPLATE',
-  'APPLET',
-  'FRAME',
-  'FRAMESET',
-  'PORTAL',
-  'AUDIO',
-  'VIDEO',
-  'SOURCE',
-  'TRACK',
-]);
-
-// Attributes that can carry JS or load arbitrary resources. Stripped unconditionally.
-const DANGEROUS_ATTRS = new Set([
-  'formaction',
-  'background',
-  'poster',
-  'srcset',
-  'imagesrcset',
-  'ping',
-  'sandbox',
-  'allow',
-  'allowfullscreen',
-  'csp',
-  'dirname',
-  'http-equiv',
-  'manifest',
-  'xmlns',
-  'contextmenu',
-]);
-
-// URL-bearing attributes — value is checked against the URL allowlists below.
-const URL_ATTRS = new Set(['href', 'src', 'action', 'cite', 'longdesc', 'data', 'usemap']);
-
-const SAFE_URL_PATTERN = /^(?:https?|mailto|#):/i;
-const SAFE_RESOURCE_URL_PATTERN = /^(?:https?:\/\/asset\.localhost\/)/i;
-const HAS_SCHEME_PATTERN = /^[a-z][a-z0-9+.-]*:/i;
-
-const PURIFY_FORBID_TAGS = Array.from(DANGEROUS_TAGS, (t) => t.toLowerCase());
-
-// Layer IYERIS's strict URL allowlist onto DOMPurify (href: http/https/mailto/#;
-// resource URLs: relative or http(s)://asset.localhost only). Registered once.
-let purifyHookInstalled = false;
-function installPurifyHook(): void {
-  if (purifyHookInstalled) return;
-  purifyHookInstalled = true;
-  DOMPurify.addHook('uponSanitizeAttribute', (_node, data) => {
-    const name = data.attrName;
-    if (!name) return;
-    if (name.startsWith('on') || name === 'style' || DANGEROUS_ATTRS.has(name)) {
-      data.keepAttr = false;
-      return;
-    }
-    if (name.includes(':') && (name.endsWith(':href') || name.endsWith(':src'))) {
-      data.keepAttr = false;
-      return;
-    }
-    if (URL_ATTRS.has(name)) {
-      const val = (data.attrValue ?? '').trim();
-      if (/^\s*(?:javascript|data|vbscript)\s*:/i.test(val)) {
-        data.keepAttr = false;
-      } else if (name === 'href') {
-        if (val && !val.startsWith('#') && !SAFE_URL_PATTERN.test(val)) data.keepAttr = false;
-      } else if (
-        val &&
-        (/^\s*\/\//.test(val) ||
-          (HAS_SCHEME_PATTERN.test(val) && !SAFE_RESOURCE_URL_PATTERN.test(val)))
-      ) {
-        data.keepAttr = false;
-      }
-    }
-  });
-}
-
-export function sanitizeMarkdownHtml(html: string): string {
-  installPurifyHook();
-  // DOMPurify does the hardened parse/strip; the hook above layers IYERIS's
-  // stricter URL policy on top. Single sanitize pass (no parse→serialize→reparse).
-  return DOMPurify.sanitize(html, {
-    FORBID_TAGS: PURIFY_FORBID_TAGS,
-    FORBID_ATTR: Array.from(DANGEROUS_ATTRS),
-    ALLOW_DATA_ATTR: false,
-  });
+  const result: string[] = [];
+  let total = 0;
+  for (const item of value) {
+    if (typeof item !== 'string' || item.length > maxItemLength) continue;
+    if (total + item.length > maxTotalLength) break;
+    result.push(item);
+    total += item.length;
+  }
+  return result;
 }

@@ -1,7 +1,8 @@
 import type { FileItem, ItemProperties } from './types';
-import { escapeHtml, getErrorMessage, ignoreError, sanitizeMarkdownHtml } from './shared.js';
+import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { getById } from './rendererDom.js';
 import {
+  createPreviewDataUrlRequest,
   encodeFileUrl,
   getFileDataUrlWithCache,
   openFileWithFeedback,
@@ -23,7 +24,7 @@ import {
 import { isListableArchivePath } from './archiveFormatCapabilities.js';
 import { isForeground, onActivityChange } from './rendererActivityState.js';
 
-import { loadMarked } from './rendererMarkdown.js';
+import { loadMarked, sanitizeMarkdownHtml } from './rendererMarkdown.js';
 
 type PreviewDeps = QuicklookDeps;
 
@@ -32,6 +33,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
   let isPreviewPanelVisible = false;
   let previewRequestId = 0;
+  let pdfAbortController: AbortController | null = null;
   let pendingBackgroundPreview: FileItem | null = null;
 
   let activePdfViewer: PdfViewerHandle | null = null;
@@ -92,7 +94,7 @@ export function createPreviewController(deps: PreviewDeps) {
     previewContent.innerHTML = `
     <div class="preview-empty">
       <div class="preview-empty-illustration">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" class="preview-empty-svg">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" class="preview-empty-svg" aria-hidden="true" focusable="false">
           <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" stroke-dasharray="2 2" />
           <path d="M14 2v6h6" />
           <circle cx="12" cy="13" r="2.5" />
@@ -107,6 +109,8 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function clearPreview() {
     previewRequestId++;
+    pdfAbortController?.abort();
+    pdfAbortController = null;
     // Stop any playing media before clearing content.
     if (previewContent) {
       previewContent.querySelectorAll('video, audio').forEach((el) => {
@@ -153,6 +157,8 @@ export function createPreviewController(deps: PreviewDeps) {
       activePdfViewer = null;
     }
     previewRequestId++;
+    pdfAbortController?.abort();
+    pdfAbortController = null;
 
     if (closeAnimationEndListener) {
       panel.removeEventListener('animationend', closeAnimationEndListener);
@@ -236,6 +242,8 @@ export function createPreviewController(deps: PreviewDeps) {
 
   function updatePreview(file: FileItem) {
     const requestId = ++previewRequestId;
+    pdfAbortController?.abort();
+    pdfAbortController = new AbortController();
     // Stop any playing media before swapping in new content.
     if (previewContent) {
       previewContent.querySelectorAll('video, audio').forEach((el) => {
@@ -441,9 +449,13 @@ export function createPreviewController(deps: PreviewDeps) {
           img.dataset.fallbackAttempted = 'true';
           const dataUrl = await getFileDataUrlWithCache(
             file.path,
-            (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+            createPreviewDataUrlRequest(
+              file,
+              (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+            )
           );
-          if (!dataUrl || requestId !== previewRequestId) {
+          if (requestId !== previewRequestId) return;
+          if (!dataUrl) {
             if (previewContent) {
               // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
               previewContent.innerHTML = `
@@ -542,12 +554,13 @@ export function createPreviewController(deps: PreviewDeps) {
     if (md) {
       let rendered: string;
       try {
-        rendered = sanitizeMarkdownHtml(
+        rendered = await sanitizeMarkdownHtml(
           md.marked.parse(result.content, { async: false, breaks: true }) as string
         );
       } catch {
         rendered = `<pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>`;
       }
+      if (requestId !== previewRequestId) return;
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
       previewContent.innerHTML = `
       ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 100KB</div>` : ''}
@@ -643,10 +656,14 @@ export function createPreviewController(deps: PreviewDeps) {
     const videoEl = previewContent.querySelector('.preview-video') as HTMLVideoElement | null;
     if (videoEl) {
       videoEl.addEventListener('error', () => {
+        if (requestId !== previewRequestId) return;
         void (async () => {
           if (videoEl.dataset.fallbackAttempted === 'true') return;
           videoEl.dataset.fallbackAttempted = 'true';
-          const dataUrl = await getFileDataUrlWithCache(file.path, maxSizeMB * 1024 * 1024);
+          const dataUrl = await getFileDataUrlWithCache(
+            file.path,
+            createPreviewDataUrlRequest(file, maxSizeMB * 1024 * 1024)
+          );
           if (!dataUrl || requestId !== previewRequestId) return;
           videoEl.src = dataUrl;
           videoEl.load();
@@ -658,6 +675,19 @@ export function createPreviewController(deps: PreviewDeps) {
   async function showAudioPreview(file: FileItem, requestId: number) {
     ensureElements();
     if (!previewContent || requestId !== previewRequestId) return;
+
+    const settings = deps.getCurrentSettings();
+    const maxSizeMB = settings.maxPreviewSizeMB || 50;
+    if (file.size > maxSizeMB * 1024 * 1024) {
+      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+      previewContent.innerHTML = `
+      <div class="preview-error">
+        Audio file too large to preview (>${maxSizeMB}MB)
+      </div>
+      ${generateFileInfo(file, null)}
+    `;
+      return;
+    }
 
     const props = await window.tauriAPI.getItemProperties(file.path);
     if (requestId !== previewRequestId) return;
@@ -679,12 +709,13 @@ export function createPreviewController(deps: PreviewDeps) {
     const audioEl = previewContent.querySelector('.preview-audio') as HTMLAudioElement | null;
     if (audioEl) {
       audioEl.addEventListener('error', () => {
+        if (requestId !== previewRequestId) return;
         void (async () => {
           if (audioEl.dataset.fallbackAttempted === 'true') return;
           audioEl.dataset.fallbackAttempted = 'true';
           const dataUrl = await getFileDataUrlWithCache(
             file.path,
-            (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+            createPreviewDataUrlRequest(file, maxSizeMB * 1024 * 1024)
           );
           if (!dataUrl || requestId !== previewRequestId) return;
           audioEl.src = dataUrl;
@@ -739,6 +770,7 @@ export function createPreviewController(deps: PreviewDeps) {
 
     try {
       const viewer = await createPdfViewer(fileUrl, {
+        signal: pdfAbortController?.signal,
         maxWidth: 600,
         containerClass: 'preview-panel-pdf',
         showPageControls: true,
@@ -761,6 +793,7 @@ export function createPreviewController(deps: PreviewDeps) {
       const actionsDiv = document.createElement('div');
       actionsDiv.className = 'preview-pdf-actions';
       const openBtn = document.createElement('button');
+      openBtn.type = 'button';
       openBtn.className = 'preview-pdf-open-btn';
       openBtn.title = 'Open in default application';
       // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
@@ -778,11 +811,16 @@ export function createPreviewController(deps: PreviewDeps) {
       }
       previewContent.appendChild(fragment);
     } catch {
-      const fallbackDataUrl = await getFileDataUrlWithCache(file.path, maxSizeMB * 1024 * 1024);
+      if (requestId !== previewRequestId) return;
+      const fallbackDataUrl = await getFileDataUrlWithCache(
+        file.path,
+        createPreviewDataUrlRequest(file, maxSizeMB * 1024 * 1024)
+      );
       if (fallbackDataUrl && fallbackDataUrl !== fileUrl && requestId === previewRequestId) {
         try {
           fileUrl = fallbackDataUrl;
           const viewer = await createPdfViewer(fileUrl, {
+            signal: pdfAbortController?.signal,
             maxWidth: 600,
             containerClass: 'preview-panel-pdf',
             showPageControls: true,
@@ -805,6 +843,7 @@ export function createPreviewController(deps: PreviewDeps) {
           const actionsDiv = document.createElement('div');
           actionsDiv.className = 'preview-pdf-actions';
           const openBtn = document.createElement('button');
+          openBtn.type = 'button';
           openBtn.className = 'preview-pdf-open-btn';
           openBtn.title = 'Open in default application';
           // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
@@ -837,7 +876,7 @@ export function createPreviewController(deps: PreviewDeps) {
         Failed to render PDF
       </div>
       <div class="preview-pdf-actions">
-        <button class="preview-pdf-open-btn" title="Open in default application">
+        <button type="button" class="preview-pdf-open-btn" aria-label="Open in default application" title="Open in default application">
           ${twemojiImg('file', 'twemoji-small')} Open in Default App
         </button>
       </div>

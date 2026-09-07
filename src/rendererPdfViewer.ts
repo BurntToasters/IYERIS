@@ -17,7 +17,12 @@ interface PdfjsTextLayerConstructor {
   }): { render: () => Promise<void> };
 }
 
-interface PdfjsLib {
+interface PdfjsLoadingTask {
+  promise: Promise<PdfjsDocument>;
+  destroy: () => void | Promise<void>;
+}
+
+export interface PdfjsLib {
   getDocument: (params: {
     url?: string;
     data?: ArrayBuffer | Uint8Array;
@@ -25,7 +30,7 @@ interface PdfjsLib {
     disableStream?: boolean;
     isEvalSupported?: boolean;
     enableXfa?: boolean;
-  }) => { promise: Promise<PdfjsDocument>; destroy: () => void };
+  }) => PdfjsLoadingTask;
   GlobalWorkerOptions: { workerSrc: string };
   TextLayer?: PdfjsTextLayerConstructor;
 }
@@ -40,6 +45,7 @@ interface PdfjsPage {
   getViewport: (params: { scale: number }) => PdfjsViewport;
   render: (params: { canvasContext: CanvasRenderingContext2D; viewport: PdfjsViewport }) => {
     promise: Promise<void>;
+    cancel?: () => void;
   };
   getTextContent: () => Promise<PdfjsTextContent>;
 }
@@ -48,9 +54,38 @@ const ZOOM_LEVELS = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
 const DEFAULT_ZOOM_INDEX = 2;
 const WHEEL_NAV_COOLDOWN = 300;
 const WHEEL_ZOOM_COOLDOWN = 150;
+const PDF_LOAD_TIMEOUT_MS = 30_000;
+const PDF_RENDER_TIMEOUT_MS = 30_000;
+const PDF_MAX_CANVAS_PIXELS = 16_000_000;
 
 let pdfjsLib: PdfjsLib | null = null;
 let pdfjsLoading: Promise<PdfjsLib | null> | null = null;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+    }),
+  ]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
+
+function assertViewportWithinBudget(viewport: PdfjsViewport): void {
+  const pixels = viewport.width * viewport.height;
+  if (
+    !Number.isFinite(viewport.width) ||
+    !Number.isFinite(viewport.height) ||
+    viewport.width <= 0 ||
+    viewport.height <= 0 ||
+    !Number.isFinite(pixels) ||
+    pixels > PDF_MAX_CANVAS_PIXELS
+  ) {
+    throw new Error('PDF page dimensions exceed the preview limit');
+  }
+}
 
 export async function loadPdfJs(): Promise<PdfjsLib | null> {
   if (pdfjsLib) return pdfjsLib;
@@ -73,6 +108,16 @@ export async function loadPdfJs(): Promise<PdfjsLib | null> {
   return pdfjsLoading;
 }
 
+function withAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  return new Promise<T>((resolve, reject) => {
+    const abort = () => reject(new DOMException('PDF load cancelled', 'AbortError'));
+    if (signal.aborted) abort();
+    else signal.addEventListener('abort', abort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+  });
+}
+
 async function renderPage(
   doc: PdfjsDocument,
   pageNum: number,
@@ -80,9 +125,14 @@ async function renderPage(
   textLayerEl: HTMLElement | null,
   maxWidth: number,
   zoom: number,
-  lib: PdfjsLib
+  lib: PdfjsLib,
+  signal?: AbortSignal
 ): Promise<void> {
-  const page = await doc.getPage(pageNum);
+  const page = await withTimeout(
+    withAbort(doc.getPage(pageNum), signal),
+    PDF_RENDER_TIMEOUT_MS,
+    'PDF page load timed out'
+  );
   const dpr = window.devicePixelRatio || 1;
   const effectiveWidth = maxWidth * zoom;
   const baseViewport = page.getViewport({ scale: 1 });
@@ -90,6 +140,7 @@ async function renderPage(
   const renderScale = cssScale * dpr;
   const viewport = page.getViewport({ scale: renderScale });
   const cssViewport = page.getViewport({ scale: cssScale });
+  assertViewportWithinBudget(viewport);
 
   canvas.width = viewport.width;
   canvas.height = viewport.height;
@@ -99,7 +150,17 @@ async function renderPage(
   const ctx = canvas.getContext('2d');
   if (!ctx) throw new Error('Canvas 2D context unavailable');
 
-  await page.render({ canvasContext: ctx, viewport }).promise;
+  const renderTask = page.render({ canvasContext: ctx, viewport });
+  try {
+    await withTimeout(
+      withAbort(renderTask.promise, signal),
+      PDF_RENDER_TIMEOUT_MS,
+      'PDF page render timed out'
+    );
+  } catch (error) {
+    renderTask.cancel?.();
+    throw error;
+  }
 
   if (textLayerEl && lib.TextLayer) {
     textLayerEl.replaceChildren();
@@ -108,11 +169,15 @@ async function renderPage(
 
     try {
       const tl = new lib.TextLayer({
-        textContentSource: page.getTextContent(),
+        textContentSource: withTimeout(
+          page.getTextContent(),
+          PDF_RENDER_TIMEOUT_MS,
+          'PDF text layer load timed out'
+        ),
         container: textLayerEl,
         viewport: cssViewport,
       });
-      await tl.render();
+      await withTimeout(tl.render(), PDF_RENDER_TIMEOUT_MS, 'PDF text layer render timed out');
     } catch (err) {
       console.warn('[PDF] Text layer render failed:', err);
     }
@@ -131,23 +196,38 @@ export interface PdfViewerHandle {
   destroy: () => void;
 }
 
+export interface PdfViewerOptions {
+  signal?: AbortSignal;
+  maxWidth?: number;
+  containerClass?: string;
+  showPageControls?: boolean;
+  onError?: (error: string) => void;
+}
+
 export async function createPdfViewer(
   fileUrl: string,
-  options: {
-    maxWidth?: number;
-    containerClass?: string;
-    showPageControls?: boolean;
-    onError?: (error: string) => void;
-  } = {}
+  options: PdfViewerOptions = {}
 ): Promise<PdfViewerHandle> {
-  const { maxWidth = 800, containerClass = '', showPageControls = true, onError } = options;
-
-  const lib = await loadPdfJs();
+  if (options.signal?.aborted) throw new DOMException('PDF load cancelled', 'AbortError');
+  const lib = await withAbort(loadPdfJs(), options.signal);
   if (!lib) throw new Error('pdf.js failed to load');
+  return createPdfViewerWithLibrary(lib, fileUrl, options);
+}
+
+/** Dependency-injected entry point used by the focused pdf.js contract tests. */
+export async function createPdfViewerWithLibrary(
+  lib: PdfjsLib,
+  fileUrl: string,
+  options: PdfViewerOptions = {}
+): Promise<PdfViewerHandle> {
+  const { maxWidth = 800, containerClass = '', showPageControls = true, onError, signal } = options;
+  if (signal?.aborted) throw new DOMException('PDF load cancelled', 'AbortError');
 
   const container = document.createElement('div');
   container.className = `pdfjs-viewer ${containerClass}`.trim();
   container.tabIndex = 0;
+  container.setAttribute('role', 'region');
+  container.setAttribute('aria-label', 'PDF document viewer');
 
   const pageViewport = document.createElement('div');
   pageViewport.className = 'pdfjs-page-viewport';
@@ -170,15 +250,20 @@ export async function createPdfViewer(
   container.appendChild(pageViewport);
 
   let doc: PdfjsDocument | null = null;
+  let loadingTask: PdfjsLoadingTask | null = null;
+  let loadingTaskDestroyCalled = false;
   let currentPage = 1;
+  let requestedPage = 1;
+  let committedPage = 1;
   let totalPages = 0;
   let zoomIndex = DEFAULT_ZOOM_INDEX;
+  let requestedZoomIndex = DEFAULT_ZOOM_INDEX;
+  let committedZoomIndex = DEFAULT_ZOOM_INDEX;
   let destroyed = false;
+  let renderGeneration = 0;
   let rendering = false;
   let lastWheelNav = 0;
   let lastWheelZoom = 0;
-  const PDF_LOAD_TIMEOUT_MS = 30_000;
-
   let controlsEl: HTMLElement | null = null;
   let pageIndicator: HTMLElement | null = null;
   let prevBtn: HTMLButtonElement | null = null;
@@ -187,33 +272,57 @@ export async function createPdfViewer(
   let zoomInBtn: HTMLButtonElement | null = null;
   let zoomIndicator: HTMLElement | null = null;
 
+  function destroyLoadingTask(task: PdfjsLoadingTask): void {
+    if (loadingTaskDestroyCalled) return;
+    loadingTaskDestroyCalled = true;
+    try {
+      void Promise.resolve(task.destroy()).catch((error) => {
+        devLog('PDF', 'Failed to cancel PDF load', error);
+      });
+    } catch (error) {
+      devLog('PDF', 'Failed to cancel PDF load', error);
+    }
+  }
+
   if (showPageControls) {
     controlsEl = document.createElement('div');
     controlsEl.className = 'pdfjs-controls';
+    controlsEl.setAttribute('role', 'toolbar');
+    controlsEl.setAttribute('aria-label', 'PDF controls');
 
     prevBtn = document.createElement('button');
     prevBtn.className = 'pdfjs-nav-btn';
+    prevBtn.type = 'button';
     prevBtn.textContent = '\u2039';
     prevBtn.title = 'Previous page';
+    prevBtn.setAttribute('aria-label', 'Previous PDF page');
     prevBtn.disabled = true;
 
     pageIndicator = document.createElement('span');
     pageIndicator.className = 'pdfjs-page-indicator';
     pageIndicator.textContent = 'Loading...';
+    pageIndicator.setAttribute('aria-live', 'polite');
+    pageIndicator.setAttribute('aria-atomic', 'true');
 
     nextBtn = document.createElement('button');
     nextBtn.className = 'pdfjs-nav-btn';
+    nextBtn.type = 'button';
     nextBtn.title = 'Next page';
+    nextBtn.setAttribute('aria-label', 'Next PDF page');
     nextBtn.textContent = '\u203a';
     nextBtn.disabled = true;
 
     const separator = document.createElement('div');
     separator.className = 'pdfjs-controls-separator';
+    separator.setAttribute('role', 'separator');
+    separator.setAttribute('aria-orientation', 'vertical');
 
     zoomOutBtn = document.createElement('button');
     zoomOutBtn.className = 'pdfjs-zoom-btn';
+    zoomOutBtn.type = 'button';
     zoomOutBtn.textContent = '\u2212';
     zoomOutBtn.title = 'Zoom out';
+    zoomOutBtn.setAttribute('aria-label', 'Zoom out PDF');
 
     zoomIndicator = document.createElement('span');
     zoomIndicator.className = 'pdfjs-zoom-indicator';
@@ -221,8 +330,10 @@ export async function createPdfViewer(
 
     zoomInBtn = document.createElement('button');
     zoomInBtn.className = 'pdfjs-zoom-btn';
+    zoomInBtn.type = 'button';
     zoomInBtn.textContent = '+';
     zoomInBtn.title = 'Zoom in';
+    zoomInBtn.setAttribute('aria-label', 'Zoom in PDF');
 
     controlsEl.appendChild(prevBtn);
     controlsEl.appendChild(pageIndicator);
@@ -250,6 +361,10 @@ export async function createPdfViewer(
 
   let pendingRender: { animate: boolean } | null = null;
 
+  function isCurrentRender(generation: number): boolean {
+    return !destroyed && generation === renderGeneration && doc !== null;
+  }
+
   async function renderCurrentPage(animate: boolean): Promise<void> {
     if (!doc || destroyed) return;
     if (rendering) {
@@ -257,6 +372,9 @@ export async function createPdfViewer(
       return;
     }
     rendering = true;
+    const generation = renderGeneration;
+    const page = requestedPage;
+    const zoom = requestedZoomIndex;
 
     try {
       if (animate) {
@@ -269,27 +387,33 @@ export async function createPdfViewer(
           pageWrapper.addEventListener('transitionend', onEnd);
           setTimeout(onEnd, 200);
         });
+        if (!isCurrentRender(generation)) return;
       }
 
-      await renderPage(
-        doc!,
-        currentPage,
-        canvas,
-        textLayerEl,
-        maxWidth,
-        ZOOM_LEVELS[zoomIndex]!,
-        lib!
-      );
+      await renderPage(doc, page, canvas, textLayerEl, maxWidth, ZOOM_LEVELS[zoom]!, lib);
+      if (!isCurrentRender(generation)) return;
+      committedPage = page;
+      committedZoomIndex = zoom;
+      currentPage = page;
+      zoomIndex = zoom;
       updateControls();
 
       if (animate) pageWrapper.classList.remove('pdfjs-transitioning');
     } catch (err) {
+      if (!isCurrentRender(generation)) return;
+      requestedPage = committedPage;
+      requestedZoomIndex = committedZoomIndex;
+      currentPage = committedPage;
+      zoomIndex = committedZoomIndex;
+      updateControls();
       devLog('PDF', 'Render error', err);
       onError?.('Failed to render page');
       if (animate) pageWrapper.classList.remove('pdfjs-transitioning');
     } finally {
       rendering = false;
-      if (pendingRender) {
+      if (!isCurrentRender(generation)) {
+        pendingRender = null;
+      } else if (pendingRender) {
         const next = pendingRender;
         pendingRender = null;
         void renderCurrentPage(next.animate);
@@ -299,26 +423,26 @@ export async function createPdfViewer(
 
   async function goToPage(page: number): Promise<void> {
     if (!doc || destroyed) return;
-    if (page < 1 || page > totalPages || page === currentPage) return;
-    currentPage = page;
+    if (page < 1 || page > totalPages || page === requestedPage) return;
+    requestedPage = page;
     await renderCurrentPage(true);
   }
 
   async function zoomIn(): Promise<void> {
-    if (zoomIndex >= ZOOM_LEVELS.length - 1) return;
-    zoomIndex++;
+    if (requestedZoomIndex >= ZOOM_LEVELS.length - 1) return;
+    requestedZoomIndex++;
     await renderCurrentPage(false);
   }
 
   async function zoomOut(): Promise<void> {
-    if (zoomIndex <= 0) return;
-    zoomIndex--;
+    if (requestedZoomIndex <= 0) return;
+    requestedZoomIndex--;
     await renderCurrentPage(false);
   }
 
   async function resetZoom(): Promise<void> {
-    if (zoomIndex === DEFAULT_ZOOM_INDEX) return;
-    zoomIndex = DEFAULT_ZOOM_INDEX;
+    if (requestedZoomIndex === DEFAULT_ZOOM_INDEX) return;
+    requestedZoomIndex = DEFAULT_ZOOM_INDEX;
     await renderCurrentPage(false);
   }
 
@@ -383,36 +507,52 @@ export async function createPdfViewer(
   }
 
   function destroy(): void {
+    signal?.removeEventListener('abort', destroy);
     destroyed = true;
+    renderGeneration += 1;
+    pendingRender = null;
     container.removeEventListener('keydown', handleKeydown);
     pageViewport.removeEventListener('wheel', handleWheel);
     if (doc) {
       doc.destroy();
       doc = null;
     }
+    if (loadingTask) {
+      destroyLoadingTask(loadingTask);
+      loadingTask = null;
+    }
   }
 
+  signal?.addEventListener('abort', destroy, { once: true });
   container.addEventListener('keydown', handleKeydown);
   pageViewport.addEventListener('wheel', handleWheel, { passive: false });
 
   try {
-    const loadingTask = lib.getDocument({
+    loadingTask = lib.getDocument({
       url: fileUrl,
       disableAutoFetch: true,
       disableStream: true,
       isEvalSupported: false,
       enableXfa: false,
     });
-    const loadTimer = setTimeout(() => {
-      if (!doc && !destroyed) {
-        loadingTask.destroy();
-      }
-    }, PDF_LOAD_TIMEOUT_MS);
+    loadingTaskDestroyCalled = false;
+    const activeLoadingTask = loadingTask;
+    let loadTimer: ReturnType<typeof setTimeout> | undefined;
     try {
-      doc = await loadingTask.promise;
+      doc = await Promise.race([
+        withAbort(activeLoadingTask.promise, signal),
+        new Promise<PdfjsDocument>((_, reject) => {
+          loadTimer = setTimeout(() => {
+            destroyLoadingTask(activeLoadingTask);
+            reject(new Error('PDF load timed out'));
+          }, PDF_LOAD_TIMEOUT_MS);
+        }),
+      ]);
     } finally {
-      clearTimeout(loadTimer);
+      if (loadTimer) clearTimeout(loadTimer);
     }
+    loadingTask = null;
+    if (!doc) throw new Error('PDF failed to load');
     totalPages = doc.numPages;
 
     if (destroyed) {
@@ -431,13 +571,30 @@ export async function createPdfViewer(
       if (sep) (sep as HTMLElement).style.display = 'none';
     }
 
-    await renderPage(doc, 1, canvas, textLayerEl, maxWidth, ZOOM_LEVELS[zoomIndex]!, lib);
+    await withAbort(
+      renderPage(doc, 1, canvas, textLayerEl, maxWidth, ZOOM_LEVELS[zoomIndex]!, lib, signal),
+      signal
+    );
+    committedPage = 1;
+    committedZoomIndex = zoomIndex;
+    requestedPage = 1;
+    requestedZoomIndex = zoomIndex;
+    currentPage = 1;
     updateControls();
 
     requestAnimationFrame(() => {
       if (!destroyed) container.focus({ preventScroll: true });
     });
   } catch (err: unknown) {
+    signal?.removeEventListener('abort', destroy);
+    container.removeEventListener('keydown', handleKeydown);
+    pageViewport.removeEventListener('wheel', handleWheel);
+    doc?.destroy();
+    doc = null;
+    if (loadingTask && !loadingTaskDestroyCalled) {
+      destroyLoadingTask(loadingTask);
+      loadingTask = null;
+    }
     const msg = err instanceof Error ? err.message : 'Failed to load PDF';
     devLog('PDF', 'Load error', msg);
     onError?.(msg);
@@ -472,18 +629,52 @@ export async function generatePdfThumbnailPdfJs(
     enableXfa: false,
   });
 
-  const doc = await loadingTask.promise;
+  let loadTimer: ReturnType<typeof setTimeout> | undefined;
+  let loadingTaskDestroyCalled = false;
+  let doc!: PdfjsDocument;
+  const destroyLoadingTask = (): void => {
+    if (loadingTaskDestroyCalled) return;
+    loadingTaskDestroyCalled = true;
+    try {
+      void Promise.resolve(loadingTask.destroy()).catch((error) => {
+        devLog('PDF', 'Failed to cancel PDF thumbnail load', error);
+      });
+    } catch (error) {
+      devLog('PDF', 'Failed to cancel PDF thumbnail load', error);
+    }
+  };
+  try {
+    doc = await Promise.race([
+      loadingTask.promise,
+      new Promise<PdfjsDocument>((_, reject) => {
+        loadTimer = setTimeout(() => {
+          destroyLoadingTask();
+          reject(new Error('PDF thumbnail load timed out'));
+        }, PDF_LOAD_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    destroyLoadingTask();
+    throw error;
+  } finally {
+    if (loadTimer) clearTimeout(loadTimer);
+  }
 
   try {
     if (doc.numPages === 0) throw new Error('PDF has no pages');
 
-    const page = await doc.getPage(1);
+    const page = await withTimeout(
+      doc.getPage(1),
+      PDF_RENDER_TIMEOUT_MS,
+      'PDF thumbnail page load timed out'
+    );
     const dpr = window.devicePixelRatio || 1;
     const thumbWidth = 160 * dpr;
 
     const baseViewport = page.getViewport({ scale: 1 });
     const scale = thumbWidth / baseViewport.width;
     const viewport = page.getViewport({ scale });
+    assertViewportWithinBudget(viewport);
 
     const canvas = document.createElement('canvas');
     canvas.width = viewport.width;
@@ -492,7 +683,17 @@ export async function generatePdfThumbnailPdfJs(
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('Canvas 2D context unavailable');
 
-    await page.render({ canvasContext: ctx, viewport }).promise;
+    const renderTask = page.render({ canvasContext: ctx, viewport });
+    try {
+      await withTimeout(
+        renderTask.promise,
+        PDF_RENDER_TIMEOUT_MS,
+        'PDF thumbnail render timed out'
+      );
+    } catch (error) {
+      renderTask.cancel?.();
+      throw error;
+    }
 
     const q = quality === 'low' ? 0.5 : quality === 'high' ? 0.9 : 0.7;
     return canvas.toDataURL('image/jpeg', q);

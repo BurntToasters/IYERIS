@@ -458,10 +458,12 @@ describe('initSettingsCardUI (via initSettingsUi)', () => {
     toggle.click();
     expect(card.classList.contains('collapsed')).toBe(true);
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-label')).toBe('Expand Card');
 
     toggle.click();
     expect(card.classList.contains('collapsed')).toBe(false);
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-label')).toBe('Collapse Card');
   });
 
   it('creates title span from text nodes in header', () => {
@@ -634,6 +636,9 @@ describe('jumpToFirstSettingMatch (via initSettingsSearch)', () => {
 
     const card = section.querySelector('.settings-card')!;
     expect(card.classList.contains('collapsed')).toBe(false);
+    const toggle = card.querySelector('.settings-card-toggle')!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-label')).toBe('Collapse Card');
 
     vi.advanceTimersByTime(1200);
     vi.useRealTimers();

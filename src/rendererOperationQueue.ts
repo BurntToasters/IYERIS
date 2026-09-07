@@ -311,9 +311,11 @@ export function createOperationQueueController(deps: QueueDeps) {
       .then((result) => {
         if (!result.success) {
           completeOperation(id, 'failed', result.error || 'Cancel failed');
-          return;
         }
-        completeOperation(id, 'failed', 'Cancelled');
+        // Do not mark a successful cancellation complete here. The native
+        // operation is still unwinding; its compress/extract promise will
+        // report the terminal state through the owning controller. Keeping
+        // `cancelling` blocks Retry until that promise has actually finished.
       })
       .catch((error) => {
         completeOperation(id, 'failed', String(error));

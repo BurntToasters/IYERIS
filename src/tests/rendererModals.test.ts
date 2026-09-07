@@ -58,6 +58,34 @@ describe('rendererModals', () => {
       expect(document.activeElement).toBe(btn2);
     });
 
+    it('restores the nested opener and keeps the outer modal active', () => {
+      const outer = makeFocusable(document.createElement('button'));
+      outer.textContent = 'outer opener';
+      document.body.appendChild(outer);
+      outer.focus();
+
+      const outerModal = document.createElement('div');
+      const outerButton = makeFocusable(document.createElement('button'));
+      outerButton.textContent = 'outer action';
+      outerModal.appendChild(outerButton);
+      const innerModal = document.createElement('div');
+      const innerButton = makeFocusable(document.createElement('button'));
+      innerButton.textContent = 'inner action';
+      innerModal.appendChild(innerButton);
+      document.body.append(outerModal, innerModal);
+
+      activateModal(outerModal);
+      outerButton.focus();
+      activateModal(innerModal);
+      expect(document.activeElement).toBe(innerButton);
+
+      deactivateModal(innerModal);
+      expect(document.activeElement).toBe(outerButton);
+
+      deactivateModal(outerModal);
+      expect(document.activeElement).toBe(outer);
+    });
+
     it('restores focus on deactivate when restoreFocus not disabled', () => {
       const outer = makeFocusable(document.createElement('button'));
       outer.textContent = 'outer';
@@ -74,6 +102,23 @@ describe('rendererModals', () => {
 
       deactivateModal(modal);
       expect(document.activeElement).toBe(outer);
+    });
+
+    it('preserves the original opener when the same modal is activated twice', () => {
+      const opener = makeFocusable(document.createElement('button'));
+      document.body.appendChild(opener);
+      opener.focus();
+
+      const modal = document.createElement('div');
+      const inner = makeFocusable(document.createElement('button'));
+      modal.appendChild(inner);
+      document.body.appendChild(modal);
+
+      activateModal(modal);
+      activateModal(modal);
+      deactivateModal(modal);
+
+      expect(document.activeElement).toBe(opener);
     });
 
     // F6: these three asserted nothing at all. They now check the observable
@@ -253,6 +298,19 @@ describe('rendererModals', () => {
       expect((document.getElementById('dialog-modal') as HTMLElement).style.display).toBe('none');
     });
 
+    it('restores focus to the control that opened the dialog', async () => {
+      setupDialogDom();
+      const opener = makeFocusable(document.createElement('button'));
+      document.body.appendChild(opener);
+      opener.focus();
+
+      const promise = showDialog('Title', 'Message', 'info', false);
+      (document.getElementById('dialog-ok') as HTMLButtonElement).click();
+      await promise;
+
+      expect(document.activeElement).toBe(opener);
+    });
+
     it('resolves false on Cancel click', async () => {
       setupDialogDom();
       const promise = showDialog('Title', 'Are you sure?', 'question', true);
@@ -336,6 +394,26 @@ describe('rendererModals', () => {
       expect(document.getElementById('dialog-cancel')!.style.display).toBe('none');
       document.getElementById('dialog-ok')!.click();
       await promise;
+    });
+
+    it('serializes concurrent dialogs and settles every promise', async () => {
+      setupDialogDom();
+      const opener = makeFocusable(document.createElement('button'));
+      document.body.appendChild(opener);
+      opener.focus();
+
+      const first = showDialog('First', 'First message');
+      const second = showDialog('Second', 'Second message', 'question', true);
+
+      expect(document.getElementById('dialog-title')!.textContent).toBe('First');
+      document.getElementById('dialog-ok')!.click();
+      await expect(first).resolves.toBe(true);
+
+      expect(document.getElementById('dialog-title')!.textContent).toBe('Second');
+      expect(document.getElementById('dialog-cancel')!.style.display).toBe('block');
+      document.getElementById('dialog-cancel')!.click();
+      await expect(second).resolves.toBe(false);
+      expect(document.activeElement).toBe(opener);
     });
   });
 

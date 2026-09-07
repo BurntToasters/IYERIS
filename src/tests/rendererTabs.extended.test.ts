@@ -418,7 +418,7 @@ describe('rendererTabs extended', () => {
   });
 
   describe('restoreTabView', () => {
-    it('activates home mode when path is the home view path', async () => {
+    it('reloads the home path through navigation', async () => {
       const deps = createMockDeps();
       deps._settings.tabState = {
         tabs: [
@@ -450,14 +450,14 @@ describe('rendererTabs extended', () => {
 
       ctrl.switchToTab('tab-home');
       await vi.waitFor(() => {
-        expect(deps.setHomeViewActive).toHaveBeenCalledWith(true);
+        expect(deps.navigateTo).toHaveBeenCalledWith('~~HOME~~', true);
       });
 
       expect(deps.renderFiles).not.toHaveBeenCalled();
       expect(deps.renderColumnView).not.toHaveBeenCalled();
     });
 
-    it('renders column view when viewMode is column', async () => {
+    it('reloads column mode through navigation', async () => {
       const deps = createMockDeps();
       deps._setViewMode('column');
       deps._settings.tabState = {
@@ -490,14 +490,14 @@ describe('rendererTabs extended', () => {
 
       ctrl.switchToTab('tab-2');
       await vi.waitFor(() => {
-        expect(deps.setHomeViewActive).toHaveBeenCalledWith(false);
+        expect(deps.navigateTo).toHaveBeenCalledWith('/two', true);
       });
 
-      expect(deps.renderColumnView).toHaveBeenCalled();
+      expect(deps.renderColumnView).not.toHaveBeenCalled();
       expect(deps.renderFiles).not.toHaveBeenCalled();
     });
 
-    it('renders files when viewMode is grid (non-column, non-home)', async () => {
+    it('reloads grid mode instead of rendering a cached listing', async () => {
       const deps = createMockDeps();
       deps._setViewMode('grid');
       deps._settings.tabState = {
@@ -530,13 +530,14 @@ describe('rendererTabs extended', () => {
 
       ctrl.switchToTab('tab-2');
       await vi.waitFor(() => {
-        expect(deps.renderFiles).toHaveBeenCalledWith(cachedFiles);
+        expect(deps.navigateTo).toHaveBeenCalledWith('/two', true);
+        expect(deps.renderFiles).not.toHaveBeenCalled();
       });
 
-      expect(deps.setHomeViewActive).toHaveBeenCalledWith(false);
+      expect(deps.navigateTo).toHaveBeenCalledWith('/two', true);
     });
 
-    it('updates address input value on restore', async () => {
+    it('delegates address updates to navigation', async () => {
       const deps = createMockDeps();
       deps._settings.tabState = {
         tabs: [
@@ -567,12 +568,10 @@ describe('rendererTabs extended', () => {
 
       ctrl.switchToTab('tab-2');
       await vi.waitFor(() => {
-        expect(deps.updateBreadcrumb).toHaveBeenCalledWith('/two');
+        expect(deps.navigateTo).toHaveBeenCalledWith('/two', true);
       });
 
-      const addressInput = document.getElementById('address-input') as HTMLInputElement;
-      expect(addressInput.value).toBe('/two');
-      expect(deps.updateNavigationButtons).toHaveBeenCalled();
+      expect(deps.renderFiles).not.toHaveBeenCalled();
     });
   });
 
@@ -1009,7 +1008,7 @@ describe('rendererTabs extended', () => {
         menuItems[1]!.click();
 
         expect(cancelDirectoryRequest).toHaveBeenCalled();
-        expect(deps.renderFiles).toHaveBeenCalledWith(keepTab.cachedFiles);
+        expect(deps.navigateTo).toHaveBeenCalledWith(keepTab.path, true);
         await vi.advanceTimersByTimeAsync(60);
         expect(setFileViewScrollTop).toHaveBeenCalledWith(77);
       } finally {
@@ -1073,7 +1072,7 @@ describe('rendererTabs extended', () => {
         menuItems[2]!.click();
 
         expect(cancelDirectoryRequest).toHaveBeenCalled();
-        expect(deps.renderFiles).toHaveBeenCalledWith(lastTab.cachedFiles);
+        expect(deps.navigateTo).toHaveBeenCalledWith(lastTab.path, true);
         await vi.advanceTimersByTimeAsync(60);
         expect(setFileViewScrollTop).toHaveBeenCalledWith(42);
       } finally {

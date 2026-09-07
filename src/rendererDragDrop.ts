@@ -403,8 +403,18 @@ export function createDragDropController(config: DragDropConfig) {
             });
             const elevResult =
               operation === 'copy'
-                ? await window.tauriAPI.elevatedCopyBatch(sourcePaths, destPath)
-                : await window.tauriAPI.elevatedMoveBatch(sourcePaths, destPath);
+                ? await window.tauriAPI.elevatedCopyBatch(
+                    sourcePaths,
+                    destPath,
+                    conflictBehavior,
+                    result.conflictResolutions
+                  )
+                : await window.tauriAPI.elevatedMoveBatch(
+                    sourcePaths,
+                    destPath,
+                    conflictBehavior,
+                    result.conflictResolutions
+                  );
             if (elevResult.success) {
               completeQueued(operationId, 'done');
               showToast(

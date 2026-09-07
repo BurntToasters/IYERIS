@@ -929,162 +929,32 @@ describe('createFileRenderController', () => {
       expect(() => ctrl.resetVirtualizedRender()).not.toThrow();
     });
 
-    it('disconnects observer and removes sentinel when virtualized render is reset', () => {
-      const observe = vi.fn();
-      const disconnect = vi.fn();
-
-      class MockIntersectionObserver {
-        constructor() {}
-        observe = observe;
-        unobserve = vi.fn();
-        disconnect = disconnect;
-      }
-
-      const original = (globalThis as any).IntersectionObserver;
-      (globalThis as any).IntersectionObserver = MockIntersectionObserver;
-
+    it('stops scroll work and clears the logical window when reset', () => {
       const config = createMockConfig();
-      const ctrl = createFileRenderController(config);
-      const items = Array.from({ length: 1200 }, (_, i) =>
-        makeItem({ name: `item${i}.txt`, path: `/item${i}.txt` })
+      const controller = createFileRenderController(config);
+      controller.renderFiles(
+        Array.from({ length: 1200 }, (_, i) => makeItem({ path: `/item${i}`, name: `item${i}` }))
       );
-      ctrl.renderFiles(items);
-      expect(document.querySelector('#file-grid > div[style*="height: 1px"]')).toBeTruthy();
-
-      ctrl.resetVirtualizedRender();
-
-      expect(disconnect).toHaveBeenCalledTimes(1);
-      expect(document.querySelector('#file-grid > div[style*="height: 1px"]')).toBeFalsy();
-
-      if (original) {
-        (globalThis as any).IntersectionObserver = original;
-      } else {
-        delete (globalThis as any).IntersectionObserver;
-      }
-      // 1200 items is VIRTUALIZE_THRESHOLD exactly, so the count cannot be lowered
-      // without skipping the virtualized path. The headroom this render needs comes
-      // from testTimeout in vitest.config.ts.
-    });
-  });
-
-  describe('disconnectVirtualizedObserver', () => {
-    it('can be called without errors', () => {
-      const config = createMockConfig();
-      const ctrl = createFileRenderController(config);
-
-      expect(() => ctrl.disconnectVirtualizedObserver()).not.toThrow();
-    });
-
-    it('disconnects active virtualized observer', () => {
-      const observe = vi.fn();
-      const unobserve = vi.fn();
-      const disconnect = vi.fn();
-      const originalIntersectionObserver = globalThis.IntersectionObserver;
-
-      class MockIntersectionObserver {
-        constructor() {}
-        observe = observe;
-        unobserve = unobserve;
-        disconnect = disconnect;
-      }
-
-      (globalThis as any).IntersectionObserver = MockIntersectionObserver;
-
-      const config = createMockConfig();
-      const ctrl = createFileRenderController(config);
-      const items = Array.from({ length: 1200 }, (_, i) =>
-        makeItem({ name: `item${i}.txt`, path: `/item${i}.txt` })
-      );
-
-      ctrl.renderFiles(items);
-      ctrl.disconnectVirtualizedObserver();
-      ctrl.disconnectVirtualizedObserver();
-
-      expect(observe).toHaveBeenCalled();
-      expect(unobserve).not.toHaveBeenCalled();
-      expect(disconnect).toHaveBeenCalledTimes(1);
-
-      if (originalIntersectionObserver) {
-        (globalThis as any).IntersectionObserver = originalIntersectionObserver;
-      } else {
-        delete (globalThis as any).IntersectionObserver;
-      }
+      controller.resetVirtualizedRender();
+      expect(controller.getOrderedFiles()).toEqual([]);
+      expect(controller.ensureItemRendered('/item1199')).toBeNull();
+      expect(() => controller.disconnectVirtualizedObserver()).not.toThrow();
     });
   });
 
   describe('virtualized rendering', () => {
-    // The heaviest test in the suite: 1200 items (VIRTUALIZE_THRESHOLD, so the
-    // count cannot be lowered without skipping the virtualized path) plus ten
-    // appended batches driven through the observer. It runs in ~250ms in isolation
-    // but has been observed past 30s under full-suite coverage instrumentation on a
-    // loaded machine, so it gets headroom above the global testTimeout.
-    it('appends additional batches through observer intersections and cleans sentinel at end', () => {
-      const observe = vi.fn();
-      const unobserve = vi.fn();
-      const disconnect = vi.fn();
-      // Both are assigned from inside the mock observer below, which TS control
-      // flow cannot see, so declare them as definitely assigned.
-      let callback!: (entries: Array<{ isIntersecting: boolean; target: Element }>) => void;
-      let observedTarget!: Element;
-      const original = (globalThis as any).IntersectionObserver;
-
-      class MockIntersectionObserver {
-        constructor(cb: typeof callback) {
-          callback = cb as any;
-        }
-        observe = (target: Element) => {
-          observedTarget = target;
-          observe(target);
-        };
-        unobserve = unobserve;
-        disconnect = disconnect;
-      }
-
-      (globalThis as any).IntersectionObserver = MockIntersectionObserver;
-
-      const config = createMockConfig();
-      const ctrl = createFileRenderController(config);
-      const items = Array.from({ length: 1200 }, (_, i) =>
-        makeItem({ name: `v${i}.txt`, path: `/v${i}.txt` })
+    it('supports keyboard mounting even when the scroll root is missing', () => {
+      document.getElementById('file-view')?.remove();
+      const grid = document.createElement('div');
+      grid.id = 'file-grid';
+      document.body.appendChild(grid);
+      const controller = createFileRenderController(createMockConfig());
+      controller.renderFiles(
+        Array.from({ length: 1200 }, (_, i) => makeItem({ path: `/item${i}`, name: `item${i}` }))
       );
-
-      ctrl.renderFiles(items);
-
-      for (let i = 0; i < 12; i++) {
-        callback?.([{ isIntersecting: true, target: observedTarget as Element }]);
-      }
-
-      const grid = document.getElementById('file-grid')!;
-      expect(grid.querySelectorAll('.file-item').length).toBe(1200);
-      expect(observe).toHaveBeenCalled();
-      expect(unobserve).toHaveBeenCalled();
-      expect(document.querySelector('#file-grid > div[style*="height: 1px"]')).toBeFalsy();
-
-      if (original) {
-        (globalThis as any).IntersectionObserver = original;
-      } else {
-        delete (globalThis as any).IntersectionObserver;
-      }
-    }, 90_000);
-
-    it('handles virtualization when file-view root is missing', () => {
-      // eslint-disable-next-line no-restricted-syntax -- static test DOM fixture, no user input
-      document.body.innerHTML = `
-        <div id="file-grid"></div>
-        <div id="empty-state" style="display:none">
-          <p>This folder is empty</p>
-          <div class="empty-actions"></div>
-          <div class="empty-hint"></div>
-        </div>
-      `;
-      const config = createMockConfig();
-      const ctrl = createFileRenderController(config);
-      const items = Array.from({ length: 1200 }, (_, i) =>
-        makeItem({ name: `x${i}.txt`, path: `/x${i}.txt` })
-      );
-
-      expect(() => ctrl.renderFiles(items)).not.toThrow();
-      expect(document.querySelectorAll('.file-item').length).toBe(120);
+      expect(controller.ensureItemRendered('/item1199')?.dataset.path).toBe('/item1199');
+      expect(grid.querySelectorAll('.file-item').length).toBeLessThanOrEqual(360);
+      controller.disconnectVirtualizedObserver();
     });
   });
 
@@ -1119,5 +989,30 @@ describe('createFileRenderController', () => {
 
       rafSpy.mockRestore();
     });
+  });
+});
+
+describe('bounded directory rendering', () => {
+  it('mounts the final entry without retaining preceding thousands of rows', () => {
+    const view = document.createElement('div');
+    view.id = 'file-view';
+    const grid = document.createElement('div');
+    grid.id = 'file-grid';
+    grid.style.gridTemplateColumns = '200px';
+    view.appendChild(grid);
+    document.body.replaceChildren(view);
+    const config = createMockConfig();
+    const controller = createFileRenderController(config);
+    const files = Array.from({ length: 15000 }, (_, i) =>
+      makeItem({ name: `${String(i).padStart(5, '0')}.txt`, path: `/files/${i}` })
+    );
+    controller.renderFiles(files);
+    expect(controller.getOrderedFiles()).toHaveLength(15000);
+    expect(controller.ensureItemRendered('/files/14999')?.dataset.path).toBe('/files/14999');
+    expect(grid.querySelectorAll('.file-item').length).toBeLessThanOrEqual(360);
+    expect(config.getFileElementMap().size).toBeLessThanOrEqual(360);
+    expect(controller.ensureItemRendered('/files/0')?.dataset.path).toBe('/files/0');
+    expect(grid.querySelectorAll('.file-item').length).toBeLessThanOrEqual(360);
+    controller.disconnectVirtualizedObserver();
   });
 });

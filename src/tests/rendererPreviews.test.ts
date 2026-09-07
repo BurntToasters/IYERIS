@@ -17,6 +17,7 @@ const mockLoadHighlightJs = vi.hoisted(() => vi.fn());
 const mockGetLanguageForExt = vi.hoisted(() => vi.fn(() => null));
 const mockGetFileDataUrlWithCache = vi.hoisted(() => vi.fn().mockResolvedValue(null));
 const mockLoadMarked = vi.hoisted(() => vi.fn());
+const mockSanitizeMarkdownHtml = vi.hoisted(() => vi.fn(async (html: string) => html));
 
 vi.mock('../rendererQuicklook.js', () => ({
   createQuicklookController: mockCreateQuicklookController,
@@ -44,6 +45,10 @@ vi.mock('../rendererDom.js', () => ({
 }));
 
 vi.mock('../rendererUtils.js', () => ({
+  createPreviewDataUrlRequest: (file: FileItem, maxBytes: number) => ({
+    maxBytes,
+    fingerprint: `${file.size}:${file.modified.getTime()}`,
+  }),
   encodeFileUrl: vi.fn((p: string) => `file://${p}`),
   getFileDataUrlWithCache: mockGetFileDataUrlWithCache,
   twemojiImg: vi.fn((_code: string, _cls: string) => '<img class="twemoji" />'),
@@ -65,6 +70,7 @@ vi.mock('../fileTypes.js', () => ({
 
 vi.mock('../rendererMarkdown.js', () => ({
   loadMarked: mockLoadMarked,
+  sanitizeMarkdownHtml: mockSanitizeMarkdownHtml,
 }));
 
 import { createPreviewController } from '../rendererPreviews';
@@ -165,6 +171,8 @@ describe('rendererPreviews', () => {
     mockGetLanguageForExt.mockReturnValue(null);
     mockLoadMarked.mockReset();
     mockLoadMarked.mockResolvedValue(null);
+    mockSanitizeMarkdownHtml.mockReset();
+    mockSanitizeMarkdownHtml.mockImplementation(async (html: string) => html);
   });
 
   afterEach(() => {
@@ -1334,6 +1342,57 @@ describe('rendererPreviews', () => {
 
       await vi.waitFor(() => {
         expect(img.src).toContain('data:image/png;base64,abc123');
+      });
+    });
+
+    it('does not replace a newer preview when an old image fallback finishes', async () => {
+      let resolveFallback!: (value: string | null) => void;
+      mockGetFileDataUrlWithCache.mockReturnValue(
+        new Promise((resolve) => {
+          resolveFallback = resolve;
+        })
+      );
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.updatePreview(makeFile({ name: 'old.jpg', path: '/home/user/old.jpg', size: 500 }));
+      await vi.waitFor(() => expect(document.querySelector('.preview-image')).toBeTruthy());
+      document.querySelector('.preview-image')!.dispatchEvent(new Event('error'));
+      await vi.waitFor(() => expect(mockGetFileDataUrlWithCache).toHaveBeenCalled());
+
+      ctrl.updatePreview(
+        makeFile({ name: 'current.unknown', path: '/home/user/current.unknown', size: 20 })
+      );
+      resolveFallback(null);
+      const content = document.getElementById('preview-content')!;
+      await vi.waitFor(() => {
+        expect(content.innerHTML).not.toContain('Failed to load image');
+        expect(content.textContent).toContain('current.unknown');
+      });
+    });
+
+    it('does not replace a newer preview when old markdown sanitizing finishes', async () => {
+      let resolveSanitize!: (value: string) => void;
+      mockLoadMarked.mockResolvedValue({
+        marked: { parse: vi.fn(() => '<h1>Old markdown</h1>') },
+      });
+      mockSanitizeMarkdownHtml.mockReturnValue(
+        new Promise((resolve) => {
+          resolveSanitize = resolve;
+        })
+      );
+      const deps = createDeps();
+      const ctrl = createPreviewController(deps as any);
+      ctrl.updatePreview(makeFile({ name: 'old.md', path: '/home/user/old.md' }));
+      await vi.waitFor(() => expect(mockSanitizeMarkdownHtml).toHaveBeenCalled());
+
+      ctrl.updatePreview(
+        makeFile({ name: 'current.unknown', path: '/home/user/current.unknown', size: 20 })
+      );
+      resolveSanitize('<h1>Old markdown</h1>');
+      const content = document.getElementById('preview-content')!;
+      await vi.waitFor(() => {
+        expect(content.innerHTML).not.toContain('Old markdown');
+        expect(content.textContent).toContain('current.unknown');
       });
     });
 

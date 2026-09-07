@@ -633,10 +633,13 @@ describe('applySettingsSearch', () => {
     expect(card.classList.contains('collapsed')).toBe(false);
     const toggle = card.querySelector('.settings-card-toggle')!;
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-label')).toBe('Collapse Card');
   });
 
   it('marks active section as search-no-results when no matches and search is active', () => {
-    addSettingsTab('general');
+    const tab = addSettingsTab('general');
+    tab.classList.add('active');
+    tab.setAttribute('aria-selected', 'true');
     const section = addSettingsSection(
       'general',
       `
@@ -652,6 +655,8 @@ describe('applySettingsSearch', () => {
     ctrl.applySettingsSearch('zzzzzznonexistent');
 
     expect(section.classList.contains('search-no-results')).toBe(true);
+    expect(tab.classList.contains('search-hidden')).toBe(false);
+    expect(tab.classList.contains('active')).toBe(true);
   });
 
   it('matches cards with no setting-items using card text', () => {
@@ -952,6 +957,59 @@ describe('initSettingsTabs', () => {
 
     expect(tab.querySelectorAll('.settings-tab-count').length).toBe(1);
     expect(tab.querySelectorAll('.settings-tab-dot').length).toBe(1);
+  });
+
+  it('implements vertical arrow, wrapping, Home/End, and hidden-tab navigation', () => {
+    const first = addSettingsTab('first', 'First');
+    const second = addSettingsTab('second', 'Second');
+    const third = addSettingsTab('third', 'Third');
+    first.classList.add('active');
+    first.setAttribute('aria-selected', 'true');
+    addSettingsSection('first').classList.add('active');
+    addSettingsSection('second');
+    addSettingsSection('third');
+
+    const ctrl = makeController();
+    ctrl.initSettingsTabs();
+    first.focus();
+
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
+    expect(third.classList.contains('active')).toBe(true);
+    expect(document.activeElement).toBe(third);
+
+    third.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(document.activeElement).toBe(first);
+
+    second.classList.add('search-hidden');
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(third);
+
+    third.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    expect(document.activeElement).toBe(third);
+  });
+
+  it('synchronizes tab and panel ARIA state', () => {
+    const first = addSettingsTab('first', 'First');
+    const second = addSettingsTab('second', 'Second');
+    first.classList.add('active');
+    first.setAttribute('aria-selected', 'true');
+    const firstPanel = addSettingsSection('first');
+    firstPanel.classList.add('active');
+    const secondPanel = addSettingsSection('second');
+
+    const ctrl = makeController();
+    ctrl.initSettingsTabs();
+    second.click();
+
+    expect(first.tabIndex).toBe(-1);
+    expect(first.getAttribute('aria-selected')).toBe('false');
+    expect(firstPanel.hidden).toBe(true);
+    expect(second.tabIndex).toBe(0);
+    expect(second.getAttribute('aria-selected')).toBe('true');
+    expect(second.getAttribute('aria-controls')).toBe('tab-second');
+    expect(secondPanel.hidden).toBe(false);
+    expect(secondPanel.getAttribute('role')).toBe('tabpanel');
+    expect(secondPanel.getAttribute('aria-labelledby')).toBe(second.id);
   });
 });
 

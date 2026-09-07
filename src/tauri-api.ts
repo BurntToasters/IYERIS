@@ -26,6 +26,23 @@ type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 let pendingUpdate: Update | null = null;
 let updateDownloadInProgress = false;
 let updateReadyToInstall = false;
+let updateGeneration = 0;
+
+function closeUpdate(update: Update | null): void {
+  if (!update) return;
+  try {
+    void update.close().catch(ignoreError);
+  } catch (error) {
+    ignoreError(error);
+  }
+}
+
+function replacePendingUpdate(update: Update | null): void {
+  const previous = pendingUpdate;
+  pendingUpdate = update;
+  if (previous !== update) closeUpdate(previous);
+}
+
 let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
 let cachedPlatformOS: string | null = null;
 let lastWatchedDirectoryPath = '';
@@ -62,12 +79,18 @@ async function getUpdaterTargetBase(): Promise<string> {
 
 async function getCheckTarget(
   channel: 'auto' | 'beta' | 'stable',
-  isBeta: boolean
+  installedIsBeta: boolean
 ): Promise<string | undefined> {
-  const useBeta = channel === 'beta' || (channel === 'auto' && isBeta);
-  if (!useBeta) return undefined;
+  if (!isCheckingBetaChannel(channel, installedIsBeta)) return undefined;
   const base = await getUpdaterTargetBase();
   return `${base}-beta`;
+}
+
+function isCheckingBetaChannel(
+  channel: 'auto' | 'beta' | 'stable',
+  installedIsBeta: boolean
+): boolean {
+  return channel === 'beta' || (channel === 'auto' && installedIsBeta);
 }
 const updateDownloadProgressCallbacks = new Set<
   (progress: {
@@ -118,8 +141,8 @@ function buildFileItem(raw: Record<string, unknown>) {
   };
 }
 
-// Search returns SearchResult (no symlink/hidden flags), so it gets its own
-// schema; the output keeps the FileItem shape the renderer expects.
+// Search returns SearchResult (no symlink flags), so it gets its own schema;
+// the output keeps the FileItem shape the renderer expects.
 function buildSearchResultItem(raw: Record<string, unknown>) {
   const v = validateIpc(RawSearchResultSchema, raw, 'SearchResult');
   if (!v) return null;
@@ -135,7 +158,7 @@ function buildSearchResultItem(raw: Record<string, unknown>) {
     isDesktopEntry: false,
     symlinkTarget: undefined,
     shortcutTarget: undefined,
-    isHidden: false,
+    isHidden: v.isHidden ?? v.name.startsWith('.'),
     size: v.size,
     modified: new Date(v.modified),
     isSystemProtected: false,
@@ -171,14 +194,16 @@ function bindSystemFallbacks() {
   media.addEventListener('change', emitThemeChanged);
 }
 
+const MAX_CONFLICT_RESOLUTION_ATTEMPTS = 10_001;
+
 function parseConflictItem(errorMessage: string): string | null {
   const marker = 'CONFLICT:';
   const index = errorMessage.indexOf(marker);
   if (index === -1) return null;
   const rest = errorMessage.slice(index + marker.length).trim();
-  const endIndex = rest.search(/\s*[([{]/);
-  const item = endIndex === -1 ? rest : rest.slice(0, endIndex);
-  return item || null;
+  // Native errors terminate the conflict item at the end of the message.
+  // Keep punctuation and spaces: both are valid filename characters.
+  return rest || null;
 }
 
 function normalizeWatchPath(pathValue: string): string {
@@ -219,17 +244,19 @@ async function promptConflictResolution(
 }
 
 async function runFileOperationWithConflictResolution(
-  command: 'copy_items' | 'move_items',
+  command: 'copy_items' | 'move_items' | 'elevated_copy_batch' | 'elevated_move_batch',
   operation: 'copy' | 'move',
   sourcePaths: string[],
   destPath: string,
   conflictBehavior?: FileConflictBehavior,
-  operationId?: string
+  operationId?: string,
+  previousResolutions?: Record<string, ConflictDecision>
 ) {
   const behavior = conflictBehavior ?? 'ask';
-  const conflictResolutions: Record<string, ConflictDecision> = {};
+  const conflictResolutions: Record<string, ConflictDecision> = { ...previousResolutions };
+  let attempts = 0;
 
-  while (true) {
+  while (attempts++ < MAX_CONFLICT_RESOLUTION_ATTEMPTS) {
     try {
       await invoke(command, {
         sourcePaths,
@@ -242,12 +269,12 @@ async function runFileOperationWithConflictResolution(
     } catch (e) {
       const error = String(e);
       if (behavior !== 'ask') {
-        return { success: false as const, error };
+        return { success: false as const, error, conflictResolutions };
       }
 
       const conflictItem = parseConflictItem(error);
       if (!conflictItem) {
-        return { success: false as const, error };
+        return { success: false as const, error, conflictResolutions };
       }
 
       const resolution = await promptConflictResolution(conflictItem, operation);
@@ -258,6 +285,11 @@ async function runFileOperationWithConflictResolution(
       conflictResolutions[conflictItem] = resolution;
     }
   }
+
+  return {
+    success: false as const,
+    error: 'Too many file-conflict resolution attempts',
+  };
 }
 
 const tauriAPI: TauriAPI = {
@@ -590,13 +622,14 @@ const tauriAPI: TauriAPI = {
     ) as never,
   showConflictDialog: (fileName, operation) =>
     promptConflictResolution(fileName, operation as 'copy' | 'move') as never,
-  searchFiles: async (dirPath, query, filters, operationId) => {
+  searchFiles: async (dirPath, query, filters, operationId, includeHidden) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_files', {
         dirPath,
         query,
         filters: filters ? JSON.stringify(filters) : null,
         operationId: operationId ?? null,
+        includeHidden: includeHidden === true,
       });
       return {
         success: true,
@@ -606,13 +639,14 @@ const tauriAPI: TauriAPI = {
       return { success: false, error: String(e) } as never;
     }
   },
-  searchFilesWithContent: async (dirPath, query, filters, operationId) => {
+  searchFilesWithContent: async (dirPath, query, filters, operationId, includeHidden) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_files_content', {
         dirPath,
         query,
         filters: filters ? JSON.stringify(filters) : null,
         operationId: operationId ?? null,
+        includeHidden: includeHidden === true,
       });
       return {
         success: true,
@@ -622,12 +656,13 @@ const tauriAPI: TauriAPI = {
       return { success: false, error: String(e) } as never;
     }
   },
-  searchFilesWithContentGlobal: async (query, filters, operationId) => {
+  searchFilesWithContentGlobal: async (query, filters, operationId, includeHidden) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_files_content_global', {
         query,
         filters: filters ? JSON.stringify(filters) : null,
         operationId: operationId ?? null,
+        includeHidden: includeHidden === true,
       });
       return {
         success: true,
@@ -665,10 +700,26 @@ const tauriAPI: TauriAPI = {
   elevatedDelete: (itemPath) => wrap(() => invoke('elevated_delete', { itemPath })),
   elevatedRename: (itemPath, newName) =>
     wrap(() => invoke('elevated_rename', { itemPath, newName })),
-  elevatedCopyBatch: (sourcePaths, destPath) =>
-    wrap(() => invoke('elevated_copy_batch', { sourcePaths, destPath })),
-  elevatedMoveBatch: (sourcePaths, destPath) =>
-    wrap(() => invoke('elevated_move_batch', { sourcePaths, destPath })),
+  elevatedCopyBatch: (sourcePaths, destPath, behavior, resolutions) =>
+    runFileOperationWithConflictResolution(
+      'elevated_copy_batch',
+      'copy',
+      sourcePaths,
+      destPath,
+      behavior,
+      undefined,
+      resolutions
+    ),
+  elevatedMoveBatch: (sourcePaths, destPath, behavior, resolutions) =>
+    runFileOperationWithConflictResolution(
+      'elevated_move_batch',
+      'move',
+      sourcePaths,
+      destPath,
+      behavior,
+      undefined,
+      resolutions
+    ),
   elevatedDeleteBatch: (itemPaths) => wrap(() => invoke('elevated_delete_batch', { itemPaths })),
   resolveShortcut: async (shortcutPath) => {
     try {
@@ -757,7 +808,23 @@ const tauriAPI: TauriAPI = {
     } catch (e) {
       return { success: false as const, error: String(e) } as never;
     }
-    const isBeta = /-(beta|alpha|rc)/i.test(currentVersion);
+    const installedIsBeta = /-(beta|alpha|rc)/i.test(currentVersion);
+    const requestedChannel = currentUpdateChannel;
+    const isBeta = isCheckingBetaChannel(requestedChannel, installedIsBeta);
+
+    // A second check must not replace the update object while download/install
+    // owns it. Return the current state instead; caller can retry after the
+    // active operation completes.
+    if (updateDownloadInProgress || updateReadyToInstall) {
+      return {
+        success: true,
+        hasUpdate: pendingUpdate !== null,
+        currentVersion,
+        latestVersion: pendingUpdate?.version ?? currentVersion,
+        isBeta,
+      } as never;
+    }
+    const generation = ++updateGeneration;
 
     const storeChecks: Array<{
       active: boolean;
@@ -807,10 +874,20 @@ const tauriAPI: TauriAPI = {
 
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
-      const target = await getCheckTarget(currentUpdateChannel, isBeta);
+      const target = await getCheckTarget(requestedChannel, installedIsBeta);
       const update = target ? await check({ target }) : await check();
+      if (generation !== updateGeneration || updateDownloadInProgress || updateReadyToInstall) {
+        if (update !== pendingUpdate) closeUpdate(update);
+        return {
+          success: true,
+          hasUpdate: pendingUpdate !== null,
+          currentVersion,
+          latestVersion: pendingUpdate?.version ?? currentVersion,
+          isBeta: isCheckingBetaChannel(currentUpdateChannel, installedIsBeta),
+        } as never;
+      }
       if (update) {
-        pendingUpdate = update;
+        replacePendingUpdate(update);
         updateReadyToInstall = false;
         updateAvailableCallbacks.forEach((cb) => {
           try {
@@ -832,7 +909,7 @@ const tauriAPI: TauriAPI = {
         } as never;
       }
       if (!updateDownloadInProgress && !updateReadyToInstall) {
-        pendingUpdate = null;
+        replacePendingUpdate(null);
       }
       return {
         success: true,
@@ -842,8 +919,8 @@ const tauriAPI: TauriAPI = {
         isBeta,
       } as never;
     } catch (e) {
-      if (!updateDownloadInProgress && !updateReadyToInstall) {
-        pendingUpdate = null;
+      if (generation === updateGeneration && !updateDownloadInProgress && !updateReadyToInstall) {
+        replacePendingUpdate(null);
       }
       const message = String(e);
       const error = /pubkey|signature|updater/i.test(message)
@@ -857,12 +934,18 @@ const tauriAPI: TauriAPI = {
   },
   downloadUpdate: async () => {
     try {
-      if (!pendingUpdate) return { success: false as const, error: 'No update available' };
+      const update = pendingUpdate;
+      if (!update) return { success: false as const, error: 'No update available' };
+      if (updateDownloadInProgress) {
+        return { success: false as const, error: 'Update download already in progress' };
+      }
+      if (updateReadyToInstall) return { success: true as const };
+      const generation = updateGeneration;
       updateDownloadInProgress = true;
       updateReadyToInstall = false;
       let downloaded = 0;
       let contentLength = 0;
-      await pendingUpdate.download((event) => {
+      await update.download((event) => {
         if (event.event === 'Started' && event.data.contentLength) {
           contentLength = event.data.contentLength;
         } else if (event.event === 'Progress') {
@@ -881,18 +964,26 @@ const tauriAPI: TauriAPI = {
               console.error('[Updater] onDownloadProgress callback error:', err);
             }
           });
-        } else if (event.event === 'Finished') {
-          updateReadyToInstall = true;
-          updateDownloadedCallbacks.forEach((cb) => {
-            try {
-              cb({ version: pendingUpdate?.version ?? '' });
-            } catch (err) {
-              console.error('[Updater] onUpdateDownloaded callback error:', err);
-            }
-          });
         }
       });
       updateDownloadInProgress = false;
+      if (pendingUpdate !== update || updateGeneration !== generation) {
+        if (pendingUpdate === update) replacePendingUpdate(null);
+        else closeUpdate(update);
+        return { success: false as const, error: 'Update was superseded by a newer check' };
+      }
+      // Finished reports transport completion. Only the resolved download
+      // promise confirms verification and availability of the install resource.
+      if (!updateReadyToInstall) {
+        updateReadyToInstall = true;
+        updateDownloadedCallbacks.forEach((cb) => {
+          try {
+            cb({ version: update.version });
+          } catch (err) {
+            console.error('[Updater] onUpdateDownloaded callback error:', err);
+          }
+        });
+      }
       return { success: true as const };
     } catch (e) {
       updateDownloadInProgress = false;
@@ -902,10 +993,17 @@ const tauriAPI: TauriAPI = {
   },
   installUpdate: async () => {
     try {
-      if (!pendingUpdate) return { success: false as const, error: 'No update available' };
-      await pendingUpdate.install();
-      updateReadyToInstall = false;
-      pendingUpdate = null;
+      const update = pendingUpdate;
+      if (!update) return { success: false as const, error: 'No update available' };
+      if (!updateReadyToInstall) {
+        return { success: false as const, error: 'Update has not finished downloading' };
+      }
+      const generation = updateGeneration;
+      await update.install();
+      if (pendingUpdate === update && updateGeneration === generation) {
+        updateReadyToInstall = false;
+        replacePendingUpdate(null);
+      }
       const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();
       return { success: true as const };
@@ -974,6 +1072,7 @@ const tauriAPI: TauriAPI = {
           isFile: !(r.isDirectory as boolean),
           size: r.size as number,
           modified: new Date(r.modified as number),
+          isHidden: Boolean(r.isHidden) || String(r.name ?? '').startsWith('.'),
         })),
       } as never;
     } catch (e) {
@@ -1394,6 +1493,11 @@ const tauriAPI: TauriAPI = {
   },
   setUpdateChannel: (channel) => {
     currentUpdateChannel = channel === 'beta' ? 'beta' : channel === 'stable' ? 'stable' : 'auto';
+    updateGeneration += 1;
+    if (!updateDownloadInProgress) {
+      replacePendingUpdate(null);
+      updateReadyToInstall = false;
+    }
   },
 };
 

@@ -28,7 +28,7 @@ describe('loadHighlightJs', () => {
 
     const fakeHljs = { highlightElement: () => {} };
     (window as Window & { hljs?: unknown }).hljs = fakeHljs;
-    script.onload!(new Event('load'));
+    script.dispatchEvent(new Event('load'));
 
     const result = await promise;
     expect(result).toBe(fakeHljs);
@@ -41,7 +41,7 @@ describe('loadHighlightJs', () => {
     const script = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement;
     const fakeHljs = { highlightElement: () => {} };
     (window as Window & { hljs?: unknown }).hljs = fakeHljs;
-    script.onload!(new Event('load'));
+    script.dispatchEvent(new Event('load'));
     const first = await promise1;
 
     const second = await loadHighlightJs();
@@ -63,7 +63,7 @@ describe('loadHighlightJs', () => {
     const script = scripts[0] as HTMLScriptElement;
     const fakeHljs = { highlightElement: () => {} };
     (window as Window & { hljs?: unknown }).hljs = fakeHljs;
-    script.onload!(new Event('load'));
+    script.dispatchEvent(new Event('load'));
 
     const r1 = await p1;
     const r2 = await p2;
@@ -77,7 +77,7 @@ describe('loadHighlightJs', () => {
     const promise = loadHighlightJs();
     const script = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement;
 
-    script.onerror!(new Event('error'));
+    script.dispatchEvent(new Event('error'));
 
     const result = await promise;
     expect(result).toBeNull();
@@ -95,7 +95,7 @@ describe('loadHighlightJs', () => {
     expect(links.length).toBe(1);
 
     const script = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement;
-    script.onerror!(new Event('error'));
+    script.dispatchEvent(new Event('error'));
     await promise;
   });
 
@@ -151,7 +151,7 @@ describe('loadHighlightJs', () => {
     const promise = loadHighlightJs();
     const script = document.querySelector('script[data-highlightjs="core"]') as HTMLScriptElement;
 
-    script.onload!(new Event('load'));
+    script.dispatchEvent(new Event('load'));
 
     const result = await promise;
     expect(result).toBeNull();

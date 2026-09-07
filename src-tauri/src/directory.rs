@@ -1,15 +1,30 @@
 use serde::Serialize;
-use std::collections::HashSet;
 use std::fs;
-use std::sync::Mutex;
 use std::time::{Instant, UNIX_EPOCH};
 use tauri::Emitter;
 use walkdir::WalkDir;
 
-static ACTIVE_FOLDER_CALCS: std::sync::LazyLock<Mutex<std::collections::HashSet<String>>> =
-    std::sync::LazyLock::new(|| Mutex::new(std::collections::HashSet::new()));
-static ACTIVE_DIRECTORY_LISTINGS: std::sync::LazyLock<Mutex<HashSet<String>>> =
-    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+use crate::cancellation::{is_cancelled, CancellationRegistry, CancellationToken};
+
+static ACTIVE_FOLDER_CALCS: std::sync::LazyLock<CancellationRegistry> =
+    std::sync::LazyLock::new(CancellationRegistry::default);
+static ACTIVE_DIRECTORY_LISTINGS: std::sync::LazyLock<CancellationRegistry> =
+    std::sync::LazyLock::new(CancellationRegistry::default);
+const MAX_DIRECTORY_SCAN_ENTRIES: usize = 1_000_000;
+const MAX_FOLDER_SIZE_ENTRIES: u64 = 2_000_000;
+
+fn register_optional_operation(
+    registry: &CancellationRegistry,
+    operation_id: &str,
+) -> Result<Option<CancellationToken>, String> {
+    if operation_id.is_empty() {
+        return Ok(None);
+    }
+    registry
+        .register(operation_id)
+        .ok_or_else(|| "Directory operation ID is too long".to_string())
+        .map(Some)
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -293,18 +308,19 @@ pub async fn get_directory_contents(
         operation_id,
         include_hidden
     );
-    let path = crate::validate_existing_path(&dir_path, "Directory")?;
-    let show_hidden = include_hidden.unwrap_or(false);
     let op_id = operation_id.unwrap_or_default();
-
-    if !op_id.is_empty() {
-        let mut listings = ACTIVE_DIRECTORY_LISTINGS
-            .lock()
-            .map_err(|e| e.to_string())?;
-        listings.insert(op_id.clone());
-    }
+    let cancellation = register_optional_operation(&ACTIVE_DIRECTORY_LISTINGS, &op_id)?;
+    let path = match crate::validate_existing_path(&dir_path, "Directory") {
+        Ok(path) => path,
+        Err(error) => {
+            ACTIVE_DIRECTORY_LISTINGS.finish(&op_id, cancellation.as_ref());
+            return Err(error);
+        }
+    };
+    let show_hidden = include_hidden.unwrap_or(false);
 
     let listing_op_id = op_id.clone();
+    let listing_cancellation = cancellation.clone();
     let progress_path = dir_path.clone();
 
     let result = tokio::task::spawn_blocking(move || {
@@ -312,23 +328,32 @@ pub async fn get_directory_contents(
             fs::read_dir(&path).map_err(|e| format!("Failed to read directory: {}", e))?;
         let mut items = Vec::new();
         let mut loaded: usize = 0;
+        let mut scanned: usize = 0;
 
         for entry in entries.filter_map(|e| {
             e.map_err(|err| log::warn!("[Directory] read_dir entry error: {}", err))
                 .ok()
         }) {
-            if !listing_op_id.is_empty() {
-                let listings = ACTIVE_DIRECTORY_LISTINGS
-                    .lock()
-                    .map_err(|e| e.to_string())?;
-                if !listings.contains(&listing_op_id) {
-                    log::debug!(
-                        "[Directory] get_directory_contents cancelled mid-scan: op={} loaded={}",
-                        listing_op_id,
-                        loaded
-                    );
-                    break;
-                }
+            scanned += 1;
+            if scanned > MAX_DIRECTORY_SCAN_ENTRIES {
+                log::warn!(
+                    "[Directory] directory scan capped at {} entries: {}",
+                    MAX_DIRECTORY_SCAN_ENTRIES,
+                    progress_path
+                );
+                let _ = webview.emit(
+                    "directory-truncated",
+                    serde_json::json!({ "dirPath": progress_path, "count": loaded }),
+                );
+                break;
+            }
+            if is_cancelled(listing_cancellation.as_ref()) {
+                log::debug!(
+                    "[Directory] get_directory_contents cancelled mid-scan: op={} loaded={}",
+                    listing_op_id,
+                    loaded
+                );
+                break;
             }
 
             let entry_path = entry.path();
@@ -383,11 +408,7 @@ pub async fn get_directory_contents(
     })
     .await;
 
-    if !op_id.is_empty() {
-        if let Ok(mut listings) = ACTIVE_DIRECTORY_LISTINGS.lock() {
-            listings.remove(&op_id);
-        }
-    }
+    ACTIVE_DIRECTORY_LISTINGS.finish(&op_id, cancellation.as_ref());
 
     let result = result.map_err(|e| e.to_string())?;
 
@@ -424,10 +445,7 @@ pub async fn cancel_directory_contents(operation_id: String) -> Result<(), Strin
         "[Directory] cancel_directory_contents request: op={}",
         operation_id
     );
-    let mut listings = ACTIVE_DIRECTORY_LISTINGS
-        .lock()
-        .map_err(|e| e.to_string())?;
-    listings.remove(&operation_id);
+    ACTIVE_DIRECTORY_LISTINGS.cancel(&operation_id);
     Ok(())
 }
 
@@ -564,6 +582,12 @@ pub async fn get_drive_info() -> Result<Vec<DriveInfo>, String> {
 
 #[tauri::command]
 pub async fn get_home_directory() -> Result<String, String> {
+    tokio::task::spawn_blocking(get_home_directory_sync)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn get_home_directory_sync() -> Result<String, String> {
     directories::UserDirs::new()
         .map(|d| d.home_dir().to_string_lossy().to_string())
         .ok_or_else(|| "Could not determine home directory".into())
@@ -571,6 +595,12 @@ pub async fn get_home_directory() -> Result<String, String> {
 
 #[tauri::command]
 pub async fn get_special_directory(directory: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || get_special_directory_sync(directory))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn get_special_directory_sync(directory: String) -> Result<String, String> {
     let user_dirs = directories::UserDirs::new()
         .ok_or_else(|| "Could not determine user directories".to_string())?;
 
@@ -629,31 +659,51 @@ pub async fn calculate_folder_size(
     operation_id: String,
     webview: tauri::WebviewWindow,
 ) -> Result<FolderSizeResult, String> {
-    let path = crate::validate_existing_path(&folder_path, "Folder")?;
-
-    {
-        let mut calcs = ACTIVE_FOLDER_CALCS.lock().map_err(|e| e.to_string())?;
-        calcs.insert(operation_id.clone());
-    }
+    let cancellation = ACTIVE_FOLDER_CALCS
+        .register(&operation_id)
+        .ok_or_else(|| {
+            "Folder-size operation ID is required and must be at most 256 bytes".to_string()
+        })
+        .map(Some)?;
+    let path = match crate::validate_existing_path(&folder_path, "Folder") {
+        Ok(path) => path,
+        Err(error) => {
+            ACTIVE_FOLDER_CALCS.finish(&operation_id, cancellation.as_ref());
+            return Err(error);
+        }
+    };
 
     let op_id = operation_id.clone();
+    let scan_cancellation = cancellation.clone();
     let result = tokio::task::spawn_blocking(move || {
         let mut total: u64 = 0;
         let mut file_count: u64 = 0;
         let mut folder_count: u64 = 0;
+        let mut scanned_entries: u64 = 0;
 
         for entry in WalkDir::new(&path).into_iter().filter_map(|e| {
             e.map_err(|err| log::warn!("[Directory] folder size walk error: {}", err))
                 .ok()
         }) {
-            {
-                let calcs = ACTIVE_FOLDER_CALCS.lock().map_err(|e| e.to_string())?;
-                if !calcs.contains(&op_id) {
-                    return Err("Calculation cancelled".to_string());
-                }
+            scanned_entries = scanned_entries.saturating_add(1);
+            if scanned_entries > MAX_FOLDER_SIZE_ENTRIES {
+                return Err(format!(
+                    "Folder size scan exceeds entry limit ({})",
+                    MAX_FOLDER_SIZE_ENTRIES
+                ));
+            }
+            if is_cancelled(scan_cancellation.as_ref()) {
+                return Err("Calculation cancelled".to_string());
             }
 
-            if let Ok(meta) = entry.metadata() {
+            // WalkDir does not descend into links, so inspect each entry with
+            // lstat semantics too. Following a symlink here would count an
+            // external target (and produce surprising folder sizes) even
+            // though the traversal itself is link-safe.
+            if let Ok(meta) = fs::symlink_metadata(entry.path()) {
+                if meta.file_type().is_symlink() {
+                    continue;
+                }
                 if meta.is_file() {
                     total = total.saturating_add(meta.len());
                     file_count += 1;
@@ -681,19 +731,14 @@ pub async fn calculate_folder_size(
     })
     .await;
 
-    {
-        if let Ok(mut calcs) = ACTIVE_FOLDER_CALCS.lock() {
-            calcs.remove(&operation_id);
-        }
-    }
+    ACTIVE_FOLDER_CALCS.finish(&operation_id, cancellation.as_ref());
 
     result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn cancel_folder_size_calculation(operation_id: String) -> Result<(), String> {
-    let mut calcs = ACTIVE_FOLDER_CALCS.lock().map_err(|e| e.to_string())?;
-    calcs.remove(&operation_id);
+    ACTIVE_FOLDER_CALCS.cancel(&operation_id);
     Ok(())
 }
 

@@ -1,4 +1,7 @@
+#[cfg(target_os = "linux")]
+use std::collections::HashSet;
 use std::fs;
+use std::io::{Read, Write};
 use std::path::Path;
 #[cfg(target_os = "linux")]
 use std::path::PathBuf;
@@ -11,6 +14,50 @@ use tauri::Manager;
 static TRAY_READY: AtomicBool = AtomicBool::new(false);
 static WINDOW_COUNTER: AtomicU64 = AtomicU64::new(1);
 static LAST_FOCUS_LOST_MS: AtomicU64 = AtomicU64::new(0);
+#[cfg(target_os = "linux")]
+const MAX_DESKTOP_ENTRY_BYTES: u64 = 512 * 1024;
+#[cfg(target_os = "linux")]
+const MAX_MIME_CACHE_BYTES: u64 = 4 * 1024 * 1024;
+const MAX_LICENSE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_SETTINGS_SUMMARY_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_SHARED_ITEMS: usize = 10_000;
+const MAX_SHARED_PATH_BYTES: usize = 8 * 1024 * 1024;
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
+const MIN_SYSTEM_TEXT_SCALE: f64 = 0.5;
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
+const MAX_SYSTEM_TEXT_SCALE: f64 = 3.0;
+
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
+fn sanitize_system_text_scale(value: f64) -> f64 {
+    if value.is_finite() {
+        value.clamp(MIN_SYSTEM_TEXT_SCALE, MAX_SYSTEM_TEXT_SCALE)
+    } else {
+        1.0
+    }
+}
+
+fn open_regular_read(path: &Path) -> Result<fs::File, String> {
+    crate::file_operations::open_regular_read(path)
+}
+
+fn read_text_limited(path: &Path, max_bytes: u64) -> Result<String, String> {
+    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Refusing to read a non-regular text file".to_string());
+    }
+    if metadata.len() > max_bytes {
+        return Err(format!("Text file exceeds {} byte limit", max_bytes));
+    }
+    let file = open_regular_read(path)?;
+    let mut bytes = Vec::with_capacity(metadata.len().min(max_bytes) as usize);
+    file.take(max_bytes.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .map_err(|error| error.to_string())?;
+    if bytes.len() as u64 > max_bytes {
+        return Err(format!("Text file exceeds {} byte limit", max_bytes));
+    }
+    String::from_utf8(bytes).map_err(|error| error.to_string())
+}
 
 pub fn record_focus_lost() {
     let now = SystemTime::now()
@@ -183,7 +230,7 @@ fn load_desktop_entry(desktop_file_name: &str) -> Option<(String, String)> {
     }
     for dir in desktop_search_paths() {
         let full_path = dir.join(desktop_file_name);
-        let Ok(content) = fs::read_to_string(&full_path) else {
+        let Ok(content) = read_text_limited(&full_path, MAX_DESKTOP_ENTRY_BYTES) else {
             continue;
         };
         if content.lines().any(|line| line.trim() == "NoDisplay=true") {
@@ -235,7 +282,7 @@ fn parse_mime_cache_apps(mime_type: &str) -> Vec<String> {
     };
 
     for cache_file in cache_files {
-        let Ok(content) = fs::read_to_string(cache_file) else {
+        let Ok(content) = read_text_limited(&cache_file, MAX_MIME_CACHE_BYTES) else {
             continue;
         };
         for line in content.lines() {
@@ -367,7 +414,13 @@ pub fn get_platform() -> String {
 }
 
 #[tauri::command]
-pub fn get_system_accent_color() -> Result<serde_json::Value, String> {
+pub async fn get_system_accent_color() -> Result<serde_json::Value, String> {
+    tokio::task::spawn_blocking(get_system_accent_color_sync)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn get_system_accent_color_sync() -> Result<serde_json::Value, String> {
     #[cfg(target_os = "macos")]
     {
         Ok(serde_json::json!({
@@ -476,14 +529,20 @@ fn is_dark_mode() -> bool {
 }
 
 #[tauri::command]
-pub fn get_system_text_scale() -> f64 {
+pub async fn get_system_text_scale() -> f64 {
+    tokio::task::spawn_blocking(get_system_text_scale_sync)
+        .await
+        .unwrap_or(1.0)
+}
+
+fn get_system_text_scale_sync() -> f64 {
     #[cfg(target_os = "windows")]
     {
         crate::native_windows::read_user_dword(
             r"SOFTWARE\Microsoft\Accessibility",
             "TextScaleFactor",
         )
-        .map(|value| value as f64 / 100.0)
+        .map(|value| sanitize_system_text_scale(value as f64 / 100.0))
         .unwrap_or(1.0)
     }
 
@@ -495,17 +554,17 @@ pub fn get_system_text_scale() -> f64 {
         if let Ok(out) = output {
             let stdout = String::from_utf8_lossy(&out.stdout).trim().to_string();
             if let Ok(val) = stdout.parse::<f64>() {
-                return val;
+                return sanitize_system_text_scale(val);
             }
         }
         if let Ok(val) = std::env::var("QT_SCALE_FACTOR") {
             if let Ok(scale) = val.parse::<f64>() {
-                return scale;
+                return sanitize_system_text_scale(scale);
             }
         }
         if let Ok(val) = std::env::var("GDK_SCALE") {
             if let Ok(scale) = val.parse::<f64>() {
-                return scale;
+                return sanitize_system_text_scale(scale);
             }
         }
         1.0
@@ -658,6 +717,9 @@ pub fn set_zoom_level(
     zoom_level: f64,
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<(), String> {
+    if !zoom_level.is_finite() || !(0.5..=2.0).contains(&zoom_level) {
+        return Err("Zoom level must be finite and between 0.5 and 2.0".to_string());
+    }
     let label = webview.label().to_string();
     webview.set_zoom(zoom_level).map_err(|e| e.to_string())?;
     if let Ok(mut z) = state.zoom_levels.lock() {
@@ -678,6 +740,12 @@ pub fn get_zoom_level(
 
 #[tauri::command]
 pub async fn open_terminal(dir_path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || open_terminal_sync(dir_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn open_terminal_sync(dir_path: String) -> Result<(), String> {
     log::debug!("[System] open_terminal: {}", dir_path);
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
 
@@ -797,7 +865,13 @@ pub fn relaunch_app(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn get_licenses(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn get_licenses(app: tauri::AppHandle) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || get_licenses_sync(app))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn get_licenses_sync(app: tauri::AppHandle) -> Result<String, String> {
     fn load_license_file(
         app: &tauri::AppHandle,
         file_name: &str,
@@ -805,6 +879,12 @@ pub fn get_licenses(app: tauri::AppHandle) -> Result<String, String> {
     ) -> Result<Option<serde_json::Map<String, serde_json::Value>>, String> {
         attempted_paths.push(format!("asset:{file_name}"));
         if let Some(asset) = app.asset_resolver().get(file_name.to_string()) {
+            if asset.bytes.len() as u64 > MAX_LICENSE_BYTES {
+                return Err(format!(
+                    "Bundled {file_name} exceeds {} byte limit",
+                    MAX_LICENSE_BYTES
+                ));
+            }
             let content = String::from_utf8(asset.bytes)
                 .map_err(|e| format!("Failed to decode bundled {file_name}: {e}"))?;
             let parsed: serde_json::Value = serde_json::from_str(&content)
@@ -825,7 +905,7 @@ pub fn get_licenses(app: tauri::AppHandle) -> Result<String, String> {
             for suffix in &candidate_suffixes {
                 let license_path = resource_path.join(suffix);
                 attempted_paths.push(license_path.display().to_string());
-                if let Ok(content) = fs::read_to_string(&license_path) {
+                if let Ok(content) = read_text_limited(&license_path, MAX_LICENSE_BYTES) {
                     let parsed: serde_json::Value =
                         serde_json::from_str(&content).map_err(|e| {
                             format!("Failed to parse {}: {}", license_path.display(), e)
@@ -841,7 +921,7 @@ pub fn get_licenses(app: tauri::AppHandle) -> Result<String, String> {
         for suffix in &candidate_suffixes {
             let license_path = std::path::Path::new(suffix);
             attempted_paths.push(license_path.display().to_string());
-            if let Ok(content) = fs::read_to_string(license_path) {
+            if let Ok(content) = read_text_limited(license_path, MAX_LICENSE_BYTES) {
                 let parsed: serde_json::Value = serde_json::from_str(&content)
                     .map_err(|e| format!("Failed to parse {}: {}", license_path.display(), e))?;
                 let object = parsed
@@ -888,7 +968,13 @@ pub fn get_logs_path(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn open_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn open_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || open_logs_folder_sync(app))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn open_logs_folder_sync(app: tauri::AppHandle) -> Result<(), String> {
     let log_dir = app
         .path()
         .app_log_dir()
@@ -904,11 +990,17 @@ pub fn open_logs_folder(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || export_diagnostics_sync(app))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn export_diagnostics_sync(app: tauri::AppHandle) -> Result<String, String> {
     let settings_summary = match app.path().app_data_dir() {
         Ok(dir) => {
             let path = dir.join("settings.json");
-            match fs::read_to_string(&path) {
+            match read_text_limited(&path, MAX_SETTINGS_SUMMARY_BYTES) {
                 Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
                     Ok(mut val) => {
                         if let Some(obj) = val.as_object_mut() {
@@ -947,7 +1039,13 @@ pub fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn get_log_file_content(app: tauri::AppHandle) -> Result<String, String> {
+pub async fn get_log_file_content(app: tauri::AppHandle) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || get_log_file_content_sync(app))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn get_log_file_content_sync(app: tauri::AppHandle) -> Result<String, String> {
     use std::io::{Read, Seek, SeekFrom};
 
     let log_dir = app
@@ -956,25 +1054,56 @@ pub fn get_log_file_content(app: tauri::AppHandle) -> Result<String, String> {
         .map_err(|e: tauri::Error| e.to_string())?;
     let log_file = log_dir.join("iyeris.log");
 
-    let mut file = fs::File::open(&log_file).map_err(|e| format!("Failed to read log: {}", e))?;
+    let metadata =
+        fs::symlink_metadata(&log_file).map_err(|e| format!("Failed to read log: {}", e))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Refusing to read an unsafe log path".to_string());
+    }
+    let mut file =
+        open_regular_read(&log_file).map_err(|e| format!("Failed to read log: {}", e))?;
 
     const MAX_LOG_BYTES: u64 = 1_024 * 1_024;
-    let metadata = file.metadata().map_err(|e| e.to_string())?;
-    if metadata.len() > MAX_LOG_BYTES {
+    // Derive the tail offset from the opened handle, not the pre-open lstat;
+    // otherwise a replacement race could turn a previously small log into an
+    // unbounded read.
+    let opened_len = file.metadata().map_err(|e| e.to_string())?.len();
+    if opened_len > MAX_LOG_BYTES {
         file.seek(SeekFrom::End(-(MAX_LOG_BYTES as i64)))
             .map_err(|e| e.to_string())?;
     }
 
     let mut content = String::new();
-    file.read_to_string(&mut content)
+    file.take(MAX_LOG_BYTES.saturating_add(1))
+        .read_to_string(&mut content)
         .map_err(|e| format!("Failed to read log: {}", e))?;
+    if content.len() as u64 > MAX_LOG_BYTES {
+        return Err("Log file exceeds the read limit".to_string());
+    }
     Ok(content)
 }
 
 #[tauri::command]
 pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || share_items_sync(file_paths))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn share_items_sync(file_paths: Vec<String>) -> Result<(), String> {
     if file_paths.is_empty() {
         return Err("No files to share".into());
+    }
+    if file_paths.len() > MAX_SHARED_ITEMS {
+        return Err(format!(
+            "Too many files to share (max {})",
+            MAX_SHARED_ITEMS
+        ));
+    }
+    if file_paths.iter().map(String::len).sum::<usize>() > MAX_SHARED_PATH_BYTES {
+        return Err(format!(
+            "Shared paths exceed aggregate size limit (max {} bytes)",
+            MAX_SHARED_PATH_BYTES
+        ));
     }
     let validated_paths: Vec<std::path::PathBuf> = file_paths
         .iter()
@@ -988,12 +1117,15 @@ pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
 
     #[cfg(target_os = "linux")]
     {
+        let mut opened_parents = HashSet::new();
         for path in &validated_paths {
             let parent = path
                 .parent()
-                .map(|p| p.to_string_lossy().to_string())
-                .unwrap_or_else(|| "/".to_string());
-            let _ = open::that(&parent);
+                .unwrap_or_else(|| Path::new("/"))
+                .to_path_buf();
+            if opened_parents.insert(parent.clone()) {
+                let _ = open::that(&parent);
+            }
         }
     }
 
@@ -1007,6 +1139,12 @@ pub async fn share_items(file_paths: Vec<String>) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn check_full_disk_access() -> Result<bool, String> {
+    tokio::task::spawn_blocking(check_full_disk_access_sync)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn check_full_disk_access_sync() -> Result<bool, String> {
     #[cfg(target_os = "macos")]
     {
         let test_paths = vec![format!(
@@ -1029,6 +1167,12 @@ pub async fn check_full_disk_access() -> Result<bool, String> {
 
 #[tauri::command]
 pub async fn request_full_disk_access() -> Result<(), String> {
+    tokio::task::spawn_blocking(request_full_disk_access_sync)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn request_full_disk_access_sync() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         crate::native_macos::open_url(
@@ -1040,6 +1184,12 @@ pub async fn request_full_disk_access() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn get_open_with_apps(file_path: String) -> Result<Vec<serde_json::Value>, String> {
+    tokio::task::spawn_blocking(move || get_open_with_apps_sync(file_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn get_open_with_apps_sync(file_path: String) -> Result<Vec<serde_json::Value>, String> {
     #[cfg(target_os = "macos")]
     {
         let path = crate::validate_existing_path(&file_path, "File")?;
@@ -1081,6 +1231,12 @@ pub async fn get_open_with_apps(file_path: String) -> Result<Vec<serde_json::Val
 
 #[tauri::command]
 pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || open_file_with_app_sync(file_path, app_id))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn open_file_with_app_sync(file_path: String, app_id: String) -> Result<(), String> {
     log::debug!("[System] open_file_with_app: {} with {}", file_path, app_id);
     #[cfg(target_os = "macos")]
     {
@@ -1188,6 +1344,12 @@ pub async fn open_file_with_app(file_path: String, app_id: String) -> Result<(),
 
 #[tauri::command]
 pub async fn launch_desktop_entry(file_path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || launch_desktop_entry_sync(file_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn launch_desktop_entry_sync(file_path: String) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         let path = crate::validate_existing_path(&file_path, "Desktop entry")?;
@@ -1201,7 +1363,7 @@ pub async fn launch_desktop_entry(file_path: String) -> Result<(), String> {
             );
         }
 
-        let content = fs::read_to_string(&path)
+        let content = read_text_limited(&path, MAX_DESKTOP_ENTRY_BYTES)
             .map_err(|e| format!("Failed to read desktop entry: {}", e))?;
 
         let exec_line = content
@@ -1234,8 +1396,37 @@ fn app_exe_string() -> Result<String, String> {
         .map(|path| path.to_string_lossy().to_string())
 }
 
+fn write_native_integration_file(path: &Path, content: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| "Native integration file has no parent directory".to_string())?;
+    crate::ensure_real_directory_tree(parent, "Native integration directory")?;
+    if let Ok(metadata) = fs::symlink_metadata(path) {
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err(format!(
+                "Refusing to overwrite unsafe native integration path: {}",
+                path.display()
+            ));
+        }
+    }
+    let (temporary, mut file) = crate::create_secure_temp_file(path, "integration")?;
+    let write_result = (|| -> Result<(), String> {
+        file.write_all(content).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        Ok(())
+    })();
+    drop(file);
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&temporary);
+        return Err(error);
+    }
+    crate::atomic_replace_file(&temporary, path).inspect_err(|_| {
+        let _ = fs::remove_file(&temporary);
+    })
+}
+
 /// H1: reject the current exe path for native-integration installation if it
-/// contains shell metacharacters or quote characters. The macOS and Linux
+/// contains shell metacharacters, quote, or escape characters. The macOS and Linux
 /// installations write the path into shell-backed integration templates, and a
 /// path containing `"`, `$`, `\\`, etc. would either break the template or
 /// (worse) make the registered entry a shell-injection primitive that fires
@@ -1248,7 +1439,7 @@ fn validate_native_integration_exe_path(exe: &str) -> Result<(), String> {
     for ch in exe.chars() {
         if matches!(
             ch,
-            '"' | '$' | '`' | ';' | '|' | '&' | '<' | '>' | '\n' | '\r' | '\0'
+            '\'' | '"' | '\\' | '$' | '`' | ';' | '|' | '&' | '<' | '>' | '%' | '\n' | '\r' | '\0'
         ) {
             return Err(format!(
                 "Refusing to install native integration: exe path contains shell metacharacter {:?}",
@@ -1319,6 +1510,12 @@ pub async fn get_native_integration_status() -> Result<serde_json::Value, String
 
 #[tauri::command]
 pub async fn install_native_integration() -> Result<(), String> {
+    tokio::task::spawn_blocking(install_native_integration_sync)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn install_native_integration_sync() -> Result<(), String> {
     let exe = app_exe_string()?;
 
     #[cfg(not(target_os = "windows"))]
@@ -1333,20 +1530,19 @@ pub async fn install_native_integration() -> Result<(), String> {
     {
         let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
         let workflow = Path::new(&home).join("Library/Services/Open in IYERIS.workflow/Contents");
-        fs::create_dir_all(&workflow).map_err(|e| e.to_string())?;
-        fs::write(
-            workflow.join("Info.plist"),
-            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>NSServices</key><array><dict><key>NSMenuItem</key><dict><key>default</key><string>Open in IYERIS</string></dict><key>NSMessage</key><string>runWorkflowAsService</string><key>NSSendFileTypes</key><array><string>public.item</string></array></dict></array></dict></plist>"#,
-        )
-        .map_err(|e| e.to_string())?;
-        fs::write(
-            workflow.join("document.wflow"),
+        crate::ensure_real_directory_tree(&workflow, "Native integration directory")?;
+        write_native_integration_file(
+            &workflow.join("Info.plist"),
+            r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>NSServices</key><array><dict><key>NSMenuItem</key><dict><key>default</key><string>Open in IYERIS</string></dict><key>NSMessage</key><string>runWorkflowAsService</string><key>NSSendFileTypes</key><array><string>public.item</string></array></dict></array></dict></plist>"#.as_bytes(),
+        )?;
+        write_native_integration_file(
+            &workflow.join("document.wflow"),
             format!(
                 r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>actions</key><array><dict><key>action</key><dict><key>AMAccepts</key><dict><key>Container</key><string>List</string><key>Types</key><array><string>com.apple.cocoa.path</string></array></dict><key>AMActionVersion</key><string>2.0.3</string><key>AMApplication</key><array><string>Automator</string></array><key>AMParameterProperties</key><dict><key>COMMAND_STRING</key><dict><key>default value</key><string>while IFS= read -r item; do "{}" "$item"; done</string></dict></dict><key>AMProvides</key><dict><key>Container</key><string>List</string><key>Types</key><array><string>com.apple.cocoa.string</string></array></dict><key>ActionBundlePath</key><string>/System/Library/Automator/Run Shell Script.action</string><key>ActionName</key><string>Run Shell Script</string><key>ActionParameters</key><dict><key>COMMAND_STRING</key><string>while IFS= read -r item; do "{}" "$item"; done</string><key>inputMethod</key><integer>1</integer><key>shell</key><string>/bin/zsh</string></dict><key>BundleIdentifier</key><string>com.apple.RunShellScript</string></dict></dict></array></dict></plist>"#,
                 exe, exe
-            ),
-        )
-        .map_err(|e| e.to_string())?;
+            )
+            .as_bytes(),
+        )?;
         Ok(())
     }
 
@@ -1354,18 +1550,18 @@ pub async fn install_native_integration() -> Result<(), String> {
     {
         let home = std::env::var("HOME").map_err(|_| "HOME is not set".to_string())?;
         let service_dir = Path::new(&home).join(".local/share/kio/servicemenus");
-        fs::create_dir_all(&service_dir).map_err(|e| e.to_string())?;
+        crate::ensure_real_directory_tree(&service_dir, "Native integration directory")?;
         let service_file = service_dir.join("iyeris-open.desktop");
         // Use `ServiceTypes=` (the current KDE key) rather than the legacy
         // `X-KDE-ServiceTypes=`, which newer Plasma (5.85+/6) does not honor.
-        fs::write(
+        write_native_integration_file(
             &service_file,
             format!(
                 "[Desktop Entry]\nType=Service\nMimeType=all/all;inode/directory;\nActions=openInIyeris;openParentInIyeris;\nServiceTypes=KonqPopupMenu/Plugin\n\n[Desktop Action openInIyeris]\nName=Open in IYERIS\nExec=\"{}\" %f\n\n[Desktop Action openParentInIyeris]\nName=Open Parent in IYERIS\nExec=sh -c '\"{}\" \"$(dirname \"$1\")\"' -- %f\n",
                 exe, exe
-            ),
-        )
-        .map_err(|e| e.to_string())?;
+            )
+            .as_bytes(),
+        )?;
         // KDE Plasma 5.85+ / 6 only loads servicemenus from this non-standard
         // user location if the .desktop file is marked executable; without this
         // the entry is silently ignored. (The nautilus script below is chmod'd
@@ -1378,16 +1574,16 @@ pub async fn install_native_integration() -> Result<(), String> {
         }
 
         let nautilus_dir = Path::new(&home).join(".local/share/nautilus/scripts");
-        fs::create_dir_all(&nautilus_dir).map_err(|e| e.to_string())?;
+        crate::ensure_real_directory_tree(&nautilus_dir, "Native integration directory")?;
         let script = nautilus_dir.join("Open in IYERIS");
-        fs::write(
+        write_native_integration_file(
             &script,
             format!(
                 "#!/bin/sh\nprintf '%s\\n' \"$NAUTILUS_SCRIPT_SELECTED_FILE_PATHS\" | while IFS= read -r item; do [ -n \"$item\" ] && \"{}\" \"$item\"; done\n",
                 exe
-            ),
-        )
-        .map_err(|e| e.to_string())?;
+            )
+            .as_bytes(),
+        )?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -1406,6 +1602,12 @@ pub async fn install_native_integration() -> Result<(), String> {
 
 #[tauri::command]
 pub async fn uninstall_native_integration() -> Result<(), String> {
+    tokio::task::spawn_blocking(uninstall_native_integration_sync)
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn uninstall_native_integration_sync() -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         crate::native_windows::uninstall_context_menu()
@@ -1454,7 +1656,7 @@ pub fn should_minimize_to_tray(app: &tauri::AppHandle) -> bool {
         Err(_) => return false,
     };
     let path = dir.join("settings.json");
-    let content = match fs::read_to_string(&path) {
+    let content = match read_text_limited(&path, MAX_SETTINGS_SUMMARY_BYTES) {
         Ok(c) => c,
         Err(_) => return false,
     };
@@ -1467,11 +1669,39 @@ pub fn should_minimize_to_tray(app: &tauri::AppHandle) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn system_text_scale_is_finite_and_bounded() {
+        assert_eq!(super::sanitize_system_text_scale(f64::NAN), 1.0);
+        assert_eq!(super::sanitize_system_text_scale(f64::INFINITY), 1.0);
+        assert_eq!(super::sanitize_system_text_scale(-10.0), 0.5);
+        assert_eq!(super::sanitize_system_text_scale(10.0), 3.0);
+        assert_eq!(super::sanitize_system_text_scale(1.25), 1.25);
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn native_integration_exe_validation_rejects_shell_delimiters() {
+        assert!(super::validate_native_integration_exe_path("/opt/IYERIS/app").is_ok());
+        assert!(super::validate_native_integration_exe_path("/opt/IYERIS's/app").is_err());
+        assert!(super::validate_native_integration_exe_path("/opt/IYERIS\"s/app").is_err());
+        assert!(super::validate_native_integration_exe_path("/opt/IYERIS;app").is_err());
+        assert!(super::validate_native_integration_exe_path("/opt/IYERIS%f/app").is_err());
+    }
+}
+
 #[tauri::command]
-pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+pub async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     if cfg!(debug_assertions) {
         return Ok(());
     }
+    tokio::task::spawn_blocking(move || set_autostart_sync(app, enabled))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn set_autostart_sync(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     let manager = app.autolaunch();
     if enabled {
@@ -1482,7 +1712,13 @@ pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String>
 }
 
 #[tauri::command]
-pub fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+pub async fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    tokio::task::spawn_blocking(move || get_autostart_sync(app))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn get_autostart_sync(app: tauri::AppHandle) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
     let manager = app.autolaunch();
     manager.is_enabled().map_err(|e| e.to_string())

@@ -157,11 +157,31 @@ describe('rendererSearch — extended2', () => {
 
       await ctrl.performSearch();
 
-      expect(mockSearchFiles).toHaveBeenCalledWith('/workspace', 'readme', undefined, 'op-1');
+      expect(mockSearchFiles).toHaveBeenCalledWith(
+        '/workspace',
+        'readme',
+        undefined,
+        'op-1',
+        false
+      );
       expect(deps.setAllFiles).toHaveBeenCalledWith(files);
       expect(deps.renderFiles).toHaveBeenCalledWith(files, undefined);
       expect(deps.hideLoading).toHaveBeenCalled();
       expect(deps.updateStatusBar).toHaveBeenCalled();
+    });
+
+    it('forwards showHiddenFiles to searchFiles', async () => {
+      mockSearchFiles.mockResolvedValueOnce({ success: true, results: [] });
+
+      const deps = createDeps({ settingsOverrides: { showHiddenFiles: true } });
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.toggleSearch();
+      ctrl.setQuery('readme');
+
+      await ctrl.performSearch();
+
+      expect(mockSearchFiles).toHaveBeenCalledWith('/workspace', 'readme', undefined, 'op-1', true);
     });
 
     it('passes highlight query for local content search', async () => {
@@ -198,7 +218,8 @@ describe('rendererSearch — extended2', () => {
         '/workspace',
         'import',
         expect.any(Object),
-        'op-1'
+        'op-1',
+        false
       );
       expect(deps.renderFiles).toHaveBeenCalledWith(files, 'import');
     });
@@ -412,7 +433,8 @@ describe('rendererSearch — extended2', () => {
       expect(mockSearchFilesWithContentGlobal).toHaveBeenCalledWith(
         'keyword',
         expect.any(Object),
-        'op-1'
+        'op-1',
+        false
       );
       expect(deps.setAllFiles).toHaveBeenCalledWith(files);
       expect(deps.renderFiles).toHaveBeenCalledWith(files, 'keyword');
@@ -529,7 +551,8 @@ describe('rendererSearch — extended2', () => {
         '/workspace',
         'test',
         expect.objectContaining({ fileType: 'image' }),
-        'op-1'
+        'op-1',
+        false
       );
     });
 
@@ -558,7 +581,8 @@ describe('rendererSearch — extended2', () => {
       expect(mockSearchFilesWithContentGlobal).toHaveBeenCalledWith(
         'test',
         expect.objectContaining({ dateFrom: '2024-01-01' }),
-        'op-1'
+        'op-1',
+        false
       );
     });
   });
@@ -667,7 +691,8 @@ describe('rendererSearch — extended2', () => {
           minSize: 5 * 1024,
           maxSize: 10 * 1048576,
         }),
-        'op-1'
+        'op-1',
+        false
       );
     });
 
@@ -845,7 +870,7 @@ describe('rendererSearch — extended2', () => {
     });
   });
 
-  describe('initListeners — search input keypress', () => {
+  describe('initListeners — search input Enter', () => {
     it('triggers performSearch on Enter key', async () => {
       mockSearchFiles.mockResolvedValueOnce({ success: true, results: [] });
 
@@ -855,8 +880,8 @@ describe('rendererSearch — extended2', () => {
       ctrl.toggleSearch();
       ctrl.setQuery('search term');
 
-      const input = document.getElementById('search-input')!;
-      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter' }));
+      const input = document.getElementById('search-input') as HTMLInputElement;
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
 
       await vi.runAllTimersAsync();
 
@@ -875,7 +900,7 @@ describe('rendererSearch — extended2', () => {
       expect(dropdown.style.display).toBe('block');
 
       const input = document.getElementById('search-input')!;
-      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'Enter' }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
 
       expect(dropdown.style.display).toBe('none');
     });
@@ -888,7 +913,7 @@ describe('rendererSearch — extended2', () => {
       ctrl.setQuery('test');
 
       const input = document.getElementById('search-input')!;
-      input.dispatchEvent(new KeyboardEvent('keypress', { key: 'a' }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'a' }));
 
       expect(mockSearchFiles).not.toHaveBeenCalled();
     });
@@ -940,9 +965,49 @@ describe('rendererSearch — extended2', () => {
 
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }));
       expect(items[0]!.classList.contains('dropdown-active')).toBe(true);
+      expect(items[0]!.getAttribute('aria-selected')).toBe('true');
+      expect(input.getAttribute('aria-activedescendant')).toBe(items[0]!.id);
     });
 
-    it('dispatches click on active dropdown item when Enter is pressed', () => {
+    it('supports Home/End and wraps across all search history actions', () => {
+      const deps = createDeps();
+      deps.settings.searchHistory = ['alpha', 'beta'];
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.toggleSearch();
+
+      const input = document.getElementById('search-input')!;
+      const options = Array.from(
+        document.querySelectorAll<HTMLElement>('#search-history-dropdown [role="option"]')
+      );
+      options.forEach((option) => {
+        Object.defineProperty(option, 'scrollIntoView', { value: vi.fn(), configurable: true });
+      });
+
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+      expect(input.getAttribute('aria-activedescendant')).toBe(options.at(-1)?.id);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      expect(input.getAttribute('aria-activedescendant')).toBe(options[0]?.id);
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      expect(input.getAttribute('aria-activedescendant')).toBe(options[0]?.id);
+    });
+
+    it('uses same direct action for pointer activation', async () => {
+      const deps = createDeps();
+      deps.settings.searchHistory = ['pointer query'];
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.toggleSearch();
+
+      const input = document.getElementById('search-input') as HTMLInputElement;
+      document.querySelector<HTMLElement>('.history-item')!.click();
+
+      await vi.waitFor(() => expect(input.value).toBe('pointer query'));
+      expect(document.getElementById('search-history-dropdown')!.style.display).toBe('none');
+      expect(document.activeElement).toBe(input);
+    });
+
+    it('invokes active dropdown action directly when Enter is pressed', async () => {
       const deps = createDeps();
       deps.settings.searchHistory = ['alpha'];
       const ctrl = createSearchController(deps as any);
@@ -950,16 +1015,21 @@ describe('rendererSearch — extended2', () => {
       ctrl.toggleSearch();
       ctrl.showSearchHistoryDropdown();
 
-      const input = document.getElementById('search-input')!;
+      const input = document.getElementById('search-input') as HTMLInputElement;
       const dropdown = document.getElementById('search-history-dropdown')!;
       const firstItem = dropdown.querySelector<HTMLElement>('.history-item')!;
       const clickSpy = vi.fn();
       firstItem.addEventListener('click', clickSpy);
-      firstItem.classList.add('dropdown-active');
+      Object.defineProperty(firstItem, 'scrollIntoView', { value: vi.fn(), configurable: true });
+
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
 
       input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await vi.waitFor(() => expect(input.getAttribute('aria-activedescendant')).toBeNull());
 
-      expect(clickSpy).toHaveBeenCalledTimes(1);
+      expect(clickSpy).not.toHaveBeenCalled();
+      expect(input.value).toBe('alpha');
+      expect(dropdown.style.display).toBe('none');
     });
   });
 
@@ -1091,7 +1161,8 @@ describe('rendererSearch — extended2', () => {
         '/workspace',
         '^file_\\d+$',
         expect.objectContaining({ regex: true }),
-        'op-1'
+        'op-1',
+        false
       );
     });
   });
@@ -1215,12 +1286,70 @@ describe('rendererSearch — extended2', () => {
       ctrl.initListeners();
       ctrl.showSearchHistoryDropdown();
 
-      const deleteBtn = document.querySelector<HTMLElement>('[data-delete-index="0"]')!;
-      deleteBtn.click();
+      const deleteOption = document.querySelector<HTMLElement>('[data-delete-index="0"]')!;
+      expect(deleteOption.getAttribute('role')).toBe('option');
+      deleteOption.click();
 
       expect((deps.settings.savedSearches as any[]).length).toBe(0);
       expect(deps.debouncedSaveSettings).toHaveBeenCalled();
       expect(deps.showToast).toHaveBeenCalledWith('Removed "Delete me"', 'Saved Search', 'info');
+    });
+
+    it('uses a valid combobox/listbox structure without nested controls in options', () => {
+      const deps = createDeps({
+        settingsOverrides: {
+          savedSearches: [
+            {
+              name: 'Accessible search',
+              query: 'alpha',
+              isGlobal: false,
+              isRegex: false,
+              createdAt: '2025-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+      });
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.showSearchHistoryDropdown();
+
+      const input = document.getElementById('search-input')!;
+      expect(input.getAttribute('role')).toBe('combobox');
+      expect(input.getAttribute('aria-autocomplete')).toBe('list');
+      expect(input.getAttribute('aria-haspopup')).toBe('listbox');
+      document.querySelectorAll('[role="option"]').forEach((option) => {
+        expect(option.querySelector('button, input, select, textarea, a[href]')).toBeNull();
+      });
+    });
+
+    it('deletes a saved search through the same keyboard option action path', () => {
+      const deps = createDeps({
+        settingsOverrides: {
+          savedSearches: [
+            {
+              name: 'Keyboard delete',
+              query: 'alpha',
+              isGlobal: false,
+              isRegex: false,
+              createdAt: '2025-01-01T00:00:00.000Z',
+            },
+          ],
+        },
+      });
+      const ctrl = createSearchController(deps as any);
+      ctrl.initListeners();
+      ctrl.showSearchHistoryDropdown();
+      const input = document.getElementById('search-input')!;
+      document.querySelectorAll<HTMLElement>('[role="option"]').forEach((option) => {
+        Object.defineProperty(option, 'scrollIntoView', { value: vi.fn(), configurable: true });
+      });
+
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+
+      expect((deps.settings.savedSearches as any[]).length).toBe(0);
+      expect(deps.debouncedSaveSettings).toHaveBeenCalled();
     });
 
     it('loads saved search through dropdown saved-search item click', async () => {
@@ -1445,6 +1574,9 @@ describe('rendererSearch — extended2', () => {
       expect(items.length).toBe(2);
       expect((items[0] as HTMLElement).dataset.query).toBe('alpha');
       expect((items[1] as HTMLElement).dataset.query).toBe('beta');
+      expect(items[0]!.getAttribute('role')).toBe('option');
+      expect(items[0]!.getAttribute('aria-selected')).toBe('false');
+      expect(items[0]!.id).toBe('search-history-recent-0');
     });
 
     it('renders clear button in history dropdown', () => {

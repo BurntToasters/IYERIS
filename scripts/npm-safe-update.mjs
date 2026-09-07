@@ -188,7 +188,12 @@ function main() {
     try {
       run(npmCommand, npmUpdateArguments(cachePath), { cwd: root, env });
     } catch (error) {
-      restoreSnapshot(packageLock, snapshot);
+      // npm can leave a partially-resolved lockfile when it exits non-zero.
+      // Restore only if the bytes observed immediately after npm are still
+      // the bytes we are rolling back from; never blindly clobber a user's
+      // concurrent edit.
+      const failedCommandSnapshot = readSnapshot(packageLock);
+      restoreSnapshot(packageLock, snapshot, failedCommandSnapshot);
       throw error;
     }
 

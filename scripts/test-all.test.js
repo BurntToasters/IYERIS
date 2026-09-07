@@ -8,6 +8,7 @@ import {
   createStepPlan,
   isQualityGateClean,
   main,
+  MIN_FRONTEND_TESTS,
   parseTest,
   printSummary,
   runCommand,
@@ -69,6 +70,8 @@ test('the release-asset suites are a gated plan step, not chained after the gate
     'anything chained onto test:all runs after recordSuccessfulQualityGate'
   );
   assert.match(scripts['test:release-assets'], /post-release-assets\.test\.js/);
+  assert.match(scripts['test:release-assets'], /github-cli\.test\.cjs/);
+  assert.match(scripts['test:release-assets'], /changelog-release-body\.test\.cjs/);
   assert.match(scripts['test:release-assets'], /release-session\.test\.js/);
   assert.match(scripts['test:release-assets'], /test-all\.test\.js/);
 });
@@ -87,6 +90,74 @@ test('the build/release scripts are linted by the gate', () => {
     'scripts lint must not tolerate warnings'
   );
   assert.match(scripts['lint'], /lint:scripts/, 'the umbrella lint script must include scripts/');
+  assert.match(scripts['lint:scripts'], /build\//, 'maintained build scripts must be linted');
+  assert.match(scripts['lint:scripts'], /vite\.config\.ts/, 'root Vite config must be linted');
+  assert.deepEqual(
+    createStepPlan({ npm: 'npm' }).find((step) => step.name === 'typecheckNode')?.args,
+    ['run', 'typecheck:node']
+  );
+});
+
+test('bundle, version, docs policy, and dependency audits are release gates', () => {
+  const plan = createStepPlan({ npm: 'npm' });
+  assert.deepEqual(plan.find((step) => step.name === 'bundleBudget')?.args, ['run', 'test:bundle']);
+  assert.deepEqual(plan.find((step) => step.name === 'versionSync')?.args, [
+    'run',
+    'check:version-sync',
+  ]);
+  assert.deepEqual(plan.find((step) => step.name === 'docsPolicy')?.args, [
+    'run',
+    'check:docs-policy',
+  ]);
+  assert.deepEqual(plan.find((step) => step.name === 'releaseWorkflow')?.args, [
+    'run',
+    'check:release-workflow',
+  ]);
+  assert.deepEqual(plan.find((step) => step.name === 'npmAudit')?.args, ['run', 'audit']);
+  assert.deepEqual(
+    plan.find((step) => step.name === 'cargoAudit'),
+    {
+      name: 'cargoAudit',
+      label: 'Cargo Audit',
+      command: 'cargo',
+      args: ['audit'],
+      cwd: 'src-tauri',
+      timeout: process.platform === 'win32' ? 1_200_000 : 600_000,
+    }
+  );
+});
+
+test('CI may omit duplicate network audits but cannot record a release proof', () => {
+  const plan = createStepPlan({ npm: 'npm', includeAudits: false });
+  assert.equal(
+    plan.some((step) => step.name === 'npmAudit'),
+    false
+  );
+  assert.equal(
+    plan.some((step) => step.name === 'cargoAudit'),
+    false
+  );
+
+  const calls = [];
+  const logs = [];
+  const exitCode = main({
+    plan,
+    allowProof: false,
+    runStep: (step, results) => {
+      results[step.name].status = 'passed';
+    },
+    clearProof: () => {},
+    recordProof: () => {
+      calls.push('recordProof');
+      return true;
+    },
+    root: repoRoot,
+    log: (line) => logs.push(String(line)),
+  });
+
+  assert.equal(exitCode, 0);
+  assert.deepEqual(calls, []);
+  assert.ok(logs.some((line) => line.includes('network audits were skipped')));
 });
 
 test('rust formatting is gated the same way the JS side is', () => {
@@ -264,6 +335,22 @@ test('parseTest extracts vitest counts from colored output', () => {
   assert.equal(results.test.passed, 2918);
   assert.equal(results.test.failed, 0);
   assert.equal(results.test.files, 117);
+});
+
+test('runCommand rejects a silently reduced frontend test suite', () => {
+  const plan = createStepPlan({ npm: 'npm' });
+  const results = createInitialResults(plan);
+  const testStep = plan.find((step) => step.name === 'test');
+  const ok = runCommand(testStep, results, {
+    spawn: () => ({
+      status: 0,
+      stdout: `Tests ${MIN_FRONTEND_TESTS - 1} passed`,
+      stderr: '',
+    }),
+    log: () => {},
+  });
+  assert.equal(ok, false);
+  assert.equal(results.test.status, 'failed');
 });
 
 test('cargo-safe-update and cargo-update-policy are gated plan steps', () => {

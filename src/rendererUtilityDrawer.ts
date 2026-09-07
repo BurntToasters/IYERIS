@@ -303,9 +303,11 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
         controls.className = 'widget-controls';
 
         const leftBtn = document.createElement('button');
+        leftBtn.type = 'button';
         leftBtn.className = 'widget-control-btn btn-left';
         leftBtn.innerHTML = '◀';
         leftBtn.title = 'Move Left';
+        leftBtn.setAttribute('aria-label', `Move ${friendlyWidgetName(widgetKey)} left`);
         if (idx === 0) leftBtn.disabled = true;
         leftBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -313,9 +315,11 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
         });
 
         const rightBtn = document.createElement('button');
+        rightBtn.type = 'button';
         rightBtn.className = 'widget-control-btn btn-right';
         rightBtn.innerHTML = '▶';
         rightBtn.title = 'Move Right';
+        rightBtn.setAttribute('aria-label', `Move ${friendlyWidgetName(widgetKey)} right`);
         if (idx === activeWidgets.length - 1) rightBtn.disabled = true;
         rightBtn.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -323,9 +327,11 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
         });
 
         const removeBtn = document.createElement('button');
+        removeBtn.type = 'button';
         removeBtn.className = 'widget-control-btn btn-remove';
         removeBtn.innerHTML = '✕';
         removeBtn.title = 'Remove Widget';
+        removeBtn.setAttribute('aria-label', `Remove ${friendlyWidgetName(widgetKey)} widget`);
         removeBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           removeWidget(widgetKey);
@@ -390,6 +396,7 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
 
         inactiveWidgets.forEach((widgetKey) => {
           const btn = document.createElement('button');
+          btn.type = 'button';
           btn.className = 'drawer-action-btn';
           btn.textContent = `+ ${friendlyWidgetName(widgetKey)}`;
           btn.addEventListener('click', () => {
@@ -535,10 +542,14 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
     bookmarks.forEach((path) => {
       const item = document.createElement('div');
       item.className = 'favorite-item';
+      item.setAttribute('role', 'button');
+      item.tabIndex = 0;
+      item.setAttribute('aria-label', `Open favorite: ${path}`);
       item.title = path;
 
       const icon = document.createElement('span');
       icon.className = 'favorite-icon twemoji';
+      icon.setAttribute('aria-hidden', 'true');
       icon.innerHTML = '⭐';
 
       const name = document.createElement('span');
@@ -549,10 +560,16 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
       item.appendChild(icon);
       item.appendChild(name);
 
-      item.addEventListener('click', () => {
+      const openFavorite = () => {
         if (config.navigateTo) {
           config.navigateTo(path);
         }
+      };
+      item.addEventListener('click', openFavorite);
+      item.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        openFavorite();
       });
 
       list.appendChild(item);

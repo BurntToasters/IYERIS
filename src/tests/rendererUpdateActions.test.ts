@@ -496,7 +496,7 @@ describe('createUpdateActionsController', () => {
 
     expect(ctx.showDialog).toHaveBeenCalledWith(
       'Update Check Failed',
-      expect.stringContaining('latest STABLE released was just pushed'),
+      expect.stringContaining('synchronized automatically to the latest stable release'),
       'error',
       false
     );
@@ -513,7 +513,7 @@ describe('createUpdateActionsController', () => {
     await ctx.controller.checkForUpdates();
 
     const [, dialogMessage] = ctx.showDialog.mock.calls[0];
-    expect(dialogMessage).not.toContain('latest STABLE released was just pushed');
+    expect(dialogMessage).not.toContain('synchronized automatically to the latest stable release');
   });
 
   it('handles thrown update-check errors and still appends beta hint when applicable', async () => {
@@ -537,7 +537,7 @@ describe('createUpdateActionsController', () => {
     );
     expect(ctx.showDialog).toHaveBeenCalledWith(
       'Update Check Failed',
-      expect.stringContaining('latest STABLE released was just pushed'),
+      expect.stringContaining('synchronized automatically to the latest stable release'),
       'error',
       false
     );

@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
 const { assertGitHubCliAuthenticated, githubApi } = require('./github-cli.cjs');
+const { execFileSync } = require('node:child_process');
+const { verifyReleaseContent } = require('./verify-release-content.cjs');
 
 require('dotenv').config();
 
@@ -54,9 +56,9 @@ function expectedReleaseAssets({ prerelease = IS_PRERELEASE } = {}) {
   const updaterArtifacts = prerelease
     ? BASE_UPDATER_ARTIFACTS
     : [...BASE_UPDATER_ARTIFACTS, ...MSI_INSTALLERS];
-  const targetKeys = prerelease
-    ? [...STABLE_TARGET_KEYS, ...STABLE_TARGET_KEYS.map(betaTargetKey)]
-    : STABLE_TARGET_KEYS;
+  // Stable builds also publish beta-target aliases so existing beta clients
+  // can discover and install the stable release after it becomes `/latest`.
+  const targetKeys = [...STABLE_TARGET_KEYS, ...STABLE_TARGET_KEYS.map(betaTargetKey)];
 
   return new Set([
     ...installers,
@@ -76,13 +78,22 @@ function expectedPrereleaseAssets() {
   return expectedReleaseAssets({ prerelease: true });
 }
 
-function validateReleaseDraft(release, assets, { prerelease = IS_PRERELEASE, tag = TAG } = {}) {
+function validateReleaseDraft(
+  release,
+  assets,
+  { prerelease = IS_PRERELEASE, tag = TAG, targetCommit, requireDigests = false } = {}
+) {
   const errors = [];
   if (!release?.draft) errors.push(`${tag} is not a draft release`);
   if (prerelease && !release?.prerelease) errors.push(`${tag} is not marked as a prerelease`);
   if (!prerelease && release?.prerelease) errors.push(`${tag} is marked as a prerelease`);
   if (release?.tag_name !== tag)
     errors.push(`expected tag ${tag}, found ${release?.tag_name || 'none'}`);
+  if (targetCommit && release?.target_commitish !== targetCommit) {
+    errors.push(
+      `${tag} targets ${release?.target_commitish || '<missing>'}, expected build commit ${targetCommit}`
+    );
+  }
 
   const byName = new Map();
   for (const asset of assets) {
@@ -94,6 +105,8 @@ function validateReleaseDraft(release, assets, { prerelease = IS_PRERELEASE, tag
     const asset = byName.get(name);
     if (!asset) errors.push(`missing asset: ${name}`);
     else if (!Number.isFinite(asset.size) || asset.size <= 0) errors.push(`empty asset: ${name}`);
+    else if (requireDigests && !/^sha256:[a-f0-9]{64}$/iu.test(String(asset.digest || '')))
+      errors.push(`asset has no valid GitHub SHA-256 digest: ${name}`);
   }
   return errors;
 }
@@ -127,13 +140,22 @@ async function listAllAssets(releaseId) {
 async function main() {
   assertGitHubCliAuthenticated();
 
+  const targetCommit = execFileSync('git', ['rev-parse', 'HEAD'], {
+    encoding: 'utf8',
+  }).trim();
+
   const release = await findDraft();
   if (!release) throw new Error(`No draft release found for ${TAG}.`);
   const assets = await listAllAssets(release.id);
-  const errors = validateReleaseDraft(release, assets);
+  const errors = validateReleaseDraft(release, assets, { targetCommit, requireDigests: true });
   if (errors.length > 0) {
     throw new Error(`Release draft is incomplete:\n- ${errors.join('\n- ')}`);
   }
+  await verifyReleaseContent(assets, {
+    tag: TAG,
+    repository: `${REPO_OWNER}/${REPO_NAME}`,
+    publicKey: require('../src-tauri/tauri.conf.json').plugins.updater.pubkey,
+  });
   console.log(
     `Release draft ${TAG} is complete (${assets.length} assets; ${expectedReleaseAssets().size} required).`
   );

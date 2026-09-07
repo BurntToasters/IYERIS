@@ -89,10 +89,6 @@ export function createSupportUiController(deps: SupportUiDeps) {
   }
 
   async function showLicensesModal() {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-
     const licensesModal = document.getElementById('licenses-modal');
     if (!licensesModal) return;
 

@@ -1,6 +1,26 @@
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
 
+const MAX_ELEVATED_ITEMS: usize = 10_000;
+const MAX_ELEVATED_PATH_BYTES: usize = 8 * 1024 * 1024;
+
+fn validate_elevated_list(paths: &[String]) -> Result<(), String> {
+    if paths.len() > MAX_ELEVATED_ITEMS {
+        return Err(format!(
+            "Elevated operation contains too many items (max {})",
+            MAX_ELEVATED_ITEMS
+        ));
+    }
+    let total = paths.iter().map(String::len).sum::<usize>();
+    if total > MAX_ELEVATED_PATH_BYTES {
+        return Err(format!(
+            "Elevated paths exceed aggregate size limit (max {} bytes)",
+            MAX_ELEVATED_PATH_BYTES
+        ));
+    }
+    Ok(())
+}
+
 /// Escape a string for safe embedding in a POSIX shell single-quoted context.
 /// The only character that needs escaping in single quotes is the single quote itself.
 /// We also strip null bytes and newlines to prevent argument injection.
@@ -68,9 +88,27 @@ fn resolve_elevated_source_before_exec(source: &str, op: &str) -> Result<String,
     let path = crate::validate_existing_path(source, "Source")?;
     std::fs::symlink_metadata(&path)
         .map_err(|e| format!("Source path no longer accessible before elevation: {}", e))?;
-    if op == "delete" {
-        crate::ensure_not_root_path(&path, "delete")?;
-        return Ok(source.to_string());
+    if matches!(op, "delete" | "copy" | "move") {
+        // Preserve a final symlink as the object to unlink, while resolving
+        // and validating its parent. Passing the original unresolved path to
+        // a privileged rm allowed a parent symlink swap to redirect deletion.
+        let parent = path
+            .parent()
+            .ok_or_else(|| "Delete path has no parent directory".to_string())?;
+        let parent_meta = std::fs::symlink_metadata(parent)
+            .map_err(|e| format!("Delete parent is no longer accessible: {}", e))?;
+        if parent_meta.file_type().is_symlink() || !parent_meta.is_dir() {
+            return Err("Delete parent is not a real directory".to_string());
+        }
+        let canonical_parent = parent
+            .canonicalize()
+            .map_err(|e| format!("Cannot canonicalize delete parent: {}", e))?;
+        let name = path
+            .file_name()
+            .ok_or_else(|| "Delete path has no file name".to_string())?;
+        let resolved = canonical_parent.join(name);
+        crate::ensure_not_root_path(&resolved, "delete")?;
+        return Ok(resolved.to_string_lossy().to_string());
     }
     let canonical = path
         .canonicalize()
@@ -82,6 +120,11 @@ fn resolve_elevated_source_before_exec(source: &str, op: &str) -> Result<String,
 fn resolve_elevated_dest_before_exec(dest: &str) -> Result<String, String> {
     validate_elevated_path(dest, "Destination")?;
     let path = crate::validate_path(dest, "Destination")?;
+    if let Ok(metadata) = std::fs::symlink_metadata(&path) {
+        if metadata.file_type().is_symlink() {
+            return Err("Destination is a symbolic link — refusing elevated operation".to_string());
+        }
+    }
     let parent = path
         .parent()
         .ok_or_else(|| "Destination has no parent directory".to_string())?;
@@ -132,6 +175,7 @@ fn run_windows_file_operations(
     op: &str,
     items: &[(String, Option<String>)],
     destination_is_folder: bool,
+    overwrite: bool,
 ) -> Result<(), String> {
     use std::path::Path;
     use windows::{
@@ -144,7 +188,8 @@ fn run_windows_file_operations(
             UI::Shell::{
                 FileOperation, IFileOperation, IShellItem, SHCreateItemFromParsingName,
                 FOFX_EARLYFAILURE, FOFX_REQUIREELEVATION, FOFX_SHOWELEVATIONPROMPT,
-                FOF_NOCONFIRMATION, FOF_NOCONFIRMMKDIR, FOF_NOERRORUI, FOF_SILENT,
+                FOF_NOCONFIRMATION, FOF_NOCONFIRMMKDIR, FOF_NOERRORUI, FOF_RENAMEONCOLLISION,
+                FOF_SILENT,
             },
         },
     };
@@ -154,7 +199,7 @@ fn run_windows_file_operations(
         destination_is_folder: bool,
     ) -> Result<(String, Option<String>), String> {
         let path = Path::new(dest);
-        if destination_is_folder || path.is_dir() {
+        if destination_is_folder {
             return Ok((dest.to_string(), None));
         }
 
@@ -179,8 +224,11 @@ fn run_windows_file_operations(
 
         file_operation
             .SetOperationFlags(
-                FOF_NOCONFIRMATION
-                    | FOF_NOCONFIRMMKDIR
+                (if overwrite {
+                    FOF_NOCONFIRMATION
+                } else {
+                    FOF_RENAMEONCOLLISION
+                }) | FOF_NOCONFIRMMKDIR
                     | FOF_SILENT
                     | FOF_NOERRORUI
                     | FOFX_SHOWELEVATIONPROMPT
@@ -257,7 +305,7 @@ fn run_windows_file_operations(
 /// writable install location (snap extraction dir, sideloaded AppImage,
 /// hostile $PATH shadowing) lets an attacker get a free root shell when
 /// the user clicks "Restart as Admin." (M1)
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn verify_root_owned_nonwritable_chain(path: &std::path::Path) -> Result<(), String> {
     use std::os::unix::fs::MetadataExt;
 
@@ -285,7 +333,7 @@ fn verify_root_owned_nonwritable_chain(path: &std::path::Path) -> Result<(), Str
     Ok(())
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn verify_trusted_exe_path(exe: &std::path::Path) -> Result<std::path::PathBuf, String> {
     let canonical = exe
         .canonicalize()
@@ -321,7 +369,7 @@ pub async fn elevated_copy(source_path: String, dest_path: String) -> Result<(),
     validate_elevated_path(&source_path, "Source")?;
     validate_elevated_path(&dest_path, "Destination")?;
     crate::ensure_not_root_path(&dest, "copy destination")?;
-    run_elevated_file_op("copy", &source_path, Some(&dest_path)).await
+    run_elevated_file_op("copy", &source_path, Some(&dest_path), false).await
 }
 
 #[tauri::command]
@@ -332,7 +380,7 @@ pub async fn elevated_move(source_path: String, dest_path: String) -> Result<(),
     validate_elevated_path(&dest_path, "Destination")?;
     crate::ensure_not_root_path(&src, "move source")?;
     crate::ensure_not_root_path(&dest, "move destination")?;
-    run_elevated_file_op("move", &source_path, Some(&dest_path)).await
+    run_elevated_file_op("move", &source_path, Some(&dest_path), false).await
 }
 
 #[tauri::command]
@@ -340,7 +388,7 @@ pub async fn elevated_delete(item_path: String) -> Result<(), String> {
     let path = crate::validate_existing_path(&item_path, "Item")?;
     crate::ensure_not_root_path(&path, "delete")?;
     validate_elevated_path(&item_path, "Item")?;
-    run_elevated_file_op("delete", &item_path, None).await?;
+    run_elevated_file_op("delete", &item_path, None, false).await?;
     crate::undo::clear_undo_redo_for_path(&item_path)?;
     Ok(())
 }
@@ -356,7 +404,7 @@ pub async fn elevated_rename(item_path: String, new_name: String) -> Result<(), 
     let new_path_str = new_path.to_string_lossy().to_string();
     validate_elevated_path(&item_path, "Item")?;
     validate_elevated_path(&new_path_str, "New path")?;
-    run_elevated_file_op("move", &item_path, Some(&new_path_str)).await
+    run_elevated_file_op("move", &item_path, Some(&new_path_str), false).await
 }
 
 #[tauri::command]
@@ -430,14 +478,38 @@ pub async fn restart_as_admin() -> Result<(), String> {
     Ok(())
 }
 
-async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Result<(), String> {
+async fn run_elevated_file_op(
+    op: &str,
+    source: &str,
+    dest: Option<&str>,
+    overwrite: bool,
+) -> Result<(), String> {
     log::debug!("[Elevated] {} src={} dst={:?}", op, source, dest);
     let source = source.to_string();
     let dest = dest.map(String::from);
     let op = op.to_string();
 
     tokio::task::spawn_blocking(move || {
+        let _mutation_lock = crate::file_operations::mutation_lock()?;
         let (source, dest) = resolve_elevated_paths_before_exec(&op, &source, dest.as_deref())?;
+        if let Some(target) = &dest {
+            match std::fs::symlink_metadata(target) {
+                Ok(_) if !overwrite => {
+                    return Err(format!("Destination became occupied: {}", target))
+                }
+                Ok(metadata) if metadata.is_dir() => {
+                    return launch_transfer_helper(&op, &source, target);
+                }
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+                Err(error) => {
+                    return Err(format!(
+                        "Cannot inspect destination before elevation: {}",
+                        error
+                    ))
+                }
+            }
+        }
         #[cfg(any(target_os = "macos", target_os = "linux"))]
         let dest_str = match op.as_str() {
             "copy" | "move" => Some(
@@ -449,28 +521,24 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
 
         #[cfg(target_os = "windows")]
         {
-            run_windows_file_operations(&op, &[(source.clone(), dest.clone())], false)?;
+            run_windows_file_operations(&op, &[(source.clone(), dest.clone())], false, overwrite)?;
         }
 
         #[cfg(target_os = "macos")]
         {
-            // C1: write a temp shell script with paths embedded as single-quoted
-            // literals. The script runs under `do shell script ... with administrator
-            // privileges` via osascript, but the path interpolation happens *once*
-            // (when we build the script content) and is verified by validate_elevated_path
-            // at the entry — we will not see $/backtick/etc. by the time we reach here.
-            //
-            // `cp -RP` does not follow symlinks at the top-level argument (H5: TOCTOU
-            // protection — a user-controlled parent dir cannot swap the source for
-            // /etc/shadow between validation and execution).
+            // Paths are validated and quoted once for AppleScript's shell.
+            // -P preserves the final symlink entry; canonical path strings do
+            // not pin parent directories against concurrent replacement.
             let line = match op.as_str() {
                 "copy" => format!(
-                    "/bin/cp -RP -- '{}' '{}'",
+                    "/bin/cp -RP{} -- '{}' '{}'",
+                    if overwrite { "" } else { "n" },
                     shell_escape(&source),
                     shell_escape(dest_str.unwrap_or_default())
                 ),
                 "move" => format!(
-                    "/bin/mv -- '{}' '{}'",
+                    "/bin/mv {} -- '{}' '{}'",
+                    if overwrite { "-f" } else { "-n" },
                     shell_escape(&source),
                     shell_escape(dest_str.unwrap_or_default())
                 ),
@@ -501,8 +569,10 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
             // as a flag by the privileged cp/mv/rm. Combined with the
             // validate_elevated_path check at the entry, this is belt + suspenders.
             let (cmd, leading_args): (&str, &[&str]) = match op.as_str() {
-                "copy" => ("cp", &["-RP", "--"]),
-                "move" => ("mv", &["--"]),
+                "copy" if overwrite => ("cp", &["-RPT", "--"]),
+                "copy" => ("cp", &["-RPTn", "--"]),
+                "move" if overwrite => ("mv", &["-T", "--"]),
+                "move" => ("mv", &["-Tn", "--"]),
                 "delete" => ("rm", &["-rf", "--"]),
                 _ => return Err(format!("Unknown operation: {}", op)),
             };
@@ -533,47 +603,83 @@ async fn run_elevated_file_op(op: &str, source: &str, dest: Option<&str>) -> Res
     .map_err(|e| e.to_string())?
 }
 
+async fn run_elevated_transfer_batch(
+    operation: &str,
+    source_paths: Vec<String>,
+    dest_path: String,
+    conflict_behavior: Option<String>,
+    conflict_resolutions: Option<std::collections::HashMap<String, String>>,
+) -> Result<(), String> {
+    validate_elevated_list(&source_paths)?;
+    for source in &source_paths {
+        validate_elevated_path(source, "Source")?;
+        let path = crate::validate_existing_path(source, "Source")?;
+        crate::ensure_not_root_path(&path, "elevated source")?;
+    }
+    validate_elevated_path(&dest_path, "Destination")?;
+    let destination = crate::validate_path(&dest_path, "Destination")?;
+    crate::ensure_not_root_path(&destination, "elevated destination")?;
+    let planned = {
+        let _lock = crate::file_operations::mutation_lock()?;
+        crate::file_operations::plan_file_operations(
+            &source_paths,
+            &destination,
+            conflict_behavior.as_deref().unwrap_or("ask"),
+            operation,
+            &conflict_resolutions.unwrap_or_default(),
+        )?
+    };
+    // Every item keeps its resolved name and overwrite choice. The privileged
+    // executor rechecks collisions immediately before launching the native tool.
+    for item in planned {
+        run_elevated_file_op(
+            operation,
+            &item.source_path.to_string_lossy(),
+            Some(&item.dest_path.to_string_lossy()),
+            item.overwrite,
+        )
+        .await?;
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn elevated_copy_batch(
     source_paths: Vec<String>,
     dest_path: String,
+    conflict_behavior: Option<String>,
+    conflict_resolutions: Option<std::collections::HashMap<String, String>>,
 ) -> Result<(), String> {
-    for p in &source_paths {
-        crate::validate_existing_path(p, "Source")?;
-        validate_elevated_path(p, "Source")?;
-    }
-    let dest = crate::validate_path(&dest_path, "Destination")?;
-    validate_elevated_path(&dest_path, "Destination")?;
-    crate::ensure_not_root_path(&dest, "copy destination")?;
-    let items: Vec<(String, Option<String>)> = source_paths
-        .into_iter()
-        .map(|s| (s, Some(dest_path.clone())))
-        .collect();
-    run_elevated_batch_op("copy", items).await
+    run_elevated_transfer_batch(
+        "copy",
+        source_paths,
+        dest_path,
+        conflict_behavior,
+        conflict_resolutions,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn elevated_move_batch(
     source_paths: Vec<String>,
     dest_path: String,
+    conflict_behavior: Option<String>,
+    conflict_resolutions: Option<std::collections::HashMap<String, String>>,
 ) -> Result<(), String> {
-    for p in &source_paths {
-        let src = crate::validate_existing_path(p, "Source")?;
-        validate_elevated_path(p, "Source")?;
-        crate::ensure_not_root_path(&src, "move source")?;
-    }
-    let dest = crate::validate_path(&dest_path, "Destination")?;
-    validate_elevated_path(&dest_path, "Destination")?;
-    crate::ensure_not_root_path(&dest, "move destination")?;
-    let items: Vec<(String, Option<String>)> = source_paths
-        .into_iter()
-        .map(|s| (s, Some(dest_path.clone())))
-        .collect();
-    run_elevated_batch_op("move", items).await
+    run_elevated_transfer_batch(
+        "move",
+        source_paths,
+        dest_path,
+        conflict_behavior,
+        conflict_resolutions,
+    )
+    .await
 }
 
 #[tauri::command]
 pub async fn elevated_delete_batch(item_paths: Vec<String>) -> Result<(), String> {
+    validate_elevated_list(&item_paths)?;
     for p in &item_paths {
         let path = crate::validate_existing_path(p, "Item")?;
         crate::ensure_not_root_path(&path, "delete")?;
@@ -596,11 +702,12 @@ async fn run_elevated_batch_op(
     }
     if items.len() == 1 {
         let (src, dst) = &items[0];
-        return run_elevated_file_op(op, src, dst.as_deref()).await;
+        return run_elevated_file_op(op, src, dst.as_deref(), false).await;
     }
     let op = op.to_string();
 
     tokio::task::spawn_blocking(move || {
+        let _mutation_lock = crate::file_operations::mutation_lock()?;
         let mut resolved_items: Vec<(String, Option<String>)> = Vec::with_capacity(items.len());
         for (src, dst) in &items {
             resolved_items.push(resolve_elevated_paths_before_exec(
@@ -612,7 +719,7 @@ async fn run_elevated_batch_op(
 
         #[cfg(target_os = "windows")]
         {
-            run_windows_file_operations(&op, &resolved_items, true)?;
+            run_windows_file_operations(&op, &resolved_items, true, false)?;
         }
 
         #[cfg(target_os = "macos")]
@@ -766,5 +873,265 @@ mod tests {
     fn osa_escape_handles_backslash_and_quote() {
         assert_eq!(osa_escape(r#"with"quote"#), r#"with\"quote"#);
         assert_eq!(osa_escape(r"with\back"), r"with\\back");
+    }
+}
+
+/// A narrowly scoped CLI mode, handled before Tauri initializes any UI/plugins.
+/// The OS elevation prompt authorizes this one transfer; no arbitrary commands.
+pub(crate) fn handle_transfer_helper(args: &[String]) -> Option<Result<(), String>> {
+    if args.get(1).map(String::as_str) != Some("--iyeris-elevated-transfer") {
+        return None;
+    }
+    Some((|| {
+        if args.len() != 5 || !matches!(args[2].as_str(), "copy" | "move") {
+            return Err("Invalid elevated transfer arguments".to_string());
+        }
+        validate_elevated_list(&args[3..])?;
+        let (source, destination) =
+            resolve_elevated_paths_before_exec(&args[2], &args[3], Some(&args[4]))?;
+        replace_directory_transaction(
+            &args[2],
+            std::path::Path::new(&source),
+            std::path::Path::new(destination.as_deref().ok_or("Missing destination")?),
+        )
+    })())
+}
+
+fn replace_directory_transaction(
+    operation: &str,
+    source: &std::path::Path,
+    destination: &std::path::Path,
+) -> Result<(), String> {
+    use crate::file_operations::{copy_entry_exclusive, rename_exclusive, reserve_staging_rename};
+    if !matches!(operation, "copy" | "move") {
+        return Err("Invalid transfer operation".to_string());
+    }
+    if source == destination || destination.starts_with(source) || source.starts_with(destination) {
+        return Err("Cannot replace overlapping directories".to_string());
+    }
+    let parent = destination.parent().ok_or("Destination has no parent")?;
+    let workspace = tempfile::Builder::new()
+        .prefix(".iyeris-elevated-")
+        .tempdir_in(parent)
+        .map_err(|error| error.to_string())?;
+    let staged_source = if operation == "move" {
+        Some(reserve_staging_rename(source)?)
+    } else {
+        None
+    };
+    let original_source = source;
+    let source = staged_source.as_deref().unwrap_or(source);
+    let result = (|| {
+        let staged = workspace.path().join("content");
+        // Finish all data/metadata copying before moving the original destination.
+        copy_entry_exclusive(source, &staged, &|| false)?;
+        let backup = match std::fs::symlink_metadata(destination) {
+            Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
+                Some(reserve_staging_rename(destination)?)
+            }
+            Ok(_) => return Err("Replacement destination changed type".to_string()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.to_string()),
+        };
+        if let Err(error) = rename_exclusive(&staged, destination) {
+            if let Some(backup) = &backup {
+                if let Err(recovery) = rename_exclusive(backup, destination) {
+                    return Err(format!(
+                        "{error}; recovery failed: {recovery}; original retained at {}",
+                        backup.display()
+                    ));
+                }
+            }
+            return Err(error.to_string());
+        }
+        if operation == "move" {
+            let metadata = std::fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+            let cleanup = if metadata.is_dir() && !metadata.file_type().is_symlink() {
+                std::fs::remove_dir_all(source)
+            } else {
+                std::fs::remove_file(source)
+            };
+            if let Err(error) = cleanup {
+                return Err(format!("Move copy retained at {}; source cleanup incomplete: {}; previous destination retained at {:?}", destination.display(), error, backup));
+            }
+        }
+        if let Some(backup) = backup {
+            std::fs::remove_dir_all(&backup).map_err(|error| {
+                format!(
+                    "Transfer completed; previous destination remains at {}: {}",
+                    backup.display(),
+                    error
+                )
+            })?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        if let Some(staged_source) = staged_source {
+            if std::fs::symlink_metadata(&staged_source).is_ok() {
+                if let Err(recovery) = rename_exclusive(&staged_source, original_source) {
+                    return Err(format!(
+                        "{error}; source recovery failed: {recovery}; source retained at {}",
+                        staged_source.display()
+                    ));
+                }
+            }
+        }
+        return Err(error);
+    }
+    Ok(())
+}
+
+fn launch_transfer_helper(operation: &str, source: &str, destination: &str) -> Result<(), String> {
+    let executable = std::env::current_exe().map_err(|error| error.to_string())?;
+    #[cfg(unix)]
+    let executable = verify_trusted_exe_path(&executable)?;
+    let arguments = ["--iyeris-elevated-transfer", operation, source, destination];
+    #[cfg(target_os = "linux")]
+    let output = Command::new("pkexec")
+        .arg("--")
+        .arg(&executable)
+        .args(arguments)
+        .output()
+        .map_err(|error| error.to_string())?;
+    #[cfg(target_os = "macos")]
+    let output = {
+        let line = std::iter::once(executable.to_string_lossy().into_owned())
+            .chain(arguments.iter().map(|arg| (*arg).to_string()))
+            .map(|arg| format!("'{}'", shell_escape(&arg)))
+            .collect::<Vec<_>>()
+            .join(" ");
+        Command::new("/usr/bin/osascript")
+            .args([
+                "-e",
+                &format!(
+                    "do shell script \"{}\" with administrator privileges",
+                    osa_escape(&line)
+                ),
+            ])
+            .output()
+            .map_err(|error| error.to_string())?
+    };
+    #[cfg(unix)]
+    {
+        if !output.status.success() {
+            return Err(format!(
+                "Elevated replacement failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(())
+    }
+    #[cfg(windows)]
+    {
+        use windows::{
+            core::HSTRING,
+            Win32::{
+                Foundation::{CloseHandle, WAIT_OBJECT_0},
+                System::Threading::{GetExitCodeProcess, WaitForSingleObject, INFINITE},
+                UI::{
+                    Shell::{ShellExecuteExW, SEE_MASK_NOCLOSEPROCESS, SHELLEXECUTEINFOW},
+                    WindowsAndMessaging::SW_HIDE,
+                },
+            },
+        };
+        // Windows argv quoting doubles backslashes only before quotes/end quotes.
+        fn quote(arg: &str) -> String {
+            let mut out = String::from("\"");
+            let mut slashes = 0;
+            for ch in arg.chars() {
+                if ch == '\\' {
+                    slashes += 1;
+                    continue;
+                }
+                out.push_str(&"\\".repeat(if ch == '"' { slashes * 2 + 1 } else { slashes }));
+                slashes = 0;
+                out.push(ch);
+            }
+            out.push_str(&"\\".repeat(slashes * 2));
+            out.push('"');
+            out
+        }
+        let executable = HSTRING::from(executable.as_os_str());
+        let parameters = HSTRING::from(arguments.map(quote).join(" "));
+        let verb = HSTRING::from("runas");
+        let mut info = SHELLEXECUTEINFOW {
+            cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
+            fMask: SEE_MASK_NOCLOSEPROCESS,
+            lpVerb: windows::core::PCWSTR(verb.as_ptr()),
+            lpFile: windows::core::PCWSTR(executable.as_ptr()),
+            lpParameters: windows::core::PCWSTR(parameters.as_ptr()),
+            nShow: SW_HIDE.0,
+            ..Default::default()
+        };
+        unsafe {
+            ShellExecuteExW(&mut info).map_err(|error| error.to_string())?;
+            let waited = WaitForSingleObject(info.hProcess, INFINITE);
+            let mut code = 1;
+            let status = GetExitCodeProcess(info.hProcess, &mut code);
+            let _ = CloseHandle(info.hProcess);
+            if waited != WAIT_OBJECT_0 || status.is_err() || code != 0 {
+                return Err(format!("Elevated replacement failed. Check {} for retained .iyeris-rename-tmp backups before retrying.", destination));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod replacement_tests {
+    use super::*;
+    use std::fs;
+
+    #[test]
+    fn replacement_is_exact_and_move_removes_source_only_after_copy() {
+        for operation in ["copy", "move"] {
+            let temp = tempfile::tempdir().unwrap();
+            let source = temp.path().join("source");
+            let destination = temp.path().join("destination");
+            fs::create_dir(&source).unwrap();
+            fs::create_dir(&destination).unwrap();
+            fs::write(source.join("new"), b"new contents").unwrap();
+            fs::write(destination.join("old"), b"old contents").unwrap();
+            replace_directory_transaction(operation, &source, &destination).unwrap();
+            assert_eq!(fs::read(destination.join("new")).unwrap(), b"new contents");
+            assert!(!destination.join("old").exists());
+            assert_eq!(source.exists(), operation == "copy");
+            assert!(!fs::read_dir(temp.path()).unwrap().any(|entry| entry
+                .unwrap()
+                .file_name()
+                .to_string_lossy()
+                .starts_with(".iyeris-")));
+        }
+    }
+
+    #[test]
+    fn failed_staging_leaves_previous_destination_intact() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("missing");
+        let destination = temp.path().join("destination");
+        fs::create_dir(&destination).unwrap();
+        fs::write(destination.join("old"), b"old contents").unwrap();
+        assert!(replace_directory_transaction("copy", &source, &destination).is_err());
+        assert_eq!(fs::read(destination.join("old")).unwrap(), b"old contents");
+    }
+
+    #[test]
+    fn helper_rejects_unknown_commands_and_overlapping_paths() {
+        let args = [
+            "iyeris",
+            "--iyeris-elevated-transfer",
+            "delete",
+            "/tmp/source",
+            "/tmp/destination",
+        ]
+        .map(String::from);
+        assert!(handle_transfer_helper(&args).unwrap().is_err());
+        assert!(replace_directory_transaction(
+            "copy",
+            std::path::Path::new("/tmp/source"),
+            std::path::Path::new("/tmp/source/child")
+        )
+        .is_err());
     }
 }

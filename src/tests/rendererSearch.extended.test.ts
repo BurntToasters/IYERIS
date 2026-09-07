@@ -282,6 +282,32 @@ describe('Search controller — extended', () => {
       expect(deps.debouncedSaveSettings).toHaveBeenCalled();
       expect(deps.navigateTo).toHaveBeenCalledWith('/workspace/project');
     });
+
+    it('restores focus and reports navigation failures without rejecting', async () => {
+      const deps = createDeps({
+        settingsOverrides: {
+          savedSearches: [
+            {
+              name: 'Unavailable scope',
+              query: 'alpha',
+              isGlobal: false,
+              isRegex: false,
+              scopePath: '/missing',
+            },
+          ],
+        },
+      });
+      deps.navigateTo.mockRejectedValue(new Error('Folder is unavailable'));
+      const ctrl = createSearchController(deps as any);
+
+      await expect(ctrl.loadSavedSearch(0)).resolves.toBeUndefined();
+
+      const input = document.getElementById('search-input') as HTMLInputElement;
+      expect(input.value).toBe('alpha');
+      expect(document.activeElement).toBe(input);
+      expect(document.getElementById('search-history-dropdown')!.style.display).toBe('none');
+      expect(deps.showToast).toHaveBeenCalledWith('Folder is unavailable', 'Saved Search', 'error');
+    });
   });
 
   describe('hideSearchHistoryDropdown', () => {

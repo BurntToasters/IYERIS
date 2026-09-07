@@ -1,15 +1,41 @@
 use chrono::{NaiveDate, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
 use std::fs;
-use std::io::BufRead;
-use std::sync::Mutex;
+use std::io::{BufRead, Read};
+use std::path::Path;
 use walkdir::WalkDir;
 
+use crate::cancellation::{is_cancelled, CancellationRegistry, CancellationToken};
 use crate::indexer;
 
-static ACTIVE_SEARCHES: std::sync::LazyLock<Mutex<HashSet<String>>> =
-    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+static ACTIVE_SEARCHES: std::sync::LazyLock<CancellationRegistry> =
+    std::sync::LazyLock::new(CancellationRegistry::default);
+const MAX_QUERY_BYTES: usize = 4096;
+const MAX_REGEX_QUERY_BYTES: usize = 1024;
+const MAX_FILTER_PAYLOAD_BYTES: usize = 64 * 1024;
+
+fn validate_query(query: &str) -> Result<(), String> {
+    if query.is_empty() {
+        return Err("Search query cannot be empty".to_string());
+    }
+    if query.len() > MAX_QUERY_BYTES {
+        return Err(format!(
+            "Search query too long (max {} bytes)",
+            MAX_QUERY_BYTES
+        ));
+    }
+    Ok(())
+}
+
+fn register_search_operation(operation_id: &str) -> Result<Option<CancellationToken>, String> {
+    if operation_id.is_empty() {
+        return Ok(None);
+    }
+    ACTIVE_SEARCHES
+        .register(operation_id)
+        .ok_or_else(|| "Search operation ID is too long".to_string())
+        .map(Some)
+}
 
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -21,6 +47,7 @@ pub struct SearchResult {
     pub modified: f64,
     pub extension: String,
     pub match_context: Option<String>,
+    pub is_hidden: bool,
 }
 
 #[derive(Default, Deserialize)]
@@ -42,16 +69,6 @@ struct ParsedFilters {
     date_from_ms: Option<f64>,
     date_to_ms: Option<f64>,
     regex: bool,
-}
-
-fn is_search_active(op_id: &str) -> bool {
-    match ACTIVE_SEARCHES.lock() {
-        Ok(s) => s.contains(op_id),
-        Err(poisoned) => {
-            log::warn!("[Search] ACTIVE_SEARCHES mutex poisoned, recovering");
-            poisoned.into_inner().contains(op_id)
-        }
-    }
 }
 
 fn parse_date_to_ms(raw: &str, end_of_day: bool) -> Option<f64> {
@@ -95,6 +112,22 @@ fn parse_filters(raw: Option<serde_json::Value>) -> ParsedFilters {
             .and_then(|value| parse_date_to_ms(value, true)),
         regex: raw_filters.regex.unwrap_or(false),
     }
+}
+
+fn validate_filter_payload(raw: Option<&serde_json::Value>) -> Result<(), String> {
+    let Some(value) = raw else {
+        return Ok(());
+    };
+    let size = serde_json::to_vec(value)
+        .map_err(|error| format!("Invalid search filters: {}", error))?
+        .len();
+    if size > MAX_FILTER_PAYLOAD_BYTES {
+        return Err(format!(
+            "Search filters exceed the {} byte limit",
+            MAX_FILTER_PAYLOAD_BYTES
+        ));
+    }
+    Ok(())
 }
 
 fn matches_filters(
@@ -152,6 +185,48 @@ fn matches_filters(
     true
 }
 
+fn is_hidden_name(name: &str) -> bool {
+    name.starts_with('.')
+}
+
+fn allow_search_walk_entry(entry: &walkdir::DirEntry, include_hidden: bool) -> bool {
+    include_hidden || entry.depth() == 0 || !is_hidden_name(&entry.file_name().to_string_lossy())
+}
+
+fn open_content_search_file(path: &Path) -> Result<fs::File, String> {
+    // Denylist the walk path (and a resolved target, for planted links).
+    // Open the walk path with O_NOFOLLOW so a swapped symlink cannot redirect
+    // the read to an external canonical target.
+    crate::file_operations::ensure_safe_preview_read_path(path)?;
+    crate::file_operations::open_regular_read(path)
+}
+
+fn make_search_result(
+    name: String,
+    path: &Path,
+    meta: &fs::Metadata,
+    match_context: Option<String>,
+) -> SearchResult {
+    SearchResult {
+        is_hidden: is_hidden_name(&name),
+        name,
+        path: path.to_string_lossy().into_owned(),
+        is_directory: meta.is_dir(),
+        size: meta.len(),
+        modified: meta
+            .modified()
+            .ok()
+            .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+            .map(|d| d.as_secs_f64() * 1000.0)
+            .unwrap_or(0.0),
+        extension: path
+            .extension()
+            .map(|e| e.to_string_lossy().into_owned())
+            .unwrap_or_default(),
+        match_context,
+    }
+}
+
 fn build_safe_regex(pattern: &str, case_insensitive: bool) -> Result<regex::Regex, String> {
     regex::RegexBuilder::new(pattern)
         .case_insensitive(case_insensitive)
@@ -161,114 +236,156 @@ fn build_safe_regex(pattern: &str, case_insensitive: bool) -> Result<regex::Rege
         .map_err(|e| format!("Invalid regex: {}", e))
 }
 
+fn snippet_around_match(
+    line: &str,
+    match_start: usize,
+    match_end: usize,
+    context_chars: usize,
+) -> String {
+    if match_start > line.len() || match_end > line.len() || match_start > match_end {
+        return line.to_string();
+    }
+    let start = line[..match_start]
+        .char_indices()
+        .rev()
+        .nth(context_chars.saturating_sub(1))
+        .map(|(i, _)| i)
+        .unwrap_or(0);
+    let end = line[match_end..]
+        .char_indices()
+        .nth(context_chars)
+        .map(|(i, _)| match_end + i)
+        .unwrap_or(line.len());
+    line[start..end].to_string()
+}
+
+fn collect_name_search_results(
+    path: &Path,
+    query: &str,
+    include_hidden: bool,
+    regex: Option<&regex::Regex>,
+    parsed_filters: &ParsedFilters,
+    cancelled: impl Fn() -> bool,
+) -> Result<Vec<SearchResult>, String> {
+    let query_lower = query.to_lowercase();
+    let mut results = Vec::new();
+
+    for entry in WalkDir::new(path)
+        .max_depth(20)
+        .follow_links(false)
+        .into_iter()
+        .filter_entry(|entry| allow_search_walk_entry(entry, include_hidden))
+        .filter_map(|entry| {
+            entry
+                .map_err(|err| log::warn!("[Search] walk error: {}", err))
+                .ok()
+        })
+    {
+        if cancelled() {
+            break;
+        }
+
+        let entry_path = entry.path();
+        let name_cow = entry.file_name().to_string_lossy();
+
+        let name_matches = if let Some(regex) = regex {
+            regex.is_match(&name_cow)
+        } else {
+            name_cow.to_lowercase().contains(&query_lower)
+        };
+
+        if !name_matches {
+            continue;
+        }
+
+        let meta = match fs::symlink_metadata(entry_path) {
+            Ok(m) => m,
+            Err(e) => {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    log::debug!(
+                        "[Search] metadata error for {}: {}",
+                        entry_path.display(),
+                        e
+                    );
+                }
+                continue;
+            }
+        };
+        if !matches_filters(entry_path, &meta, parsed_filters) {
+            continue;
+        }
+
+        results.push(make_search_result(
+            name_cow.into_owned(),
+            entry_path,
+            &meta,
+            None,
+        ));
+
+        if results.len() >= 10000 {
+            log::info!("[Search] Results capped at 10000 for query {:?}", query);
+            break;
+        }
+    }
+
+    Ok(results)
+}
+
 #[tauri::command]
 pub async fn search_files(
     dir_path: String,
     query: String,
     filters: Option<serde_json::Value>,
     operation_id: Option<String>,
+    include_hidden: Option<bool>,
 ) -> Result<Vec<SearchResult>, String> {
     log::debug!("[Search] search_files: q={:?} in {}", query, dir_path);
-    let path = crate::validate_existing_path(&dir_path, "Directory")?;
+    validate_query(&query)?;
+    validate_filter_payload(filters.as_ref())?;
     let op_id = operation_id.unwrap_or_default();
-    let parsed_filters = parse_filters(filters);
-    let regex = if parsed_filters.regex {
-        if query.len() > 1024 {
-            return Err("Regex pattern too long (max 1024 characters)".to_string());
+    let cancellation = register_search_operation(&op_id)?;
+    let path = match crate::validate_existing_path(&dir_path, "Directory") {
+        Ok(path) => path,
+        Err(error) => {
+            ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
+            return Err(error);
         }
-        Some(build_safe_regex(&query, false)?)
+    };
+    let parsed_filters = parse_filters(filters);
+    let include_hidden = include_hidden.unwrap_or(false);
+    let regex = if parsed_filters.regex {
+        if query.len() > MAX_REGEX_QUERY_BYTES {
+            ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
+            return Err(format!(
+                "Regex pattern too long (max {} bytes)",
+                MAX_REGEX_QUERY_BYTES
+            ));
+        }
+        match build_safe_regex(&query, false) {
+            Ok(regex) => Some(regex),
+            Err(error) => {
+                ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
+                return Err(error);
+            }
+        }
     } else {
         None
     };
 
-    if !op_id.is_empty() {
-        let mut searches = ACTIVE_SEARCHES.lock().map_err(|e| e.to_string())?;
-        searches.insert(op_id.clone());
-    }
-
-    let search_op_id = op_id.clone();
+    let scan_cancellation = cancellation.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let query_lower = query.to_lowercase();
-        let mut results = Vec::new();
-
-        for entry in WalkDir::new(&path)
-            .max_depth(20)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(|e| {
-                e.map_err(|err| log::warn!("[Search] walk error: {}", err))
-                    .ok()
-            })
-        {
-            if !search_op_id.is_empty() && !is_search_active(&search_op_id) {
-                break;
-            }
-
-            let entry_path = entry.path();
-            let name_cow = entry.file_name().to_string_lossy();
-
-            let name_matches = if let Some(regex) = &regex {
-                regex.is_match(&name_cow)
-            } else {
-                name_cow.to_lowercase().contains(&query_lower)
-            };
-
-            if name_matches {
-                let meta = match entry.metadata() {
-                    Ok(m) => m,
-                    Err(e) => {
-                        if e.io_error()
-                            .is_none_or(|io_err| io_err.kind() != std::io::ErrorKind::NotFound)
-                        {
-                            log::debug!(
-                                "[Search] metadata error for {}: {}",
-                                entry_path.display(),
-                                e
-                            );
-                        }
-                        continue;
-                    }
-                };
-                if !matches_filters(entry_path, &meta, &parsed_filters) {
-                    continue;
-                }
-
-                let modified = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs_f64() * 1000.0)
-                    .unwrap_or(0.0);
-
-                results.push(SearchResult {
-                    name: name_cow.into_owned(),
-                    path: entry_path.to_string_lossy().into_owned(),
-                    is_directory: meta.is_dir(),
-                    size: meta.len(),
-                    modified,
-                    extension: entry_path
-                        .extension()
-                        .map(|e| e.to_string_lossy().into_owned())
-                        .unwrap_or_default(),
-                    match_context: None,
-                });
-
-                if results.len() >= 10000 {
-                    log::info!("[Search] Results capped at 10000 for query {:?}", query);
-                    break;
-                }
-            }
-        }
-
-        Ok(results)
+        collect_name_search_results(
+            &path,
+            &query,
+            include_hidden,
+            regex.as_ref(),
+            &parsed_filters,
+            || is_cancelled(scan_cancellation.as_ref()),
+        )
     })
     .await;
 
-    if !op_id.is_empty() {
-        if let Ok(mut searches) = ACTIVE_SEARCHES.lock() {
-            searches.remove(&op_id);
-        }
-    }
+    ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
 
     result.map_err(|e| e.to_string())?
 }
@@ -279,36 +396,55 @@ pub async fn search_files_content(
     query: String,
     filters: Option<serde_json::Value>,
     operation_id: Option<String>,
+    include_hidden: Option<bool>,
 ) -> Result<Vec<SearchResult>, String> {
     log::debug!(
         "[Search] search_files_content: q={:?} in {}",
         query,
         dir_path
     );
-    let path = crate::validate_existing_path(&dir_path, "Directory")?;
+    validate_query(&query)?;
+    validate_filter_payload(filters.as_ref())?;
     let op_id = operation_id.unwrap_or_default();
+    let cancellation = register_search_operation(&op_id)?;
+    let path = match crate::validate_existing_path(&dir_path, "Directory") {
+        Ok(path) => path,
+        Err(error) => {
+            ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
+            return Err(error);
+        }
+    };
     let parsed_filters = parse_filters(filters);
+    let include_hidden = include_hidden.unwrap_or(false);
     let regex = if parsed_filters.regex {
-        if query.len() > 1024 {
-            return Err("Regex pattern too long (max 1024 characters)".to_string());
+        if query.len() > MAX_REGEX_QUERY_BYTES {
+            ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
+            return Err(format!(
+                "Regex pattern too long (max {} bytes)",
+                MAX_REGEX_QUERY_BYTES
+            ));
         }
         // Route user-supplied regex through build_safe_regex so the same
         // size/dfa ReDoS caps apply here as in search_files and the literal
         // content path. Previously this used a bare Regex::new with no limits.
-        Some(build_safe_regex(&query, false)?)
+        match build_safe_regex(&query, false) {
+            Ok(regex) => Some(regex),
+            Err(error) => {
+                ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
+                return Err(error);
+            }
+        }
     } else {
-        Some(
-            build_safe_regex(&regex::escape(&query), true)
-                .map_err(|e| format!("Regex build error: {}", e))?,
-        )
+        match build_safe_regex(&regex::escape(&query), true) {
+            Ok(regex) => Some(regex),
+            Err(error) => {
+                ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
+                return Err(format!("Regex build error: {}", error));
+            }
+        }
     };
 
-    if !op_id.is_empty() {
-        let mut searches = ACTIVE_SEARCHES.lock().map_err(|e| e.to_string())?;
-        searches.insert(op_id.clone());
-    }
-
-    let search_op_id = op_id.clone();
+    let scan_cancellation = cancellation.clone();
     let result = tokio::task::spawn_blocking(move || {
         let _query = query;
         let mut results = Vec::new();
@@ -318,20 +454,28 @@ pub async fn search_files_content(
             .max_depth(20)
             .follow_links(false)
             .into_iter()
+            .filter_entry(|entry| allow_search_walk_entry(entry, include_hidden))
             .filter_map(|e| {
                 e.map_err(|err| log::warn!("[Search] content walk error: {}", err))
                     .ok()
             })
         {
-            if !search_op_id.is_empty() && !is_search_active(&search_op_id) {
+            if is_cancelled(scan_cancellation.as_ref()) {
                 break;
             }
 
             let entry_path = entry.path();
-            let meta = match entry.metadata() {
+            // Content search must never follow symlinks out of the requested
+            // tree. WalkDir does not descend into links, but a metadata/open
+            // sequence that follows one would still disclose an external
+            // target's contents.
+            let meta = match fs::symlink_metadata(entry_path) {
                 Ok(m) => m,
                 Err(_) => continue,
             };
+            if meta.file_type().is_symlink() {
+                continue;
+            }
             if !matches_filters(entry_path, &meta, &parsed_filters) {
                 continue;
             }
@@ -341,65 +485,50 @@ pub async fn search_files_content(
             }
 
             // Don't scan/return snippets from secret files (ssh keys, .pem, credentials).
-            if crate::file_operations::ensure_safe_preview_read_path(entry_path).is_err() {
-                continue;
-            }
-
-            let file = match fs::File::open(entry_path) {
+            let file = match open_content_search_file(entry_path) {
                 Ok(f) => f,
                 Err(_) => continue,
             };
 
-            let reader = std::io::BufReader::new(file);
+            // Bound the bytes consumed from the opened handle as well as the
+            // pre-open metadata check. A file can be replaced or grow between
+            // lstat and open; without this Take wrapper a single large line
+            // could make content search read unbounded data into memory.
+            let reader = std::io::BufReader::new(file.take(max_file_size.saturating_add(1)));
             let mut matched_context: Option<String> = None;
 
             for line_result in reader.lines() {
+                if is_cancelled(scan_cancellation.as_ref()) {
+                    break;
+                }
                 let line = match line_result {
                     Ok(l) => l,
                     Err(_) => break, // binary or encoding error, skip file
                 };
                 if let Some(regex) = &regex {
                     if let Some(m) = regex.find(&line) {
-                        let start = line[..m.start()]
-                            .char_indices()
-                            .rev()
-                            .nth(49)
-                            .map(|(i, _)| i)
-                            .unwrap_or(0);
-                        let end = line[m.start()..]
-                            .char_indices()
-                            .nth(m.len() + 50)
-                            .map(|(i, _)| m.start() + i)
-                            .unwrap_or(line.len());
-                        matched_context = Some(line[start..end].to_string());
+                        let start = m.start();
+                        let end = m.end();
+                        matched_context = Some(snippet_around_match(&line, start, end, 50));
                         break;
                     }
                 }
             }
 
-            if let Some(context) = matched_context {
-                let modified = meta
-                    .modified()
-                    .ok()
-                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
-                    .map(|d| d.as_secs_f64() * 1000.0)
-                    .unwrap_or(0.0);
+            if is_cancelled(scan_cancellation.as_ref()) {
+                break;
+            }
 
-                results.push(SearchResult {
-                    name: entry_path
+            if let Some(context) = matched_context {
+                results.push(make_search_result(
+                    entry_path
                         .file_name()
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_default(),
-                    path: entry_path.to_string_lossy().to_string(),
-                    is_directory: false,
-                    size: meta.len(),
-                    modified,
-                    extension: entry_path
-                        .extension()
-                        .map(|e| e.to_string_lossy().to_string())
-                        .unwrap_or_default(),
-                    match_context: Some(context),
-                });
+                    entry_path,
+                    &meta,
+                    Some(context),
+                ));
 
                 if results.len() >= 5000 {
                     break;
@@ -411,11 +540,7 @@ pub async fn search_files_content(
     })
     .await;
 
-    if !op_id.is_empty() {
-        if let Ok(mut searches) = ACTIVE_SEARCHES.lock() {
-            searches.remove(&op_id);
-        }
-    }
+    ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
 
     result.map_err(|e| e.to_string())?
 }
@@ -425,18 +550,18 @@ pub async fn search_files_content_global(
     query: String,
     filters: Option<serde_json::Value>,
     operation_id: Option<String>,
+    include_hidden: Option<bool>,
 ) -> Result<Vec<SearchResult>, String> {
     let home = directories::UserDirs::new()
         .map(|dirs| dirs.home_dir().to_string_lossy().to_string())
         .ok_or_else(|| "Could not determine home directory".to_string())?;
 
-    search_files_content(home, query, filters, operation_id).await
+    search_files_content(home, query, filters, operation_id, include_hidden).await
 }
 
 #[tauri::command]
 pub async fn cancel_search(operation_id: String) -> Result<(), String> {
-    let mut searches = ACTIVE_SEARCHES.lock().map_err(|e| e.to_string())?;
-    searches.remove(&operation_id);
+    ACTIVE_SEARCHES.cancel(&operation_id);
     Ok(())
 }
 
@@ -444,16 +569,24 @@ pub async fn cancel_search(operation_id: String) -> Result<(), String> {
 pub async fn search_index(
     app: tauri::AppHandle,
     query: String,
-    _operation_id: Option<String>,
+    operation_id: Option<String>,
 ) -> Result<Vec<SearchResult>, String> {
+    validate_query(&query)?;
+    let op_id = operation_id.unwrap_or_default();
+    let cancellation = register_search_operation(&op_id)?;
     if !indexer::is_enabled() {
+        ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
         return Err("Indexer is disabled".to_string());
     }
     // Lazy build on first search; poller reflects progress.
     indexer::ensure_index_built(&app);
-    let results = tokio::task::spawn_blocking(move || indexer::search_in_index(&query))
-        .await
-        .map_err(|e| e.to_string())?;
+    let scan_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
+        indexer::search_in_index_cancellable(&query, || is_cancelled(scan_cancellation.as_ref()))
+    })
+    .await;
+    ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
+    let results = result.map_err(|e| e.to_string())?;
 
     Ok(results
         .into_iter()
@@ -462,6 +595,7 @@ pub async fn search_index(
                 .extension()
                 .map(|ext| ext.to_string_lossy().to_string())
                 .unwrap_or_default(),
+            is_hidden: is_hidden_name(&e.name),
             name: e.name,
             path: e.path,
             is_directory: e.is_directory,
@@ -486,4 +620,128 @@ pub async fn get_index_status() -> Result<serde_json::Value, String> {
         "entryCount": entry_count,
         "lastBuilt": last_built,
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn empty_query_is_rejected_before_scan() {
+        assert_eq!(
+            validate_query(""),
+            Err("Search query cannot be empty".to_string())
+        );
+        assert!(validate_query(" ").is_ok());
+    }
+
+    #[test]
+    fn snippet_uses_unicode_characters_not_match_byte_length() {
+        let line = "aa日本語bb";
+        let match_start = line.find("日本語").unwrap();
+        let match_end = match_start + "日本語".len();
+        assert_eq!(
+            snippet_around_match(line, match_start, match_end, 1),
+            "a日本語b"
+        );
+    }
+
+    #[test]
+    fn snippet_does_not_overshoot_ascii_matches() {
+        let line = "abcdefghij";
+        let match_start = 3; // 'd'
+        let match_end = 4;
+        assert_eq!(
+            snippet_around_match(line, match_start, match_end, 2),
+            "bcdef"
+        );
+    }
+
+    fn write_tree() -> tempfile::TempDir {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("readme.md"), "visible").unwrap();
+        fs::write(temp.path().join(".secret"), "hidden file").unwrap();
+        fs::create_dir(temp.path().join(".git")).unwrap();
+        fs::write(temp.path().join(".git").join("config"), "git config").unwrap();
+        fs::create_dir(temp.path().join("src")).unwrap();
+        fs::write(temp.path().join("src").join("config"), "src config").unwrap();
+        temp
+    }
+
+    #[test]
+    fn name_search_skips_hidden_trees_when_hidden_off() {
+        let temp = write_tree();
+        let results = collect_name_search_results(
+            temp.path(),
+            "config",
+            false,
+            None,
+            &ParsedFilters::default(),
+            || false,
+        )
+        .unwrap();
+        let names: Vec<_> = results.iter().map(|r| r.name.as_str()).collect();
+        assert_eq!(names, ["config"]);
+        assert!(results[0].path.replace('\\', "/").ends_with("src/config"));
+        assert!(!results.iter().any(|r| r.path.contains(".git")));
+        assert!(!results.iter().any(|r| r.name == ".secret"));
+    }
+
+    #[test]
+    fn name_search_includes_hidden_trees_when_hidden_on() {
+        let temp = write_tree();
+        let results = collect_name_search_results(
+            temp.path(),
+            "config",
+            true,
+            None,
+            &ParsedFilters::default(),
+            || false,
+        )
+        .unwrap();
+        assert!(results
+            .iter()
+            .any(|r| r.path.contains(".git") && r.is_hidden == false));
+        let git = results
+            .iter()
+            .find(|r| r.path.contains(".git"))
+            .expect("git config");
+        assert_eq!(git.name, "config");
+        assert!(!git.is_hidden);
+    }
+
+    #[test]
+    fn name_search_marks_dotfile_hidden() {
+        let temp = write_tree();
+        let results = collect_name_search_results(
+            temp.path(),
+            "secret",
+            true,
+            None,
+            &ParsedFilters::default(),
+            || false,
+        )
+        .unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].name, ".secret");
+        assert!(results[0].is_hidden);
+    }
+
+    #[test]
+    fn content_search_open_refuses_symlink() {
+        let temp = tempfile::tempdir().unwrap();
+        let target = temp.path().join("secret.txt");
+        fs::write(&target, "needle").unwrap();
+        let link = temp.path().join("visible.txt");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&target, &link).unwrap();
+            assert!(open_content_search_file(&link).is_err());
+            assert!(open_content_search_file(&target).is_ok());
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (target, link);
+        }
+    }
 }

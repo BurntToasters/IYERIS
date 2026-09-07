@@ -52,9 +52,17 @@ export function createStatusBarController(deps: StatusBarDeps) {
 
     const menu = document.createElement('div');
     menu.className = 'status-bar-context-menu context-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'Status bar items');
     menu.style.position = 'fixed';
     menu.style.zIndex = '10000';
     menu.style.display = 'block';
+
+    // Keep the originating status bar available as a deterministic focus
+    // target when this transient menu closes.
+    if (statusBarEl && !statusBarEl.hasAttribute('tabindex')) {
+      statusBarEl.tabIndex = -1;
+    }
 
     const itemsList = [
       { key: 'items', label: 'Item Count' },
@@ -67,16 +75,22 @@ export function createStatusBarController(deps: StatusBarDeps) {
       { key: 'clipboard', label: 'Clipboard' },
     ];
 
-    itemsList.forEach((item) => {
+    const menuItems: HTMLDivElement[] = [];
+    let closeMenu: () => void = () => {};
+    itemsList.forEach((item, index) => {
       const checked = configItems[item.key] !== false;
       const menuItem = document.createElement('div');
       menuItem.className = 'context-menu-item';
+      menuItem.setAttribute('role', 'menuitemcheckbox');
+      menuItem.setAttribute('aria-checked', String(checked));
+      menuItem.tabIndex = index === 0 ? 0 : -1;
       menuItem.style.display = 'flex';
       menuItem.style.alignItems = 'center';
       menuItem.style.gap = '8px';
 
       const checkbox = document.createElement('span');
       checkbox.className = 'status-menu-checkbox';
+      checkbox.setAttribute('aria-hidden', 'true');
       checkbox.innerHTML = checked ? '✓' : '&nbsp;&nbsp;';
       checkbox.style.fontWeight = 'bold';
       checkbox.style.width = '12px';
@@ -87,7 +101,8 @@ export function createStatusBarController(deps: StatusBarDeps) {
       menuItem.appendChild(checkbox);
       menuItem.appendChild(label);
 
-      menuItem.addEventListener('click', (event) => {
+      const toggleItem = (event: Event) => {
+        event.preventDefault();
         event.stopPropagation();
         if (!currentSettings.statusBarItems) {
           currentSettings.statusBarItems = {};
@@ -98,9 +113,43 @@ export function createStatusBarController(deps: StatusBarDeps) {
         deps.saveSettings();
         update();
         refreshExternalStatusItem(item.key, enabled);
-        menu.remove();
+        closeMenu();
+      };
+
+      menuItem.addEventListener('click', toggleItem);
+      menuItem.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          toggleItem(event);
+          return;
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeMenu();
+          return;
+        }
+        if (
+          event.key !== 'ArrowDown' &&
+          event.key !== 'ArrowUp' &&
+          event.key !== 'Home' &&
+          event.key !== 'End'
+        )
+          return;
+        event.preventDefault();
+        const currentIndex = menuItems.indexOf(menuItem);
+        const nextIndex =
+          event.key === 'Home'
+            ? 0
+            : event.key === 'End'
+              ? menuItems.length - 1
+              : (currentIndex + (event.key === 'ArrowDown' ? 1 : -1) + menuItems.length) %
+                menuItems.length;
+        menuItems.forEach((candidate, candidateIndex) => {
+          candidate.tabIndex = candidateIndex === nextIndex ? 0 : -1;
+        });
+        menuItems[nextIndex]?.focus({ preventScroll: true });
       });
 
+      menuItems.push(menuItem);
       menu.appendChild(menuItem);
     });
 
@@ -120,11 +169,14 @@ export function createStatusBarController(deps: StatusBarDeps) {
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
 
-    const closeMenu = () => {
+    menuItems[0]?.focus({ preventScroll: true });
+
+    closeMenu = () => {
       menu.remove();
       document.removeEventListener('click', closeMenu);
       clearTimeout(attachTimer);
       if (closeActiveMenu === closeMenu) closeActiveMenu = null;
+      statusBarEl?.focus({ preventScroll: true });
     };
 
     const attachTimer = setTimeout(() => {

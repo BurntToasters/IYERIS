@@ -381,18 +381,6 @@ export function createEventListenersController(config: EventListenersConfig) {
       .getElementById('sidebar-toggle')
       ?.addEventListener('click', () => config.setSidebarCollapsed());
     config.syncSidebarToggleState();
-
-    const addressInput = config.getAddressInput();
-    addressInput?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        const value = addressInput.value.trim();
-        if (value === config.homeViewLabel) {
-          config.navigateTo(config.homeViewPath);
-        } else {
-          config.navigateTo(value);
-        }
-      }
-    });
   }
 
   function isModalOpen(): boolean {

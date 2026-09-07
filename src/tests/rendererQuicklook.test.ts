@@ -47,6 +47,10 @@ vi.mock('../rendererDom.js', () => ({
 }));
 
 vi.mock('../rendererUtils.js', () => ({
+  createPreviewDataUrlRequest: (file: FileItem, maxBytes: number) => ({
+    maxBytes,
+    fingerprint: `${file.size}:${file.modified.getTime()}`,
+  }),
   encodeFileUrl: mockEncodeFileUrl,
   getFileDataUrlWithCache: mockGetFileDataUrlWithCache,
   twemojiImg: mockTwemojiImg,
@@ -396,17 +400,16 @@ describe('createQuicklookController', () => {
       await expect(ctrl.showQuickLookForFile(file)).resolves.toBeUndefined();
     });
 
-    it('blurs active element before showing', async () => {
+    it('preserves the opener focus while showing', async () => {
       const btn = document.createElement('button');
       document.body.appendChild(btn);
       btn.focus();
-      const blurSpy = vi.spyOn(btn, 'blur');
 
       const ctrl = createQuicklookController(deps as any);
       const file = makeFile();
       await ctrl.showQuickLookForFile(file);
 
-      expect(blurSpy).toHaveBeenCalled();
+      expect(document.activeElement).toBe(btn);
     });
 
     it('calls onModalOpen when showing', async () => {
@@ -435,9 +438,9 @@ describe('createQuicklookController', () => {
         expect(img!.className).toContain('quicklook-zoomable');
       });
 
-      it('shows error for images exceeding max thumbnail size', async () => {
+      it('shows error for images exceeding max preview size', async () => {
         (deps.getCurrentSettings as ReturnType<typeof vi.fn>).mockReturnValue({
-          maxThumbnailSizeMB: 1,
+          maxPreviewSizeMB: 1,
         });
         const ctrl = createQuicklookController(deps as any);
         const file = makeFile({
@@ -450,7 +453,7 @@ describe('createQuicklookController', () => {
         expect(dom.content.innerHTML).toContain('Image too large to preview');
       });
 
-      it('uses default 10MB limit when maxThumbnailSizeMB is not set', async () => {
+      it('uses the default 50MB preview limit when unset', async () => {
         (deps.getCurrentSettings as ReturnType<typeof vi.fn>).mockReturnValue({});
         const ctrl = createQuicklookController(deps as any);
         const file = makeFile({
@@ -560,7 +563,10 @@ describe('createQuicklookController', () => {
         await Promise.resolve();
         await Promise.resolve();
 
-        expect(dom.content.innerHTML).toContain('Failed to load image');
+        expect(dom.content.innerHTML).not.toContain('Failed to load image');
+        expect((dom.content.querySelector('img') as HTMLImageElement).src).toContain(
+          'file:///home/user/second.png'
+        );
       });
 
       it('does not prefix dimensions when image has no intrinsic size', async () => {
@@ -620,6 +626,20 @@ describe('createQuicklookController', () => {
         const source = video!.querySelector('source');
         expect(source).not.toBeNull();
         expect(source!.type).toBe('video/mp4');
+      });
+
+      it('rejects oversized video before creating a media element or fallback read', async () => {
+        (deps.getCurrentSettings as ReturnType<typeof vi.fn>).mockReturnValue({
+          maxPreviewSizeMB: 1,
+        });
+        const ctrl = createQuicklookController(deps as any);
+        await ctrl.showQuickLookForFile(
+          makeFile({ name: 'large.mp4', path: '/home/user/large.mp4', size: 2 * 1024 * 1024 })
+        );
+
+        expect(dom.content.querySelector('video')).toBeNull();
+        expect(dom.content.textContent).toContain('too large');
+        expect(mockGetFileDataUrlWithCache).not.toHaveBeenCalled();
       });
 
       it('respects autoPlayVideos setting', async () => {
@@ -683,6 +703,32 @@ describe('createQuicklookController', () => {
 
         expect(mockGetFileDataUrlWithCache).not.toHaveBeenCalled();
       });
+
+      it('does not apply a video fallback after quicklook changes', async () => {
+        let resolveFallback!: (value: string) => void;
+        mockGetFileDataUrlWithCache.mockReturnValue(
+          new Promise((resolve) => {
+            resolveFallback = resolve;
+          })
+        );
+        const ctrl = createQuicklookController(deps as any);
+        await ctrl.showQuickLookForFile(makeFile({ name: 'old.mp4', path: '/home/user/old.mp4' }));
+        const video = dom.content.querySelector('video') as HTMLVideoElement;
+        const loadSpy = vi.fn();
+        Object.defineProperty(video, 'load', { value: loadSpy, configurable: true });
+        video.dispatchEvent(new Event('error'));
+        await vi.waitFor(() => expect(mockGetFileDataUrlWithCache).toHaveBeenCalled());
+
+        await ctrl.showQuickLookForFile(
+          makeFile({ name: 'current.bin', path: '/home/user/current.bin' })
+        );
+        resolveFallback('data:video/mp4;base64,OLD');
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(loadSpy).not.toHaveBeenCalled();
+        expect(dom.content.textContent).toContain('Preview not available');
+      });
     });
 
     describe('audio preview', () => {
@@ -699,6 +745,19 @@ describe('createQuicklookController', () => {
         const source = audio!.querySelector('source');
         expect(source).not.toBeNull();
         expect(source!.type).toBe('audio/mpeg');
+      });
+
+      it('rejects oversized audio before creating a media element', async () => {
+        (deps.getCurrentSettings as ReturnType<typeof vi.fn>).mockReturnValue({
+          maxPreviewSizeMB: 1,
+        });
+        const ctrl = createQuicklookController(deps as any);
+        await ctrl.showQuickLookForFile(
+          makeFile({ name: 'large.mp3', path: '/home/user/large.mp3', size: 2 * 1024 * 1024 })
+        );
+
+        expect(dom.content.querySelector('audio')).toBeNull();
+        expect(dom.content.textContent).toContain('too large');
       });
 
       it('creates audio container with icon', async () => {
@@ -792,6 +851,20 @@ describe('createQuicklookController', () => {
 
         expect((window as any).tauriAPI.readFileContent).toHaveBeenCalledWith(file.path, 16);
         expect(mockCreatePdfViewer).toHaveBeenCalled();
+      });
+
+      it('rejects oversized PDF before reading its header', async () => {
+        (deps.getCurrentSettings as ReturnType<typeof vi.fn>).mockReturnValue({
+          maxPreviewSizeMB: 1,
+        });
+        const ctrl = createQuicklookController(deps as any);
+        await ctrl.showQuickLookForFile(
+          makeFile({ name: 'large.pdf', path: '/home/user/large.pdf', size: 2 * 1024 * 1024 })
+        );
+
+        expect(dom.content.textContent).toContain('too large');
+        expect((window as any).tauriAPI.readFileContent).not.toHaveBeenCalled();
+        expect(mockCreatePdfViewer).not.toHaveBeenCalled();
       });
 
       it('shows error when file is not a valid PDF', async () => {
@@ -1129,6 +1202,38 @@ describe('createQuicklookController', () => {
 
         expect(dom.content.innerHTML).not.toContain('Should not render');
         loadMarkedSpy.mockRestore();
+      });
+
+      it('aborts markdown render if quicklook changed during sanitizing', async () => {
+        let resolveSanitize!: (value: string) => void;
+        const loadMarkedSpy = vi.spyOn(rendererMarkdown, 'loadMarked').mockResolvedValue({
+          marked: { parse: vi.fn(() => '<h1>Old sanitized markdown</h1>') },
+        } as any);
+        const sanitizeSpy = vi.spyOn(rendererMarkdown, 'sanitizeMarkdownHtml').mockReturnValue(
+          new Promise((resolve) => {
+            resolveSanitize = resolve;
+          })
+        );
+        (window as any).tauriAPI.readFileContent = vi.fn().mockResolvedValue({
+          success: true,
+          content: '# delayed sanitize',
+        });
+        const ctrl = createQuicklookController(deps as any);
+        const oldPreview = ctrl.showQuickLookForFile(
+          makeFile({ name: 'old.md', path: '/home/user/old.md' })
+        );
+        await vi.waitFor(() => expect(sanitizeSpy).toHaveBeenCalled());
+
+        await ctrl.showQuickLookForFile(
+          makeFile({ name: 'current.bin', path: '/home/user/current.bin' })
+        );
+        resolveSanitize('<h1>Old sanitized markdown</h1>');
+        await oldPreview;
+
+        expect(dom.content.innerHTML).not.toContain('Old sanitized markdown');
+        expect(dom.content.textContent).toContain('Preview not available');
+        loadMarkedSpy.mockRestore();
+        sanitizeSpy.mockRestore();
       });
     });
 

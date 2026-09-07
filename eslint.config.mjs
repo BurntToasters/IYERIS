@@ -33,15 +33,6 @@ export default tseslint.config(
       'dist/',
       'release/',
       'node_modules/',
-      'build/',
-      '*.js',
-      '!eslint.config.mjs',
-      // Stale one-off that rewrites package.json scripts. It predates
-      // release:session:start (re-running it would silently drop that gate from
-      // release:prepare) and it calls require() inside an ESM package, so it
-      // cannot execute at all. Left unlinted pending deletion rather than
-      // patched up to look maintained.
-      'scripts/update-iyeris-pkg.js',
     ],
   },
   {
@@ -114,7 +105,31 @@ export default tseslint.config(
   // scripts, so without declared globals every `process`/`console` reference
   // tripped no-undef and nobody ran eslint over them at all.
   {
-    files: ['scripts/**/*.js'],
+    files: ['vite.config.ts', 'vitest.config.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json'],
+      },
+      globals: NODE_GLOBALS,
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
+    files: ['scripts/audit-archive-capabilities.ts'],
+    languageOptions: {
+      parserOptions: {
+        project: ['./tsconfig.node.json'],
+      },
+      globals: NODE_GLOBALS,
+    },
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
+    files: ['scripts/**/*.{js,mjs,cjs}', 'build/**/*.{js,mjs,cjs}'],
     languageOptions: {
       ecmaVersion: 2023,
       sourceType: 'module',

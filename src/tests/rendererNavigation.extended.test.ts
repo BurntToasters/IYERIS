@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../shared.js', () => ({
   escapeHtml: (s: string) => s,
+  ignoreError: () => {},
 }));
 
 vi.mock('../rendererDom.js', () => ({

@@ -13,6 +13,8 @@ use std::os::unix::ffi::OsStrExt;
 use std::path::{Path, PathBuf};
 use std::ptr::NonNull;
 
+const MAX_CLIPBOARD_ITEMS: usize = 10_000;
+
 fn file_url(path: &Path) -> objc2::rc::Retained<NSURL> {
     let representation = CString::new(path.as_os_str().as_bytes())
         .expect("filesystem paths cannot contain NUL bytes");
@@ -66,6 +68,7 @@ pub fn applications_for_path(path: &Path) -> Vec<(String, String)> {
         let workspace = NSWorkspace::sharedWorkspace();
         let apps = workspace.URLsForApplicationsToOpenURL(&file_url(path));
         apps.iter()
+            .take(20)
             .filter_map(|url| url.path())
             .map(|path| {
                 let path = path.to_string();
@@ -181,6 +184,7 @@ pub fn clipboard_file_paths() -> Vec<String> {
 
         objects
             .iter()
+            .take(MAX_CLIPBOARD_ITEMS)
             .filter_map(|object| object.downcast::<NSURL>().ok())
             .filter(|url| url.isFileURL())
             .filter_map(|url| url.path())

@@ -25,6 +25,7 @@ const GPG_PASSPHRASE = process.env.GPG_PASSPHRASE;
 const STAGE_ONLY = process.argv.includes('--stage-only');
 const REPO_OWNER = process.env.GH_REPO_OWNER || 'BurntToasters';
 const REPO_NAME = process.env.GH_REPO_NAME || 'IYERIS';
+const RELEASE_COMMIT = execSync('git rev-parse HEAD', { cwd: root, encoding: 'utf8' }).trim();
 const TAG_DOWNLOAD_BASE_URL = `https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${encodeURIComponent(TAG)}`;
 const RELEASE_DOWNLOAD_BASE_URL = (
   process.env.RELEASE_DOWNLOAD_BASE_URL || TAG_DOWNLOAD_BASE_URL
@@ -408,6 +409,16 @@ function releaseAssetUrl(fileName, baseUrl = RELEASE_DOWNLOAD_BASE_URL) {
   return `${baseUrl}/${encodeURIComponent(fileName)}`;
 }
 
+export function releaseChannelVariants(isPrerelease, releaseBaseUrl, tagBaseUrl) {
+  return [
+    { targetSuffix: '', baseUrl: releaseBaseUrl },
+    {
+      targetSuffix: '-beta',
+      baseUrl: isPrerelease ? tagBaseUrl : releaseBaseUrl,
+    },
+  ];
+}
+
 function normalizeUpdaterSignature(sigPath) {
   const trimmed = fs.readFileSync(sigPath, 'utf8').trim();
   if (!trimmed) return trimmed;
@@ -432,9 +443,14 @@ function generateUpdaterManifests(files) {
 
   const manifests = new Map();
   const requiredTargetKeys = new Set();
-  const channelVariants = [{ targetSuffix: '', baseUrl: RELEASE_DOWNLOAD_BASE_URL }];
-  if (IS_PRERELEASE)
-    channelVariants.push({ targetSuffix: '-beta', baseUrl: TAG_DOWNLOAD_BASE_URL });
+  // Keep the beta target available on stable releases too. Beta clients pin
+  // their updater target to `<os>-beta`; without a stable-release alias they
+  // cannot discover the stable build when it becomes `/latest`.
+  const channelVariants = releaseChannelVariants(
+    IS_PRERELEASE,
+    RELEASE_DOWNLOAD_BASE_URL,
+    TAG_DOWNLOAD_BASE_URL
+  );
   const expectedLinuxTargetKeys = requiredLinuxTargetKeys(channelVariants);
   const generatedLinuxAppImageTargets = new Set();
   const missingSignatures = [];
@@ -666,15 +682,13 @@ function generateChecksums(files) {
     let targetKeys = targetKeysForArtifactName(name);
     if (targetKeys.length === 0 && manifestTargetKeys.length > 0) targetKeys = manifestTargetKeys;
     if (targetKeys.length === 0) targetKeys = ['generic'];
-    if (IS_PRERELEASE) {
-      const betaKeys = [];
-      for (const k of targetKeys) {
-        if (k.includes('-beta')) continue;
-        const dashIdx = k.indexOf('-');
-        if (dashIdx > 0) betaKeys.push(`${k.slice(0, dashIdx)}-beta-${k.slice(dashIdx + 1)}`);
-      }
-      targetKeys = [...targetKeys, ...betaKeys];
+    const betaKeys = [];
+    for (const k of targetKeys) {
+      if (k.includes('-beta')) continue;
+      const dashIdx = k.indexOf('-');
+      if (dashIdx > 0) betaKeys.push(`${k.slice(0, dashIdx)}-beta-${k.slice(dashIdx + 1)}`);
     }
+    targetKeys = [...targetKeys, ...betaKeys];
     for (const targetKey of targetKeys) addToBucket(targetKey, filePath);
   }
   const outputs = [];
@@ -727,22 +741,38 @@ function ghRequest(method, endpoint, body) {
 
 async function getOrCreateRelease() {
   try {
-    return await ghRequest('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${TAG}`);
-  } catch {}
-  try {
-    const releases = await ghRequest(
+    const release = await ghRequest(
       'GET',
-      `/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=30`
+      `/repos/${REPO_OWNER}/${REPO_NAME}/releases/tags/${TAG}`
     );
-    const draft = releases.find((r) => r.draft && r.tag_name === TAG);
-    if (draft) return draft;
-  } catch {}
-  return await ghRequest('POST', `/repos/${REPO_OWNER}/${REPO_NAME}/releases`, {
+    assertReleaseCommit(release);
+    return release;
+  } catch (error) {
+    if (error?.statusCode !== 404) throw error;
+  }
+  const releases = await ghRequest('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=30`);
+  const draft = releases.find((r) => r.draft && r.tag_name === TAG);
+  if (draft) {
+    assertReleaseCommit(draft);
+    return draft;
+  }
+  const release = await ghRequest('POST', `/repos/${REPO_OWNER}/${REPO_NAME}/releases`, {
     tag_name: TAG,
+    target_commitish: RELEASE_COMMIT,
     name: `IYERIS ${VERSION}`,
     draft: true,
     prerelease: IS_PRERELEASE,
   });
+  assertReleaseCommit(release);
+  return release;
+}
+
+function assertReleaseCommit(release) {
+  if (release?.target_commitish !== RELEASE_COMMIT) {
+    throw new Error(
+      `Release ${TAG} is pinned to ${release?.target_commitish || '<missing>'}, expected ${RELEASE_COMMIT}. Recreate the draft from this commit.`
+    );
+  }
 }
 
 async function listReleaseAssets(releaseId) {
@@ -810,29 +840,6 @@ async function uploadAssetWithReplace(release, filePath) {
   }
 }
 
-async function syncBetaManifestsToLatestStable(uploadedFiles, currentReleaseId) {
-  const betaManifests = uploadedFiles.filter((f) =>
-    /^latest-[a-z0-9]+-beta-[a-z0-9_]+\.json$/i.test(path.basename(f))
-  );
-  if (betaManifests.length === 0) return;
-  let latestStable;
-  try {
-    latestStable = await ghRequest('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/releases/latest`);
-  } catch (err) {
-    throw new Error(
-      `Could not load latest stable release for beta manifest sync: ${err instanceof Error ? err.message : String(err)}`,
-      { cause: err }
-    );
-  }
-  if (!latestStable?.id || !latestStable?.tag_name) return;
-  if (latestStable.id === currentReleaseId) return;
-  for (const filePath of betaManifests) {
-    await uploadAssetWithReplace(latestStable, filePath);
-    console.log(`  ~ synced ${path.basename(filePath)} to latest stable release`);
-  }
-  await verifyRemoteAssets(latestStable.id, betaManifests, 'stable beta-manifest sync');
-}
-
 async function main() {
   console.log(`\nIYERIS ${VERSION} — release pipeline\n`);
   if (!STAGE_ONLY) assertGitHubCliAuthenticated();
@@ -889,7 +896,6 @@ async function main() {
 
   await verifyRemoteAssets(release.id, everything, 'release upload');
 
-  if (IS_PRERELEASE) await syncBetaManifestsToLatestStable(everything, release.id);
   console.log(`\nDone — ${TAG} uploaded as ${release.draft ? 'draft' : 'published'}.\n`);
 }
 

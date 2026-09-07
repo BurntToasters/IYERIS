@@ -107,7 +107,14 @@ export function createBootstrapController(config: BootstrapConfig) {
     document.querySelectorAll('[data-icon]').forEach((el) => {
       const iconName = el.getAttribute('data-icon');
       if (iconName) {
-        el.outerHTML = twemojiImg(iconName, el.className || 'twemoji');
+        const decorative = el.getAttribute('aria-hidden') === 'true';
+        el.outerHTML = twemojiImg(
+          iconName,
+          el.className || 'twemoji',
+          decorative
+            ? undefined
+            : (el.getAttribute('aria-label') ?? el.getAttribute('alt') ?? undefined)
+        );
       }
     });
   }

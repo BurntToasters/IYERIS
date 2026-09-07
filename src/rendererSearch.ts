@@ -35,6 +35,10 @@ export function createSearchController(deps: SearchDeps) {
     return deps.getSearchScopePath ? deps.getSearchScopePath() : deps.getCurrentPath();
   }
 
+  function includeHidden(): boolean {
+    return deps.getCurrentSettings().showHiddenFiles === true;
+  }
+
   let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
   let searchRequestId = 0;
   let currentSearchFilters: SearchFilters = {};
@@ -63,6 +67,7 @@ export function createSearchController(deps: SearchDeps) {
   let searchInContentsToggle: HTMLInputElement | null = null;
   let searchRegexToggle: HTMLButtonElement | null = null;
   let searchSaveBtn: HTMLButtonElement | null = null;
+  let searchHistoryActiveIndex = -1;
 
   const SEARCH_RESULTS_CAP = 100;
 
@@ -237,7 +242,10 @@ export function createSearchController(deps: SearchDeps) {
 
     const currentPath = deps.getCurrentPath();
     if (shouldRestoreCurrentPath && currentPath) {
-      void deps.navigateTo(currentPath);
+      void Promise.resolve(deps.navigateTo(currentPath)).catch((error) => {
+        const message = error instanceof Error ? error.message : String(error);
+        deps.showToast(message || 'Failed to restore folder', 'Search', 'error');
+      });
     }
   }
 
@@ -391,7 +399,8 @@ export function createSearchController(deps: SearchDeps) {
           result = await window.tauriAPI.searchFilesWithContentGlobal(
             query,
             hasFilters ? currentSearchFilters : undefined,
-            operationId
+            operationId,
+            includeHidden()
           );
           if (currentRequestId !== searchRequestId) return;
           const fileGrid = deps.getFileGrid();
@@ -437,7 +446,7 @@ export function createSearchController(deps: SearchDeps) {
             const fileItems: FileItem[] = [];
 
             for (const entry of result.results) {
-              const isHidden = entry.name.startsWith('.');
+              const isHidden = entry.isHidden ?? entry.name.startsWith('.');
 
               fileItems.push({
                 name: entry.name,
@@ -462,14 +471,16 @@ export function createSearchController(deps: SearchDeps) {
             localSearchPath,
             query,
             hasFilters ? currentSearchFilters : undefined,
-            operationId
+            operationId,
+            includeHidden()
           );
         } else {
           result = await window.tauriAPI.searchFiles(
             localSearchPath,
             query,
             hasFilters ? currentSearchFilters : undefined,
-            operationId
+            operationId,
+            includeHidden()
           );
         }
         if (currentRequestId !== searchRequestId) return;
@@ -562,22 +573,28 @@ export function createSearchController(deps: SearchDeps) {
         if (s.useCount && s.useCount > 0) {
           tooltipParts.push(`Used ${s.useCount} time${s.useCount === 1 ? '' : 's'}`);
         }
-        return `<div class="saved-search-item" data-saved-index="${index}">
+        return `<div class="saved-search-row" role="group" aria-label="Saved search ${escapeHtml(s.name)}">
+          <div class="saved-search-item" id="search-history-saved-${index}" data-saved-index="${index}" data-option-action="saved" role="option" aria-selected="false">
             ${twemojiImg('star', 'twemoji')}
             <span class="saved-search-name" title="${escapeHtml(tooltipParts.join('\n'))}">${escapeHtml(s.name)}</span>
             <span class="saved-search-badges">${badges.join('')}</span>
-            <button class="saved-search-delete" data-delete-index="${index}" title="Delete saved search" aria-label="Delete saved search ${escapeHtml(s.name)}">&times;</button>
-          </div>`;
+          </div>
+          <button type="button" class="saved-search-delete" id="search-history-delete-${index}" data-delete-index="${index}" data-option-action="delete-saved" role="option" aria-selected="false" aria-label="Delete saved search ${escapeHtml(s.name)}" title="Delete saved search">&times;</button>
+        </div>`;
       })
       .join('');
 
-    return `<div class="saved-search-section">${items}</div>`;
+    return `<div class="saved-search-section" role="presentation">${items}</div>`;
   }
 
   function showSearchHistoryDropdown() {
     const dropdown = getById('search-history-dropdown');
     const settings = deps.getCurrentSettings();
-    if (!dropdown || !settings.enableSearchHistory) return;
+    if (!dropdown) return;
+    if (!settings.enableSearchHistory) {
+      hideSearchHistoryDropdown();
+      return;
+    }
 
     const history = settings.searchHistory || [];
     const savedHtml = renderSavedSearchesSection();
@@ -589,34 +606,108 @@ export function createSearchController(deps: SearchDeps) {
       historyHtml =
         history
           .map(
-            (item) =>
-              `<div class="history-item" data-query="${escapeHtml(item)}">${twemojiImg('search', 'twemoji')} ${escapeHtml(item)}</div>`
+            (item, index) =>
+              `<div class="history-item" id="search-history-recent-${index}" data-query="${escapeHtml(item)}" data-option-action="recent" role="option" aria-selected="false">${twemojiImg('search', 'twemoji')} ${escapeHtml(item)}</div>`
           )
           .join('') +
         (history.length > 0
-          ? `<div class="history-clear" data-action="clear-search">${twemojiImg('trash-2', 'twemoji')} Clear Search History</div>`
+          ? `<div class="history-clear" id="search-history-clear" data-action="clear-search" data-option-action="clear" role="option" aria-selected="false">${twemojiImg('trash-2', 'twemoji')} Clear Search History</div>`
           : '');
     }
 
     dropdown.innerHTML = savedHtml + historyHtml;
     dropdown.style.display = 'block';
+    searchHistoryActiveIndex = -1;
+    ensureElements();
+    searchInput?.setAttribute('aria-controls', 'search-history-dropdown');
+    searchInput?.setAttribute('aria-expanded', 'true');
+    searchInput?.removeAttribute('aria-activedescendant');
   }
 
   function hideSearchHistoryDropdown() {
     const dropdown = getById('search-history-dropdown');
-    if (dropdown) dropdown.style.display = 'none';
+    if (dropdown) {
+      dropdown.style.display = 'none';
+      dropdown.querySelectorAll('[role="option"]').forEach((option) => {
+        option.classList.remove('dropdown-active');
+        option.setAttribute('aria-selected', 'false');
+      });
+    }
+    searchHistoryActiveIndex = -1;
+    ensureElements();
+    searchInput?.setAttribute('aria-expanded', 'false');
+    searchInput?.removeAttribute('aria-activedescendant');
+  }
+
+  function getSearchHistoryOptions(dropdown: HTMLElement): HTMLElement[] {
+    return Array.from(dropdown.querySelectorAll<HTMLElement>('[role="option"]'));
+  }
+
+  function setActiveSearchHistoryOption(options: HTMLElement[], index: number): void {
+    if (options.length === 0) return;
+    searchHistoryActiveIndex = (index + options.length) % options.length;
+    options.forEach((option, optionIndex) => {
+      const selected = optionIndex === searchHistoryActiveIndex;
+      option.classList.toggle('dropdown-active', selected);
+      option.setAttribute('aria-selected', String(selected));
+    });
+    const active = options[searchHistoryActiveIndex];
+    if (active?.id) searchInput?.setAttribute('aria-activedescendant', active.id);
+    active?.scrollIntoView({ block: 'nearest' });
+  }
+
+  async function activateSearchHistoryOption(option: HTMLElement): Promise<void> {
+    const action = option.dataset.optionAction;
+    if (action === 'saved') {
+      const index = Number.parseInt(option.dataset.savedIndex || '', 10);
+      if (Number.isFinite(index)) await loadSavedSearch(index);
+      return;
+    }
+    if (action === 'delete-saved') {
+      const index = Number.parseInt(option.dataset.deleteIndex || '', 10);
+      if (Number.isFinite(index)) {
+        deleteSavedSearch(index);
+        searchInput?.focus();
+      }
+      return;
+    }
+    if (action === 'recent' && option.dataset.query !== undefined) {
+      ensureElements();
+      if (!searchInput) return;
+      searchInput.value = option.dataset.query;
+      syncSaveBtnState();
+      hideSearchHistoryDropdown();
+      searchInput.focus();
+      await performSearch();
+      return;
+    }
+    if (action === 'clear') {
+      hideSearchHistoryDropdown();
+      searchInput?.focus();
+      try {
+        await clearSearchHistory();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        deps.showToast(message || 'Failed to clear search history', 'History', 'error');
+      }
+    }
   }
 
   async function clearSearchHistory() {
     const settings = deps.getCurrentSettings();
     settings.searchHistory = [];
     hideSearchHistoryDropdown();
-    const result = await deps.saveSettingsWithTimestamp(settings);
-    if (!result.success) {
-      deps.showToast(result.error || 'Failed to clear search history', 'History', 'error');
-      return;
+    try {
+      const result = await deps.saveSettingsWithTimestamp(settings);
+      if (!result.success) {
+        deps.showToast(result.error || 'Failed to clear search history', 'History', 'error');
+        return;
+      }
+      deps.showToast('Search history cleared', 'History', 'success');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      deps.showToast(message || 'Failed to clear search history', 'History', 'error');
     }
-    deps.showToast('Search history cleared', 'History', 'success');
   }
 
   function saveCurrentSearch(): void {
@@ -721,15 +812,24 @@ export function createSearchController(deps: SearchDeps) {
     }
     updateFilterBadge();
 
-    if (!saved.isGlobal && saved.scopePath && !isHomeViewPath(saved.scopePath)) {
-      await deps.navigateTo(saved.scopePath);
-    }
-
     searchInput.value = saved.query;
     syncSaveBtnState();
-    searchInput.focus();
     hideSearchHistoryDropdown();
-    await performSearch();
+    try {
+      if (!saved.isGlobal && saved.scopePath && !isHomeViewPath(saved.scopePath)) {
+        await deps.navigateTo(saved.scopePath);
+      }
+      await performSearch();
+    } catch (error) {
+      // Navigation can fail when a saved scope was removed or is inaccessible.
+      // Keep the restored query usable, but never leak an unhandled rejection
+      // from pointer/keyboard activation of the history listbox.
+      const message = error instanceof Error ? error.message : String(error);
+      deps.showToast(message || 'Failed to open saved search scope', 'Saved Search', 'error');
+    } finally {
+      hideSearchHistoryDropdown();
+      searchInput.focus();
+    }
   }
 
   function openSearch(isGlobal: boolean): void {
@@ -751,6 +851,9 @@ export function createSearchController(deps: SearchDeps) {
     ensureElements();
     syncSearchScopeAria();
     syncSearchFilterAria();
+    searchInput?.setAttribute('role', 'combobox');
+    searchInput?.setAttribute('aria-autocomplete', 'list');
+    searchInput?.setAttribute('aria-haspopup', 'listbox');
     searchBtn?.addEventListener('click', toggleSearch);
     searchClose?.addEventListener('click', () => closeSearch());
     searchScopeToggle?.addEventListener('click', toggleSearchScope);
@@ -760,20 +863,15 @@ export function createSearchController(deps: SearchDeps) {
     const dropdown = getById('search-history-dropdown');
     dropdown?.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
-      const deleteBtn = target.closest<HTMLElement>('[data-delete-index]');
-      if (deleteBtn) {
-        e.stopPropagation();
-        const idx = parseInt(deleteBtn.dataset.deleteIndex || '', 10);
-        if (!isNaN(idx)) deleteSavedSearch(idx);
-        return;
-      }
-      const savedItem = target.closest<HTMLElement>('[data-saved-index]');
-      if (savedItem) {
-        const idx = parseInt(savedItem.dataset.savedIndex || '', 10);
-        if (!isNaN(idx)) void loadSavedSearch(idx);
-        return;
-      }
+      const actionTarget = target.closest<HTMLElement>('[data-option-action]');
+      if (actionTarget) void activateSearchHistoryOption(actionTarget);
     });
+    dropdown?.addEventListener('mousedown', (event) => {
+      // Keep the search input focused for listbox navigation, but allow the
+      // native delete button to receive pointer focus and activation.
+      if (!(event.target as HTMLElement).closest('.saved-search-delete')) event.preventDefault();
+    });
+    searchInput?.addEventListener('focus', showSearchHistoryDropdown);
 
     searchRegexToggle?.addEventListener('click', () => {
       isRegexMode = !isRegexMode;
@@ -899,42 +997,32 @@ export function createSearchController(deps: SearchDeps) {
       }
     });
 
-    searchInput?.addEventListener('keypress', (e) => {
-      if (e.key === 'Enter') {
-        hideSearchHistoryDropdown();
-        performSearch();
-      }
-    });
-
     searchInput?.addEventListener('keydown', (e) => {
       const dropdown = getById('search-history-dropdown');
-      if (!dropdown || dropdown.style.display === 'none') return;
+      const isOpen = !!dropdown && dropdown.style.display === 'block';
+      const items = dropdown ? getSearchHistoryOptions(dropdown) : [];
 
-      const items = Array.from(
-        dropdown.querySelectorAll<HTMLElement>('.history-item, .saved-search-item, .history-clear')
-      );
-      if (items.length === 0) return;
-
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (isOpen && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
         e.preventDefault();
-        const active = dropdown.querySelector<HTMLElement>('.dropdown-active');
-        let idx = active ? items.indexOf(active) : -1;
-        if (e.key === 'ArrowDown') {
-          idx = idx < items.length - 1 ? idx + 1 : 0;
-        } else {
-          idx = idx > 0 ? idx - 1 : items.length - 1;
-        }
-        active?.classList.remove('dropdown-active');
-        items[idx]!.classList.add('dropdown-active');
-        items[idx]!.scrollIntoView({ block: 'nearest' });
+        const delta = e.key === 'ArrowDown' ? 1 : -1;
+        const start =
+          searchHistoryActiveIndex < 0 ? (delta > 0 ? -1 : 0) : searchHistoryActiveIndex;
+        setActiveSearchHistoryOption(items, start + delta);
+      } else if (isOpen && (e.key === 'Home' || e.key === 'End')) {
+        e.preventDefault();
+        setActiveSearchHistoryOption(items, e.key === 'Home' ? 0 : items.length - 1);
       } else if (e.key === 'Enter') {
-        const active = dropdown.querySelector<HTMLElement>('.dropdown-active');
-        if (active) {
-          e.preventDefault();
-          active.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        e.preventDefault();
+        const active = isOpen ? items[searchHistoryActiveIndex] : undefined;
+        if (active) void activateSearchHistoryOption(active);
+        else {
+          hideSearchHistoryDropdown();
+          void performSearch();
         }
-      } else if (e.key === 'Escape') {
+      } else if (isOpen && e.key === 'Escape') {
+        e.preventDefault();
         hideSearchHistoryDropdown();
+        searchInput?.focus();
       }
     });
 

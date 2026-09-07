@@ -245,8 +245,8 @@ export function createShortcutsUiController(deps: ShortcutsUiDeps) {
         </div>
         <div class="shortcut-controls">
           ${keyMarkup}
-          <button class="modal-button secondary" data-shortcut-action="edit">Change</button>
-          <button class="modal-button secondary compact" data-shortcut-action="reset" ${isDefault ? 'disabled' : ''}>Reset</button>
+          <button type="button" class="modal-button secondary" data-shortcut-action="edit">Change</button>
+          <button type="button" class="modal-button secondary compact" data-shortcut-action="reset" ${isDefault ? 'disabled' : ''}>Reset</button>
         </div>
       `;
         section.appendChild(item);

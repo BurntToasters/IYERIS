@@ -10,6 +10,7 @@ use tauri::Manager;
 use walkdir::WalkDir;
 
 const MAX_INDEX_SIZE: usize = 50_000;
+const MAX_INDEX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_SCAN_DEPTH: usize = 20;
 // Yield CPU every N entries so bg build can't peg a core.
 const SCAN_YIELD_EVERY: usize = 256;
@@ -22,6 +23,11 @@ static BUILD_CANCEL: AtomicBool = AtomicBool::new(false);
 static INDEXER_ENABLED: AtomicBool = AtomicBool::new(true);
 
 static BUILD_MUTEX: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
+// Serializes the tiny cancellation/commit critical section. The filesystem
+// walk never takes this lock, so cancellation remains responsive while the
+// final publication cannot race a cancel request.
+static BUILD_COMMIT_MUTEX: std::sync::LazyLock<Mutex<()>> =
+    std::sync::LazyLock::new(|| Mutex::new(()));
 
 #[derive(Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -229,10 +235,17 @@ fn build_index_sync() -> Vec<IndexEntry> {
             }
 
             let path = entry.path();
-            let meta = match entry.metadata() {
+            // WalkDir does not descend through links, but metadata() can
+            // still follow a replaced final component on some platforms.
+            // Index only real regular files/directories so search results do
+            // not disclose target metadata from symlink entries.
+            let meta = match fs::symlink_metadata(path) {
                 Ok(m) => m,
                 Err(_) => continue,
             };
+            if meta.file_type().is_symlink() || (!meta.is_file() && !meta.is_dir()) {
+                continue;
+            }
 
             let name = path
                 .file_name()
@@ -279,13 +292,35 @@ fn index_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e: tauri::Error| e.to_string())?;
-    fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    crate::ensure_real_directory_tree(&dir, "Index directory")?;
     Ok(dir.join("file-index.json"))
 }
 
 fn load_index_from_disk(path: &Path) -> Option<IndexFileData> {
-    let data = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&data).ok()
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if metadata.file_type().is_symlink()
+        || !metadata.is_file()
+        || metadata.len() > MAX_INDEX_FILE_BYTES
+    {
+        log::warn!("Ignoring unsafe or oversized index file {}", path.display());
+        return None;
+    }
+    let file = crate::file_operations::open_regular_read(path).ok()?;
+    let mut bytes = Vec::with_capacity(metadata.len() as usize);
+    use std::io::Read;
+    file.take(MAX_INDEX_FILE_BYTES.saturating_add(1))
+        .read_to_end(&mut bytes)
+        .ok()?;
+    if bytes.len() as u64 > MAX_INDEX_FILE_BYTES {
+        return None;
+    }
+    let data = String::from_utf8(bytes).ok()?;
+    let parsed: IndexFileData = serde_json::from_str(&data).ok()?;
+    if parsed.version != 1 {
+        log::info!("Ignoring unsupported file index version {}", parsed.version);
+        return None;
+    }
+    Some(parsed)
 }
 
 fn save_index_to_disk(path: &Path, entries: &[IndexEntry]) -> Result<(), String> {
@@ -309,47 +344,25 @@ fn save_index_to_disk(path: &Path, entries: &[IndexEntry]) -> Result<(), String>
     };
 
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
-    let tmp = crate::make_temp_path(path, "index");
-
-    // L2: create_new + O_NOFOLLOW (on Unix). Without this, if a local
-    // attacker symlinked the temp path before us, File::create would
-    // truncate-through-the-symlink and write our index data to a path
-    // they chose. create_new makes the create fail if the path exists at all.
-    let mut file = {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            // libc::O_NOFOLLOW = 0o400000 on Linux, 0x0100 on macOS — use the
-            // libc constant via nix if available, but the stdlib OpenOptions
-            // already has create_new() which is enough to defeat the pre-planted
-            // symlink (open fails with EEXIST). Add O_NOFOLLOW for belt+suspenders
-            // in case the parent path traversal contains a symlink we don't expect.
-            const O_NOFOLLOW: i32 = if cfg!(target_os = "linux") {
-                0o400000
-            } else {
-                0x0100
-            };
-            fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .custom_flags(O_NOFOLLOW)
-                .open(&tmp)
-                .map_err(|e| e.to_string())?
-        }
-        #[cfg(not(unix))]
-        {
-            fs::OpenOptions::new()
-                .write(true)
-                .create_new(true)
-                .open(&tmp)
-                .map_err(|e| e.to_string())?
-        }
-    };
-    file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
-    file.sync_all().map_err(|e| e.to_string())?;
+    if json.len() as u64 > MAX_INDEX_FILE_BYTES {
+        return Err(format!(
+            "File index exceeds {} byte limit",
+            MAX_INDEX_FILE_BYTES
+        ));
+    }
+    let (tmp, mut file) = crate::create_secure_temp_file(path, "index")?;
+    let write_result = (|| -> Result<(), String> {
+        file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        Ok(())
+    })();
     drop(file);
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&tmp);
+        return Err(error);
+    }
 
-    if let Err(e) = fs::rename(&tmp, path) {
+    if let Err(e) = crate::atomic_replace_file(&tmp, path) {
         if let Err(cleanup_err) = fs::remove_file(&tmp) {
             log::warn!(
                 "[Indexer] Failed to clean up temp file {}: {}",
@@ -357,7 +370,7 @@ fn save_index_to_disk(path: &Path, entries: &[IndexEntry]) -> Result<(), String>
                 cleanup_err
             );
         }
-        return Err(e.to_string());
+        return Err(e);
     }
 
     Ok(())
@@ -400,17 +413,41 @@ pub fn ensure_index_built(app: &tauri::AppHandle) {
     }
     let app_handle = app.clone();
     std::thread::spawn(move || {
-        run_index_build(&app_handle);
+        run_index_build(&app_handle, false);
     });
 }
 
-fn run_index_build(app: &tauri::AppHandle) {
-    let _guard = match BUILD_MUTEX.lock() {
-        Ok(g) => g,
-        Err(_) => return,
-    };
+fn run_index_build(app: &tauri::AppHandle, force: bool) {
+    let _guard = BUILD_MUTEX.lock().unwrap_or_else(|poisoned| {
+        log::warn!("[Indexer] build mutex poisoned; recovering");
+        poisoned.into_inner()
+    });
 
-    set_build_cancelled(false);
+    // A disable/cancel request may arrive while this build is waiting for the
+    // mutex. Never clear that request and publish a build after the indexer was
+    // disabled.
+    if !INDEXER_ENABLED.load(Ordering::Relaxed) {
+        return;
+    }
+
+    if !force {
+        if let Ok(index) = FILE_INDEX.read() {
+            if !index.entries.is_empty() || index.is_building {
+                return;
+            }
+        }
+    }
+
+    {
+        let _commit_guard = match BUILD_COMMIT_MUTEX.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log::warn!("[Indexer] commit mutex poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
+        set_build_cancelled(false);
+    }
 
     if let Ok(mut index) = FILE_INDEX.write() {
         index.is_building = true;
@@ -418,18 +455,51 @@ fn run_index_build(app: &tauri::AppHandle) {
 
     log::info!("Starting file index build...");
     let entries = build_index_sync();
+    if is_build_cancelled() || !INDEXER_ENABLED.load(Ordering::Relaxed) {
+        if let Ok(mut index) = FILE_INDEX.write() {
+            index.is_building = false;
+        }
+        log::info!("Discarding cancelled or disabled file index build");
+        return;
+    }
     let count = entries.len();
 
-    if let Ok(mut index) = FILE_INDEX.write() {
-        index.entries = entries;
-        index.is_building = false;
-        index.last_built = Some(chrono::Utc::now().to_rfc3339());
+    {
+        let _commit_guard = match BUILD_COMMIT_MUTEX.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                log::warn!("[Indexer] commit mutex poisoned, recovering");
+                poisoned.into_inner()
+            }
+        };
+        if let Ok(mut index) = FILE_INDEX.write() {
+            if is_build_cancelled() || !INDEXER_ENABLED.load(Ordering::Relaxed) {
+                index.is_building = false;
+                log::info!("Discarding cancelled or disabled file index build");
+                return;
+            }
+            index.entries = entries;
+            index.is_building = false;
+            index.last_built = Some(chrono::Utc::now().to_rfc3339());
+        }
     }
 
-    if let Ok(idx_path) = index_path(app) {
-        if let Ok(index) = FILE_INDEX.read() {
-            if let Err(e) = save_index_to_disk(&idx_path, &index.entries) {
-                log::warn!("Failed to save index to disk: {}", e);
+    // Keep disk publication in the same short commit section as the in-memory
+    // commit. Disabling the indexer can then never clear/remove the file and
+    // have this build recreate it afterward.
+    let _commit_guard = match BUILD_COMMIT_MUTEX.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log::warn!("[Indexer] commit mutex poisoned, recovering");
+            poisoned.into_inner()
+        }
+    };
+    if INDEXER_ENABLED.load(Ordering::Relaxed) && !is_build_cancelled() {
+        if let Ok(idx_path) = index_path(app) {
+            if let Ok(index) = FILE_INDEX.read() {
+                if let Err(e) = save_index_to_disk(&idx_path, &index.entries) {
+                    log::warn!("Failed to save index to disk: {}", e);
+                }
             }
         }
     }
@@ -437,7 +507,10 @@ fn run_index_build(app: &tauri::AppHandle) {
     log::info!("Index build complete: {} entries", count);
 }
 
-pub fn search_in_index(query: &str) -> Vec<IndexEntry> {
+pub fn search_in_index_cancellable(
+    query: &str,
+    is_cancelled: impl Fn() -> bool,
+) -> Vec<IndexEntry> {
     if !INDEXER_ENABLED.load(Ordering::Relaxed) {
         return Vec::new();
     }
@@ -446,14 +519,23 @@ pub fn search_in_index(query: &str) -> Vec<IndexEntry> {
         Ok(idx) => idx,
         Err(_) => return Vec::new(),
     };
+    if is_cancelled() {
+        return Vec::new();
+    }
 
-    index
-        .entries
-        .iter()
-        .filter(|e| e.name_lower.contains(&query_lower))
-        .take(10_000)
-        .cloned()
-        .collect()
+    let mut results = Vec::new();
+    for entry in index.entries.iter() {
+        if is_cancelled() {
+            break;
+        }
+        if entry.name_lower.contains(&query_lower) {
+            results.push(entry.clone());
+            if results.len() >= 10_000 {
+                break;
+            }
+        }
+    }
+    results
 }
 
 pub fn get_status() -> (bool, usize, Option<String>) {
@@ -464,16 +546,27 @@ pub fn get_status() -> (bool, usize, Option<String>) {
 }
 
 pub async fn trigger_rebuild(app: &tauri::AppHandle) {
-    set_build_cancelled(true);
+    request_build_cancel();
     tokio::time::sleep(std::time::Duration::from_millis(100)).await;
 
     let app_handle = app.clone();
     std::thread::spawn(move || {
-        run_index_build(&app_handle);
+        run_index_build(&app_handle, true);
     });
 }
 
 pub fn cancel_build() {
+    request_build_cancel();
+}
+
+fn request_build_cancel() {
+    let _guard = match BUILD_COMMIT_MUTEX.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => {
+            log::warn!("[Indexer] commit mutex poisoned, recovering");
+            poisoned.into_inner()
+        }
+    };
     set_build_cancelled(true);
 }
 
@@ -482,7 +575,7 @@ pub fn set_enabled(enabled: bool, app: Option<&tauri::AppHandle>) {
     if enabled {
         return;
     }
-    set_build_cancelled(true);
+    request_build_cancel();
     if let Ok(mut index) = FILE_INDEX.write() {
         index.entries.clear();
         index.is_building = false;
@@ -542,5 +635,36 @@ mod tests {
         let files = exclude_files();
         let p = Path::new("/home/u/.snap/somepkg");
         assert!(should_exclude(p, &segs, &files));
+    }
+
+    #[test]
+    fn search_in_index_stops_when_cancelled() {
+        let mut index = FILE_INDEX.write().unwrap();
+        index.entries = vec![
+            IndexEntry {
+                name: "alpha.txt".to_string(),
+                name_lower: "alpha.txt".to_string(),
+                path: "/tmp/alpha.txt".to_string(),
+                is_directory: false,
+                is_file: true,
+                size: 1,
+                modified: 0.0,
+            },
+            IndexEntry {
+                name: "alpine.txt".to_string(),
+                name_lower: "alpine.txt".to_string(),
+                path: "/tmp/alpine.txt".to_string(),
+                is_directory: false,
+                is_file: true,
+                size: 1,
+                modified: 0.0,
+            },
+        ];
+        drop(index);
+
+        let results = search_in_index_cancellable("al", || true);
+        assert!(results.is_empty());
+
+        FILE_INDEX.write().unwrap().entries.clear();
     }
 }

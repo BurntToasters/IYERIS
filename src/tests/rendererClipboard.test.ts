@@ -271,7 +271,7 @@ describe('createClipboardController with operation queue wired', () => {
       currentFile: 'Waiting for elevated permissions...',
       status: 'active',
     });
-    expect(elevatedCopyBatch).toHaveBeenCalledWith(['/src/file.txt'], '/dest');
+    expect(elevatedCopyBatch).toHaveBeenCalledWith(['/src/file.txt'], '/dest', 'ask', undefined);
     expect(deps.completeOperation).toHaveBeenCalledWith('op-1', 'done', undefined);
   });
 });

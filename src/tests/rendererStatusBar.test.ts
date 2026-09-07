@@ -229,15 +229,34 @@ describe('rendererStatusBar', () => {
 
     const menu = document.querySelector('.status-bar-context-menu');
     expect(menu).toBeTruthy();
+    expect(menu?.getAttribute('role')).toBe('menu');
 
     const menuItems = menu?.querySelectorAll('.context-menu-item');
     expect(menuItems?.length).toBe(8);
+    expect(menuItems?.[0]?.getAttribute('role')).toBe('menuitemcheckbox');
+    expect((menuItems?.[0] as HTMLElement)?.tabIndex).toBe(0);
 
     const firstItem = menuItems?.[0] as HTMLElement;
     firstItem.click();
 
     expect(deps.saveSettings).toHaveBeenCalled();
     expect(currentSettings.statusBarItems!.items).toBe(false);
+  });
+
+  it('supports keyboard navigation and closes without leaking the document closer', () => {
+    makeController();
+    document
+      .querySelector('.status-bar')
+      ?.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true }));
+    const menu = document.querySelector('.status-bar-context-menu') as HTMLElement;
+    const items = Array.from(menu.querySelectorAll<HTMLElement>('.context-menu-item'));
+    items[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    expect(document.activeElement).toBe(items[1]);
+    items[1]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+    expect(document.activeElement).toBe(items[0]);
+    items[0]?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.querySelector('.status-bar-context-menu')).toBeNull();
+    expect(document.activeElement).toBe(document.querySelector('.status-bar'));
   });
 
   it('refreshes owner-controlled indicators when re-enabled from context menu', () => {

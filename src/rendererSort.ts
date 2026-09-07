@@ -71,6 +71,7 @@ export function createSortController(config: SortControllerConfig) {
 
   function hideSortMenu() {
     const sortMenu = document.getElementById('sort-menu');
+    const restoreFocus = !!sortMenu?.contains(document.activeElement);
     if (sortMenu) {
       sortMenu.style.display = 'none';
       sortMenu.querySelectorAll('.context-menu-item.focused').forEach((item) => {
@@ -79,6 +80,7 @@ export function createSortController(config: SortControllerConfig) {
     }
     config.getSortBtn().setAttribute('aria-expanded', 'false');
     sortMenuFocusIndex = -1;
+    if (restoreFocus) config.getSortBtn().focus({ preventScroll: true });
   }
 
   function handleSortMenuKeyNav(e: KeyboardEvent): boolean {

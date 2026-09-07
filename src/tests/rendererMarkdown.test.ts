@@ -1,34 +1,28 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { createRetryableLoader } from '../rendererMarkdown';
 
-// F4 (isolation): the failure-path test below mocks the `marked` import. Undoing
-// that inline after the assertion means a failed assertion leaks the mock into
-// every later test in this file, so the teardown lives in afterEach instead.
-afterEach(() => {
-  vi.doUnmock('marked');
-  vi.resetModules();
-});
+describe('createRetryableLoader', () => {
+  it('deduplicates concurrent successful loads and caches the result', async () => {
+    const load = vi.fn(async () => ({ ready: true }));
+    const cachedLoad = createRetryableLoader(load);
 
-describe('rendererMarkdown.loadMarked', () => {
-  it('loads marked and caches the instance', async () => {
-    const mod = await import('../rendererMarkdown');
-    const first = await mod.loadMarked();
-    const second = await mod.loadMarked();
+    const [first, second] = await Promise.all([cachedLoad(), cachedLoad()]);
 
-    expect(first).toBeTruthy();
+    expect(first).toEqual({ ready: true });
     expect(second).toBe(first);
+    expect(await cachedLoad()).toBe(first);
+    expect(load).toHaveBeenCalledTimes(1);
   });
 
-  it('returns null when marked import fails', async () => {
-    vi.doMock('marked', () => {
-      throw new Error('mocked import failure');
-    });
+  it('does not permanently cache a transient load failure', async () => {
+    const load = vi
+      .fn<() => Promise<string>>()
+      .mockRejectedValueOnce(new Error('chunk unavailable'))
+      .mockResolvedValue('loaded');
+    const cachedLoad = createRetryableLoader(load);
 
-    const mod = await import('../rendererMarkdown');
-    await expect(mod.loadMarked()).resolves.toBeNull();
-  });
-
-  it('recovers a real marked instance after a failed import in a previous test', async () => {
-    const mod = await import('../rendererMarkdown');
-    await expect(mod.loadMarked()).resolves.toBeTruthy();
+    expect(await cachedLoad()).toBeNull();
+    expect(await cachedLoad()).toBe('loaded');
+    expect(load).toHaveBeenCalledTimes(2);
   });
 });

@@ -154,6 +154,23 @@ describe('RawSearchResultSchema', () => {
     expect(v.matchContext).toBeNull();
     expect(v.isDirectory).toBe(true);
   });
+
+  it('accepts isHidden from the backend', () => {
+    const v = parseIpc(
+      RawSearchResultSchema,
+      {
+        name: '.env',
+        path: '/project/.env',
+        isDirectory: false,
+        size: 1,
+        modified: 1,
+        extension: 'env',
+        isHidden: true,
+      },
+      'SearchResult'
+    );
+    expect(v.isHidden).toBe(true);
+  });
 });
 
 describe('RawArchiveEntrySchema', () => {

@@ -1,7 +1,12 @@
 import type { FileItem, Settings } from './types';
-import { devLog, escapeHtml, ignoreError, sanitizeMarkdownHtml } from './shared.js';
+import { devLog, escapeHtml, ignoreError } from './shared.js';
 import { getById } from './rendererDom.js';
-import { encodeFileUrl, getFileDataUrlWithCache, twemojiImg } from './rendererUtils.js';
+import {
+  createPreviewDataUrlRequest,
+  encodeFileUrl,
+  getFileDataUrlWithCache,
+  twemojiImg,
+} from './rendererUtils.js';
 import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
 import { loadHighlightJs, getLanguageForExt } from './rendererHighlight.js';
 import {
@@ -15,7 +20,7 @@ import {
   AUDIO_MIME_TYPES,
 } from './fileTypes.js';
 
-import { loadMarked } from './rendererMarkdown.js';
+import { loadMarked, sanitizeMarkdownHtml } from './rendererMarkdown.js';
 
 interface PdfViewerElement extends HTMLElement {
   __pdfViewer?: PdfViewerHandle | null;
@@ -42,6 +47,7 @@ export type QuicklookDeps = {
 export function createQuicklookController(deps: QuicklookDeps) {
   let currentQuicklookFile: FileItem | null = null;
   let quicklookRequestId = 0;
+  let pdfAbortController: AbortController | null = null;
 
   let quicklookModal: HTMLElement | null = null;
   let quicklookContent: HTMLElement | null = null;
@@ -88,25 +94,25 @@ export function createQuicklookController(deps: QuicklookDeps) {
     ensureElements();
     if (!quicklookModal || !quicklookTitle || !quicklookContent || !quicklookInfo) return;
 
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-
     if (file.isDirectory) return;
 
     const requestId = ++quicklookRequestId;
+    pdfAbortController?.abort();
+    pdfAbortController = new AbortController();
     currentQuicklookFile = file;
     quicklookTitle.textContent = file.name;
     quicklookModal.style.display = 'flex';
     deps.onModalOpen?.(quicklookModal);
 
     const ext = deps.getFileExtension(file.name);
+    const settings = deps.getCurrentSettings();
+    const maxPreviewMB = settings.maxPreviewSizeMB || 50;
+    const maxPreviewBytes = maxPreviewMB * 1024 * 1024;
 
     quicklookContent.innerHTML = loadingHtml('preview');
 
     if (IMAGE_EXTENSIONS.has(ext)) {
-      const settings = deps.getCurrentSettings();
-      if (file.size > (settings.maxThumbnailSizeMB || 10) * 1024 * 1024) {
+      if (file.size > maxPreviewBytes) {
         // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         quicklookContent.innerHTML = `<div class="preview-error">Image too large to preview</div>`;
         quicklookInfo.textContent = quickInfo(file);
@@ -158,13 +164,11 @@ export function createQuicklookController(deps: QuicklookDeps) {
             img.dataset.fallbackAttempted = 'true';
             const dataUrl = await getFileDataUrlWithCache(
               file.path,
-              (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+              createPreviewDataUrlRequest(file, maxPreviewBytes)
             );
-            if (
-              !dataUrl ||
-              requestId !== quicklookRequestId ||
-              currentQuicklookFile?.path !== file.path
-            ) {
+            if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path)
+              return;
+            if (!dataUrl) {
               if (quicklookContent) {
                 // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
                 quicklookContent.innerHTML = `<div class="preview-error">Failed to load image</div>`;
@@ -179,6 +183,12 @@ export function createQuicklookController(deps: QuicklookDeps) {
         quicklookInfo.textContent = quickInfo(file);
       }
     } else if (VIDEO_EXTENSIONS.has(ext)) {
+      if (file.size > maxPreviewBytes) {
+        // eslint-disable-next-line no-restricted-syntax -- fixed numeric limit and static message
+        quicklookContent.innerHTML = `<div class="preview-error">Video file too large to preview (>${maxPreviewMB}MB)</div>`;
+        quicklookInfo.textContent = quickInfo(file);
+        return;
+      }
       const fileUrl = encodeFileUrl(file.path);
       quicklookContent.replaceChildren();
       const video = document.createElement('video');
@@ -191,13 +201,15 @@ export function createQuicklookController(deps: QuicklookDeps) {
       video.appendChild(source);
       video.appendChild(document.createTextNode('Your browser does not support the video tag.'));
       video.addEventListener('error', () => {
+        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
         void (async () => {
           if (video.dataset.fallbackAttempted === 'true') return;
           video.dataset.fallbackAttempted = 'true';
           const dataUrl = await getFileDataUrlWithCache(
             file.path,
-            (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+            createPreviewDataUrlRequest(file, maxPreviewBytes)
           );
+          if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
           if (!dataUrl) return;
           video.src = dataUrl;
           video.load();
@@ -206,6 +218,12 @@ export function createQuicklookController(deps: QuicklookDeps) {
       quicklookContent.appendChild(video);
       quicklookInfo.textContent = quickInfo(file);
     } else if (AUDIO_EXTENSIONS.has(ext)) {
+      if (file.size > maxPreviewBytes) {
+        // eslint-disable-next-line no-restricted-syntax -- fixed numeric limit and static message
+        quicklookContent.innerHTML = `<div class="preview-error">Audio file too large to preview (>${maxPreviewMB}MB)</div>`;
+        quicklookInfo.textContent = quickInfo(file);
+        return;
+      }
       const fileUrl = encodeFileUrl(file.path);
       quicklookContent.replaceChildren();
       const container = document.createElement('div');
@@ -223,13 +241,15 @@ export function createQuicklookController(deps: QuicklookDeps) {
       audio.appendChild(source);
       audio.appendChild(document.createTextNode('Your browser does not support the audio tag.'));
       audio.addEventListener('error', () => {
+        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
         void (async () => {
           if (audio.dataset.fallbackAttempted === 'true') return;
           audio.dataset.fallbackAttempted = 'true';
           const dataUrl = await getFileDataUrlWithCache(
             file.path,
-            (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+            createPreviewDataUrlRequest(file, maxPreviewBytes)
           );
+          if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
           if (!dataUrl) return;
           audio.src = dataUrl;
           audio.load();
@@ -240,6 +260,12 @@ export function createQuicklookController(deps: QuicklookDeps) {
       quicklookContent.appendChild(container);
       quicklookInfo.textContent = quickInfo(file);
     } else if (PDF_EXTENSIONS.has(ext)) {
+      if (file.size > maxPreviewBytes) {
+        // eslint-disable-next-line no-restricted-syntax -- fixed numeric limit and static message
+        quicklookContent.innerHTML = `<div class="preview-error">PDF file too large to preview (>${maxPreviewMB}MB)</div>`;
+        quicklookInfo.textContent = quickInfo(file);
+        return;
+      }
       const headerResult = await window.tauriAPI.readFileContent(file.path, 16);
       if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
       if (
@@ -258,6 +284,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
 
       try {
         const viewer = await createPdfViewer(fileUrl, {
+          signal: pdfAbortController?.signal,
           maxWidth: 900,
           containerClass: 'quicklook-pdf',
           showPageControls: true,
@@ -276,9 +303,10 @@ export function createQuicklookController(deps: QuicklookDeps) {
         container.appendChild(viewer.element);
         quicklookContent.appendChild(container);
       } catch {
+        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
         const fallbackDataUrl = await getFileDataUrlWithCache(
           file.path,
-          (deps.getCurrentSettings().maxPreviewSizeMB || 50) * 1024 * 1024
+          createPreviewDataUrlRequest(file, maxPreviewBytes)
         );
         if (
           fallbackDataUrl &&
@@ -289,6 +317,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
           try {
             fileUrl = fallbackDataUrl;
             const viewer = await createPdfViewer(fileUrl, {
+              signal: pdfAbortController?.signal,
               maxWidth: 900,
               containerClass: 'quicklook-pdf',
               showPageControls: true,
@@ -323,7 +352,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
         if (md) {
           let rendered: string;
           try {
-            rendered = sanitizeMarkdownHtml(
+            rendered = await sanitizeMarkdownHtml(
               md.marked.parse(result.content, {
                 async: false,
                 breaks: true,
@@ -332,6 +361,7 @@ export function createQuicklookController(deps: QuicklookDeps) {
           } catch {
             rendered = `<pre class="preview-text"><code>${escapeHtml(result.content)}</code></pre>`;
           }
+          if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
           // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           quicklookContent.innerHTML = `
           ${result.isTruncated ? `<div class="preview-truncated">${twemojiImg('alert-triangle', 'twemoji')} File truncated to first 100KB</div>` : ''}
@@ -420,6 +450,8 @@ export function createQuicklookController(deps: QuicklookDeps) {
     }
     currentQuicklookFile = null;
     quicklookRequestId++;
+    pdfAbortController?.abort();
+    pdfAbortController = null;
   }
 
   function initQuicklookUi() {

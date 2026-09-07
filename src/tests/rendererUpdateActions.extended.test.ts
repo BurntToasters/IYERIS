@@ -352,7 +352,7 @@ describe('rendererUpdateActions extended coverage', () => {
         'Failed to check for updates: Request failed with status 404 for windows-beta.json'
       );
       expect(dialogMessage).toContain(
-        'This is usually because the latest STABLE released was just pushed, meaning the next beta needs to be released for the beta json manifests to publish'
+        'Beta updater manifests are synchronized automatically to the latest stable release. If a stable release was just published, retry after the release workflow finishes; no manual post-release command is needed.'
       );
     });
 
@@ -375,7 +375,7 @@ describe('rendererUpdateActions extended coverage', () => {
       expect(showDialog).toHaveBeenCalledTimes(1);
       const [, dialogMessage] = showDialog.mock.calls[0];
       expect(dialogMessage).toContain(
-        'This is usually because the latest STABLE released was just pushed, meaning the next beta needs to be released for the beta json manifests to publish'
+        'Beta updater manifests are synchronized automatically to the latest stable release. If a stable release was just published, retry after the release workflow finishes; no manual post-release command is needed.'
       );
     });
 
@@ -401,7 +401,7 @@ describe('rendererUpdateActions extended coverage', () => {
         'Failed to check for updates: Could not fetch a valid release JSON from the remote'
       );
       expect(dialogMessage).toContain(
-        'This is usually because the latest STABLE released was just pushed, meaning the next beta needs to be released for the beta json manifests to publish'
+        'Beta updater manifests are synchronized automatically to the latest stable release. If a stable release was just published, retry after the release workflow finishes; no manual post-release command is needed.'
       );
     });
 
