@@ -31,11 +31,14 @@
 - **Accessibility:** Completed vertical settings-tab keyboard/ARIA behavior, repaired search and directory history listboxes, named generated PDF controls, and filled missing control/dialog names.
 - **Quality:** Added static DOM invariants, cache/cancellation/fixture/version tests, entry-JavaScript, CSS, and total initial-load bundle gates, and read-only cross-file version validation.
 - **Safety:** Native rename no longer replaces an existing sibling; batch rename uses uniquely reserved staging paths and keeps un-recovered staged files; archive extraction follows benign macOS symlink ancestors such as `/var` and `/tmp`.
+- **Reliability:** Multi-file move undo and redo keep failed operations in retryable history and report rollback failures. Trash success notices no longer offer Undo for an unrelated operation.
 - **Tooling:** Repaired and safety-marked the measured 15,300-item performance fixture, linted maintained build scripts, made AppStream updates idempotent, de-duplicated CI audits, and removed stale release tooling and RustSec suppressions.
 - **Search:** Global indexed search now honors file-type, size, date, regex, and hidden-file filters; Windows `FILE_ATTRIBUTE_HIDDEN` is respected across search, indexer, and duplicate scans.
+- **Search:** Global indexed search waits for index readiness, refreshes persisted data on the first search of each session, and refreshes again on searches when the index is at least five minutes old. No scan runs at startup.
 - **Performance & Views:** Delegated column-view drag listeners to the pane container, added column-view sort/extension parity, and added cancellable, batched secondary-pane rendering with shared RAW/media thumbnail types in Dual Pane mode.
 - **Virtualization:** Fixed virtualized grid/list scroll-jump drift where offscreen `content-visibility: auto` placeholder sizing conflicted with the spacer-based window calculation, and row height is no longer reused across grid/list view switches.
 - **Security & Testing:** Updated npm and Cargo lockfiles for `dompurify`, `undici`, `brace-expansion`, `source-map-js`, and `rustls 0.23.46` advisories, and expanded real-browser E2E smoke verification with a repeatable JSON artifact.
+- **Testing:** Removed 98 synthetic and post-hoc JSDOM suites (about 49,500 lines), retaining 28 failure-mode, security, and static suites. `test:all` gates the 352-test headless suite and 10 real-browser smoke suites, with results recorded in `coverage-headless/browser-smoke-artifact.json`. The browser smoke stubs the native Tauri API, so it does not cover native desktop behavior.
 
 Beta promotion requires the full platform matrix and a minimum 72-hour soak. Release-blocking fixes restart the soak with a new beta.
 

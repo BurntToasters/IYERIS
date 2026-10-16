@@ -89,6 +89,7 @@
     "sync-version": "node scripts/sync-version.js",
     "icons:normalize": "node scripts/normalize-iconsets.js",
     "smoke:browser": "node scripts/smoke-browser.js",
+    "test:e2e": "npm run smoke:browser",
     "smoke:perf:fixture": "node build/generate-large-dir-fixture.js",
     "wc": "npm run win-compiler:x64",
     "vi": "node scripts/vi.js",

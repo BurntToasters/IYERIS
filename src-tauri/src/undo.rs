@@ -620,7 +620,68 @@ fn move_undo_targets(action: &MoveActionData) -> Option<Vec<String>> {
     )
 }
 
+fn move_action_subset(
+    action: &MoveActionData,
+    indices: &[usize],
+    source_paths_override: Option<&[PathBuf]>,
+) -> MoveActionData {
+    let aligned_original_paths = action
+        .original_paths
+        .as_ref()
+        .filter(|paths| paths.len() == action.source_paths.len());
+    MoveActionData {
+        source_paths: indices
+            .iter()
+            .map(|index| {
+                source_paths_override
+                    .and_then(|paths| paths.get(*index))
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .or_else(|| action.source_paths.get(*index).cloned())
+                    .unwrap_or_else(|| {
+                        aligned_original_paths
+                            .and_then(|paths| paths.get(*index))
+                            .map(|path| {
+                                Path::new(&action.dest_path)
+                                    .join(to_file_name(path))
+                                    .to_string_lossy()
+                                    .into_owned()
+                            })
+                            .unwrap_or_default()
+                    })
+            })
+            .collect(),
+        original_paths: aligned_original_paths
+            .map(|paths| indices.iter().map(|index| paths[*index].clone()).collect()),
+        original_parent: action.original_parent.clone(),
+        dest_path: action.dest_path.clone(),
+    }
+}
+
+fn describe_recovery_location(source: &Path, target: &Path) -> String {
+    match (path_entry_exists(source), path_entry_exists(target)) {
+        (true, false) => format!("item remains at {}", source.display()),
+        (false, true) => format!("item remains at {}", target.display()),
+        (true, true) => format!(
+            "entries remain at both {} and {}; inspect them before retrying",
+            source.display(),
+            target.display()
+        ),
+        (false, false) => format!(
+            "could not confirm the item state at {} or {}; inspect both paths and any recovery path in the move error",
+            source.display(),
+            target.display()
+        ),
+    }
+}
+
 fn execute_move_undo(action: MoveActionData) -> Result<(), String> {
+    execute_move_undo_with(action, &mut move_path)
+}
+
+fn execute_move_undo_with(
+    action: MoveActionData,
+    move_item: &mut impl FnMut(&Path, &Path) -> Result<(), String>,
+) -> Result<(), String> {
     let targets = match move_undo_targets(&action) {
         Some(paths) => paths,
         None => {
@@ -667,37 +728,96 @@ fn execute_move_undo(action: MoveActionData) -> Result<(), String> {
         }
     }
 
-    let aligned_original_paths = action
-        .original_paths
-        .as_ref()
-        .filter(|paths| paths.len() == action.source_paths.len())
-        .cloned();
-
     for index in 0..action.source_paths.len() {
         let source = sources[index].clone();
         let target = targets[index].clone();
-        if let Err(err) = move_path(&source, &target) {
-            // Rollback items already successfully moved (0..index)
+        if let Err(err) = move_item(&source, &target) {
+            let mut rollback_succeeded = vec![false; index];
+            let mut rollback_errors = Vec::new();
             for i in (0..index).rev() {
-                let _ = move_path(&targets[i], &sources[i]);
+                match move_item(&targets[i], &sources[i]) {
+                    Ok(()) => rollback_succeeded[i] = true,
+                    Err(rollback_error) => rollback_errors.push(format!(
+                        "rollback {} -> {} failed: {}; {}",
+                        targets[i].display(),
+                        sources[i].display(),
+                        rollback_error,
+                        describe_recovery_location(&targets[i], &sources[i])
+                    )),
+                }
             }
-            let remaining_action = if index > 0 {
-                UndoAction::Move(MoveActionData {
-                    source_paths: sources[index..]
-                        .iter()
-                        .map(|path| path.to_string_lossy().to_string())
-                        .collect(),
-                    original_paths: aligned_original_paths
-                        .as_ref()
-                        .map(|paths| paths[index..].to_vec()),
-                    original_parent: action.original_parent.clone(),
-                    dest_path: action.dest_path.clone(),
-                })
-            } else {
-                UndoAction::Move(action)
-            };
-            push_undo_action(remaining_action, false)?;
-            return Err(format!("Partial undo failed: {}", err));
+
+            let mut undo_indices = Vec::new();
+            let mut redo_indices = Vec::new();
+            let mut state_errors = Vec::new();
+            for item_index in 0..action.source_paths.len() {
+                let source_exists = path_entry_exists(&sources[item_index]);
+                let target_exists = path_entry_exists(&targets[item_index]);
+                if item_index < index && !rollback_succeeded[item_index] {
+                    if target_exists {
+                        redo_indices.push(item_index);
+                    } else if source_exists {
+                        undo_indices.push(item_index);
+                    } else {
+                        undo_indices.push(item_index);
+                        state_errors.push(describe_recovery_location(
+                            &sources[item_index],
+                            &targets[item_index],
+                        ));
+                    }
+                } else if source_exists {
+                    undo_indices.push(item_index);
+                    if target_exists {
+                        state_errors.push(format!(
+                            "{} also has an entry at {}; undo will wait until that occupant is moved",
+                            action.source_paths[item_index],
+                            targets[item_index].display()
+                        ));
+                    }
+                } else if target_exists
+                    && item_index == index
+                    && err.starts_with("Source cleanup incomplete:")
+                {
+                    // Some move implementations can report a cleanup failure after
+                    // the destination entry has already been created.
+                    redo_indices.push(item_index);
+                } else if target_exists && item_index == index {
+                    undo_indices.push(item_index);
+                    state_errors.push(describe_recovery_location(
+                        &sources[item_index],
+                        &targets[item_index],
+                    ));
+                } else {
+                    // Keep unconfirmed entries retryable; filesystem metadata
+                    // errors do not prove that either path is absent.
+                    undo_indices.push(item_index);
+                    state_errors.push(describe_recovery_location(
+                        &sources[item_index],
+                        &targets[item_index],
+                    ));
+                }
+            }
+
+            if !undo_indices.is_empty() {
+                push_undo_action(
+                    UndoAction::Move(move_action_subset(&action, &undo_indices, None)),
+                    false,
+                )?;
+            }
+            if !redo_indices.is_empty() {
+                push_redo_action(UndoAction::Move(move_action_subset(
+                    &action,
+                    &redo_indices,
+                    None,
+                )))?;
+            }
+
+            let mut message = format!("Partial undo failed: {}", err);
+            for detail in rollback_errors.iter().chain(state_errors.iter()) {
+                message.push_str("; ");
+                message.push_str(detail);
+            }
+            return Err(message);
         }
     }
 
@@ -705,6 +825,13 @@ fn execute_move_undo(action: MoveActionData) -> Result<(), String> {
 }
 
 fn execute_move_redo(action: &MoveActionData) -> Result<Vec<String>, String> {
+    execute_move_redo_with(action, &mut move_path)
+}
+
+fn execute_move_redo_with(
+    action: &MoveActionData,
+    move_item: &mut impl FnMut(&Path, &Path) -> Result<(), String>,
+) -> Result<Vec<String>, String> {
     let mut source_target_pairs: Vec<(PathBuf, PathBuf)> = Vec::new();
 
     if let Some(original_paths) = &action.original_paths {
@@ -724,6 +851,7 @@ fn execute_move_redo(action: &MoveActionData) -> Result<Vec<String>, String> {
                 )
             }));
         } else {
+            push_redo_action(UndoAction::Move(action.clone()))?;
             return Err("Cannot redo: Original parent path not available".to_string());
         }
     } else if let Some(original_parent) = &action.original_parent {
@@ -735,10 +863,11 @@ fn execute_move_redo(action: &MoveActionData) -> Result<Vec<String>, String> {
             )
         }));
     } else {
+        push_redo_action(UndoAction::Move(action.clone()))?;
         return Err("Cannot redo: Original parent path not available".to_string());
     }
 
-    source_target_pairs = source_target_pairs
+    let canonical_pairs = source_target_pairs
         .into_iter()
         .map(|(source, target)| {
             Ok::<_, String>((
@@ -746,26 +875,115 @@ fn execute_move_redo(action: &MoveActionData) -> Result<Vec<String>, String> {
                 canonical_entry_path(&target, "Redo target")?,
             ))
         })
-        .collect::<Result<_, _>>()?;
+        .collect::<Result<Vec<(PathBuf, PathBuf)>, String>>();
+    let source_target_pairs = match canonical_pairs {
+        Ok(pairs) => pairs,
+        Err(error) => {
+            push_redo_action(UndoAction::Move(action.clone()))?;
+            return Err(error);
+        }
+    };
 
     // Pre-check all sources and targets before any moves to avoid partial state
     for (source, target) in &source_target_pairs {
         if !path_entry_exists(source) {
+            push_redo_action(UndoAction::Move(action.clone()))?;
             return Err("Cannot redo: File not found at original location".to_string());
         }
         if path_entry_exists(target) {
+            push_redo_action(UndoAction::Move(action.clone()))?;
             return Err("Cannot redo: A file already exists at the target location".to_string());
         }
     }
 
     let mut new_moved_paths = Vec::new();
     for (index, (source, target)) in source_target_pairs.iter().enumerate() {
-        if let Err(err) = move_path(source, target) {
-            // Rollback items already successfully moved (0..index)
+        if let Err(err) = move_item(source, target) {
+            let mut rollback_succeeded = vec![false; index];
+            let mut rollback_errors = Vec::new();
             for j in (0..index).rev() {
-                let _ = move_path(&source_target_pairs[j].1, &source_target_pairs[j].0);
+                let (source, target) = &source_target_pairs[j];
+                match move_item(target, source) {
+                    Ok(()) => rollback_succeeded[j] = true,
+                    Err(rollback_error) => rollback_errors.push(format!(
+                        "rollback {} -> {} failed: {}; {}",
+                        target.display(),
+                        source.display(),
+                        rollback_error,
+                        describe_recovery_location(target, source)
+                    )),
+                }
             }
-            return Err(format!("Partial redo failed: {}", err));
+
+            let mut redo_indices = Vec::new();
+            let mut undo_indices = Vec::new();
+            let mut state_errors = Vec::new();
+            for item_index in 0..source_target_pairs.len() {
+                let (source, target) = &source_target_pairs[item_index];
+                let source_exists = path_entry_exists(source);
+                let target_exists = path_entry_exists(target);
+                if item_index < index && !rollback_succeeded[item_index] {
+                    if target_exists {
+                        undo_indices.push(item_index);
+                    } else if source_exists {
+                        redo_indices.push(item_index);
+                    } else {
+                        redo_indices.push(item_index);
+                        state_errors.push(describe_recovery_location(source, target));
+                    }
+                } else if source_exists {
+                    redo_indices.push(item_index);
+                    if target_exists {
+                        state_errors.push(format!(
+                            "{} also has an entry at {}; redo will wait until that occupant is moved",
+                            source.display(),
+                            target.display()
+                        ));
+                    }
+                } else if target_exists
+                    && item_index == index
+                    && err.starts_with("Source cleanup incomplete:")
+                {
+                    undo_indices.push(item_index);
+                } else if target_exists && item_index == index {
+                    redo_indices.push(item_index);
+                    state_errors.push(describe_recovery_location(source, target));
+                } else {
+                    // Keep unconfirmed entries retryable; filesystem metadata
+                    // errors do not prove that either path is absent.
+                    redo_indices.push(item_index);
+                    state_errors.push(describe_recovery_location(source, target));
+                }
+            }
+
+            if !redo_indices.is_empty() {
+                push_redo_action(UndoAction::Move(move_action_subset(
+                    action,
+                    &redo_indices,
+                    None,
+                )))?;
+            }
+            if !undo_indices.is_empty() {
+                let target_paths = source_target_pairs
+                    .iter()
+                    .map(|(_, target)| target.clone())
+                    .collect::<Vec<_>>();
+                push_undo_action(
+                    UndoAction::Move(move_action_subset(
+                        action,
+                        &undo_indices,
+                        Some(&target_paths),
+                    )),
+                    false,
+                )?;
+            }
+
+            let mut message = format!("Partial redo failed: {}", err);
+            for detail in rollback_errors.iter().chain(state_errors.iter()) {
+                message.push_str("; ");
+                message.push_str(detail);
+            }
+            return Err(message);
         }
         new_moved_paths.push(target.to_string_lossy().to_string());
     }
@@ -972,7 +1190,6 @@ fn redo_action_sync() -> Result<UndoRedoState, String> {
                 )?;
             }
             Err(err) => {
-                push_redo_action(UndoAction::Move(data))?;
                 return Err(err);
             }
         },
@@ -1131,6 +1348,215 @@ mod tests {
         fs::write(&destination, b"new occupant").unwrap();
         assert!(redo_action_sync().is_err());
         assert_eq!(fs::read(&destination).unwrap(), b"new occupant");
+        clear_stacks();
+    }
+
+    fn move_fixture(
+        count: usize,
+    ) -> (
+        tempfile::TempDir,
+        MoveActionData,
+        Vec<PathBuf>,
+        Vec<PathBuf>,
+    ) {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let original_dir = root.join("original");
+        let destination_dir = root.join("destination");
+        fs::create_dir(&original_dir).unwrap();
+        fs::create_dir(&destination_dir).unwrap();
+
+        let mut original_paths = Vec::new();
+        let mut destination_paths = Vec::new();
+        for index in 0..count {
+            let name = format!("item-{index}");
+            let original = original_dir.join(&name);
+            let destination = destination_dir.join(&name);
+            fs::write(&destination, format!("contents-{index}")).unwrap();
+            original_paths.push(original);
+            destination_paths.push(destination);
+        }
+
+        let action = MoveActionData {
+            source_paths: destination_paths
+                .iter()
+                .map(|path| path.to_string_lossy().into_owned())
+                .collect(),
+            original_paths: Some(
+                original_paths
+                    .iter()
+                    .map(|path| path.to_string_lossy().into_owned())
+                    .collect(),
+            ),
+            original_parent: Some(original_dir.to_string_lossy().into_owned()),
+            dest_path: destination_dir.to_string_lossy().into_owned(),
+        };
+        (temp, action, original_paths, destination_paths)
+    }
+
+    fn move_action_paths(action: &UndoAction) -> Vec<String> {
+        match action {
+            UndoAction::Move(data) => data
+                .original_paths
+                .clone()
+                .unwrap_or_else(|| data.source_paths.clone()),
+            _ => panic!("expected move action"),
+        }
+    }
+
+    #[test]
+    fn move_undo_later_failure_with_successful_rollback_keeps_all_history() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        clear_stacks();
+        let (_temp, action, original_paths, destination_paths) = move_fixture(3);
+        let mut move_count = 0;
+
+        let result = execute_move_undo_with(action, &mut |source, target| {
+            move_count += 1;
+            if move_count == 2 {
+                return Err("injected second move failure".to_string());
+            }
+            move_path(source, target)
+        });
+
+        assert!(result.is_err());
+        let undo = UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(undo.len(), 1);
+        assert_eq!(move_action_paths(&undo[0]).len(), 3);
+        assert!(REDO_STACK
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .is_empty());
+        assert!(destination_paths.iter().all(|path| path.exists()));
+        assert!(original_paths.iter().all(|path| !path.exists()));
+        drop(undo);
+        clear_stacks();
+    }
+
+    #[test]
+    fn move_undo_failed_rollback_keeps_each_actionable_side_and_reports_recovery_path() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        clear_stacks();
+        let (_temp, action, original_paths, destination_paths) = move_fixture(3);
+        let mut move_count = 0;
+
+        let result = execute_move_undo_with(action, &mut |source, target| {
+            move_count += 1;
+            if move_count == 2 {
+                return Err("injected second move failure".to_string());
+            }
+            if move_count == 3 {
+                return Err("injected rollback failure".to_string());
+            }
+            move_path(source, target)
+        });
+
+        let error = result.unwrap_err();
+        assert!(error.contains(&original_paths[0].to_string_lossy().to_string()));
+        let undo = UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(undo.len(), 1);
+        assert_eq!(
+            move_action_paths(&undo[0]),
+            vec![
+                original_paths[1].to_string_lossy().into_owned(),
+                original_paths[2].to_string_lossy().into_owned(),
+            ]
+        );
+        let redo = REDO_STACK.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(redo.len(), 1);
+        assert_eq!(
+            move_action_paths(&redo[0]),
+            vec![original_paths[0].to_string_lossy().into_owned()]
+        );
+        assert!(original_paths[0].exists());
+        assert!(destination_paths[0..1].iter().all(|path| !path.exists()));
+        assert!(destination_paths[1..].iter().all(|path| path.exists()));
+        drop(redo);
+        drop(undo);
+        clear_stacks();
+    }
+
+    #[test]
+    fn move_undo_never_overwrites_an_occupied_original_destination() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        clear_stacks();
+        let (_temp, action, original_paths, destination_paths) = move_fixture(2);
+        fs::write(&original_paths[0], b"unrelated occupant").unwrap();
+
+        let result =
+            execute_move_undo_with(action, &mut |source, target| move_path(source, target));
+
+        assert!(result.is_err());
+        assert_eq!(fs::read(&original_paths[0]).unwrap(), b"unrelated occupant");
+        assert!(destination_paths.iter().all(|path| path.exists()));
+        let undo = UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(undo.len(), 1);
+        assert_eq!(move_action_paths(&undo[0]).len(), 2);
+        drop(undo);
+        clear_stacks();
+    }
+
+    #[test]
+    fn move_redo_failed_rollback_keeps_each_actionable_side_and_reports_recovery_path() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        clear_stacks();
+        let (_temp, action, original_paths, destination_paths) = move_fixture(3);
+        for (destination, original) in destination_paths.iter().zip(&original_paths) {
+            fs::rename(destination, original).unwrap();
+        }
+        let mut move_count = 0;
+
+        let result = execute_move_redo_with(&action, &mut |source, target| {
+            move_count += 1;
+            if move_count == 2 {
+                return Err("injected second move failure".to_string());
+            }
+            if move_count == 3 {
+                return Err("injected rollback failure".to_string());
+            }
+            move_path(source, target)
+        });
+
+        let error = result.unwrap_err();
+        assert!(error.contains(&destination_paths[0].to_string_lossy().to_string()));
+        let undo = UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(undo.len(), 1);
+        assert_eq!(
+            move_action_paths(&undo[0]),
+            vec![original_paths[0].to_string_lossy().into_owned()]
+        );
+        let redo = REDO_STACK.lock().unwrap_or_else(|p| p.into_inner());
+        assert_eq!(redo.len(), 1);
+        assert_eq!(
+            move_action_paths(&redo[0]),
+            vec![
+                original_paths[1].to_string_lossy().into_owned(),
+                original_paths[2].to_string_lossy().into_owned(),
+            ]
+        );
+        assert!(destination_paths[0].exists());
+        assert!(original_paths[0..1].iter().all(|path| !path.exists()));
+        assert!(original_paths[1..].iter().all(|path| path.exists()));
+        drop(redo);
+        drop(undo);
+        clear_stacks();
+    }
+
+    #[test]
+    fn move_undo_redo_round_trip_keeps_paths_and_contents() {
+        let _guard = TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        clear_stacks();
+        let (_temp, action, original_paths, destination_paths) = move_fixture(2);
+        push_undo_action(UndoAction::Move(action), true).unwrap();
+
+        undo_action_sync().unwrap();
+        assert!(original_paths.iter().all(|path| path.exists()));
+        assert!(destination_paths.iter().all(|path| !path.exists()));
+        redo_action_sync().unwrap();
+        assert!(destination_paths.iter().all(|path| path.exists()));
+        assert!(original_paths.iter().all(|path| !path.exists()));
+        assert_eq!(fs::read(&destination_paths[0]).unwrap(), b"contents-0");
+        assert_eq!(fs::read(&destination_paths[1]).unwrap(), b"contents-1");
         clear_stacks();
     }
 

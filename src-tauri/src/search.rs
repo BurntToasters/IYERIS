@@ -37,6 +37,26 @@ fn register_search_operation(operation_id: &str) -> Result<Option<CancellationTo
         .map(Some)
 }
 
+struct ActiveSearchGuard {
+    operation_id: String,
+    cancellation: Option<CancellationToken>,
+}
+
+impl ActiveSearchGuard {
+    fn register(operation_id: &str) -> Result<Self, String> {
+        Ok(Self {
+            operation_id: operation_id.to_string(),
+            cancellation: register_search_operation(operation_id)?,
+        })
+    }
+}
+
+impl Drop for ActiveSearchGuard {
+    fn drop(&mut self) {
+        ACTIVE_SEARCHES.finish(&self.operation_id, self.cancellation.as_ref());
+    }
+}
+
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
@@ -638,31 +658,36 @@ pub async fn search_index(
     validate_query(&query)?;
     validate_filter_payload(filters.as_ref())?;
     let op_id = operation_id.unwrap_or_default();
-    let cancellation = register_search_operation(&op_id)?;
+    let search_operation = ActiveSearchGuard::register(&op_id)?;
     if !indexer::is_enabled() {
-        ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
         return Err("Indexer is disabled".to_string());
     }
     let parsed_filters = parse_filters(filters);
     let regex = match build_index_search_regex(&query, &parsed_filters) {
         Ok(regex) => regex,
-        Err(error) => {
-            ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
-            return Err(error);
-        }
+        Err(error) => return Err(error),
     };
     let index_filters = to_index_filters(&parsed_filters, include_hidden.unwrap_or(false), regex);
-    // Lazy build on first search; poller reflects progress.
-    indexer::ensure_index_built(&app);
-    let scan_cancellation = cancellation.clone();
-    let result = tokio::task::spawn_blocking(move || {
-        indexer::search_in_index_filtered_cancellable(&query, &index_filters, || {
+    let app = app.clone();
+    let scan_cancellation = search_operation.cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || -> Result<_, String> {
+        indexer::ensure_search_index_ready(&app, || is_cancelled(scan_cancellation.as_ref()))?;
+        if is_cancelled(scan_cancellation.as_ref()) {
+            return Err("Search cancelled".to_string());
+        }
+        let entries = indexer::search_in_index_filtered_cancellable(&query, &index_filters, || {
             is_cancelled(scan_cancellation.as_ref())
-        })
+        });
+        if is_cancelled(scan_cancellation.as_ref()) {
+            return Err("Search cancelled".to_string());
+        }
+        if !indexer::is_enabled() {
+            return Err("Indexer is disabled".to_string());
+        }
+        Ok(entries)
     })
     .await;
-    ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
-    let results = result.map_err(|e| e.to_string())?;
+    let results = result.map_err(|e| e.to_string())??;
 
     Ok(results
         .into_iter()
@@ -701,6 +726,21 @@ pub async fn get_index_status() -> Result<serde_json::Value, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn indexed_search_guard_releases_operation_when_readiness_wait_fails() {
+        let id = format!("indexed-search-guard-{}", std::process::id());
+        let guard = ActiveSearchGuard::register(&id).unwrap();
+        drop(guard);
+
+        // A cancellation after the failed operation must become a tombstone
+        // for the next registration; a leaked active registration would
+        // instead cancel only the old token.
+        ACTIVE_SEARCHES.cancel(&id);
+        let next = ACTIVE_SEARCHES.register(&id).unwrap();
+        assert!(is_cancelled(Some(&next)));
+        ACTIVE_SEARCHES.finish(&id, Some(&next));
+    }
 
     #[test]
     fn empty_query_is_rejected_before_scan() {

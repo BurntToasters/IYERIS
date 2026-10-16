@@ -1704,21 +1704,7 @@ async function deleteSelected(permanent = false) {
       : `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`;
     if (!permanent) {
       await updateUndoRedoState();
-      showToast(
-        msg,
-        'Success',
-        'success',
-        canUndo
-          ? [
-              {
-                label: 'Undo',
-                onClick: () => {
-                  void performUndo();
-                },
-              },
-            ]
-          : undefined
-      );
+      showToast(msg, 'Success', 'success');
     } else {
       showToast(msg, 'Success', 'success');
     }

@@ -128,8 +128,7 @@ fn save_settings_sync(app: tauri::AppHandle, settings: String) -> Result<(), Str
         .and_then(|flag| flag.as_bool())
         .unwrap_or(true);
 
-    let (is_building, entry_count, _) = crate::indexer::get_status();
-    let indexer_was_enabled = entry_count > 0 || is_building;
+    let indexer_was_enabled = crate::indexer::is_enabled();
 
     let _ = app.emit("settings-changed", &settings);
     // Keep the settings lock through the live-indexer reconciliation. Two
@@ -143,8 +142,6 @@ fn save_settings_sync(app: tauri::AppHandle, settings: String) -> Result<(), Str
         crate::indexer::ensure_index_built(&app);
     } else if !enable_indexer {
         crate::indexer::set_enabled(false, Some(&app));
-    } else if enable_indexer {
-        crate::indexer::set_enabled(true, None);
     }
 
     Ok(())

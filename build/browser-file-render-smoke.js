@@ -2,6 +2,16 @@ import { createFileRenderController } from '../src/rendererFileRender.ts';
 import { createDualPaneController } from '../src/rendererDualPane.ts';
 import { createColumnViewController } from '../src/rendererColumnView.ts';
 import { createSearchController } from '../src/rendererSearch.ts';
+import { createTabsController } from '../src/rendererTabs.ts';
+import { createSelectionController, moveGridFocusWithinScope } from '../src/rendererSelection.ts';
+import { createSortController } from '../src/rendererSort.ts';
+import { createCommandPaletteController } from '../src/rendererCommandPalette.ts';
+import { createBookmarksController } from '../src/rendererBookmarks.ts';
+import { loadMarked, sanitizeMarkdownHtml } from '../src/rendererMarkdown.ts';
+import { createPreviewController } from '../src/rendererPreviews.ts';
+import { createOperationQueueController } from '../src/rendererOperationQueue.ts';
+import { createBatchRenameController } from '../src/rendererBatchRename.ts';
+import { twemojiImg } from '../src/rendererUtils.ts';
 import '../src/css/main.css';
 
 const { document, requestAnimationFrame, performance, window, DragEvent } = globalThis;
@@ -472,12 +482,749 @@ async function runSearchSuite(results) {
   });
 }
 
+async function runTabsNavigationSuite(results) {
+  document.body.innerHTML = `
+    <div class="titlebar-tabs" id="tab-bar" style="display:none" role="tablist">
+      <div class="tab-list" id="tab-list"></div>
+      <button class="tab-new-btn" id="new-tab-btn" type="button" aria-label="New tab"></button>
+    </div>
+    <input id="address-input" />
+    <div id="file-view" class="file-view"></div>
+  `;
+  const tabList = document.getElementById('tab-list');
+  assert(tabList, 'tabs-and-navigation: #tab-list fixture missing');
+  const state = {
+    tabs: [],
+    activeTabId: '',
+    tabsEnabled: false,
+    newTabListenerAttached: false,
+    tabCacheAccessOrder: [],
+    saveTabStateTimeout: null,
+    currentPath: '/workspace',
+    history: ['/workspace'],
+    historyIndex: 0,
+    selectedItems: new Set(),
+    allFiles: [],
+    scrollTop: 0,
+  };
+  const settings = { enableTabs: true, startupPath: '' };
+  const controller = createTabsController({
+    getTabs: () => state.tabs,
+    setTabs: (tabs) => {
+      state.tabs = tabs;
+    },
+    getActiveTabId: () => state.activeTabId,
+    setActiveTabId: (id) => {
+      state.activeTabId = id;
+    },
+    getTabsEnabled: () => state.tabsEnabled,
+    setTabsEnabled: (enabled) => {
+      state.tabsEnabled = enabled;
+    },
+    getTabNewButtonListenerAttached: () => state.newTabListenerAttached,
+    setTabNewButtonListenerAttached: (attached) => {
+      state.newTabListenerAttached = attached;
+    },
+    getTabCacheAccessOrder: () => state.tabCacheAccessOrder,
+    setTabCacheAccessOrder: (order) => {
+      state.tabCacheAccessOrder = order;
+    },
+    getSaveTabStateTimeout: () => state.saveTabStateTimeout,
+    setSaveTabStateTimeout: (timeout) => {
+      state.saveTabStateTimeout = timeout;
+    },
+    getCurrentSettings: () => settings,
+    getCurrentPath: () => state.currentPath,
+    setCurrentPath: (path) => {
+      state.currentPath = path;
+    },
+    getHistory: () => state.history,
+    setHistory: (history) => {
+      state.history = history;
+    },
+    getHistoryIndex: () => state.historyIndex,
+    setHistoryIndex: (index) => {
+      state.historyIndex = index;
+    },
+    getSelectedItems: () => state.selectedItems,
+    setSelectedItems: (items) => {
+      state.selectedItems = items;
+    },
+    getAllFiles: () => state.allFiles,
+    setAllFiles: (files) => {
+      state.allFiles = files;
+    },
+    getFileViewScrollTop: () => state.scrollTop,
+    setFileViewScrollTop: (value) => {
+      state.scrollTop = value;
+    },
+    getAddressInput: () => document.getElementById('address-input'),
+    getPathDisplayValue: (path) => path,
+    isHomeViewPath: () => false,
+    homeViewLabel: 'Home',
+    homeViewPath: '/home',
+    getViewMode: () => 'grid',
+    renderFiles: noop,
+    renderColumnView: noop,
+    updateBreadcrumb: noop,
+    updateNavigationButtons: noop,
+    setHomeViewActive: noop,
+    navigateTo: async (target) => {
+      state.currentPath = target;
+      state.allFiles = [];
+    },
+    watchDirectory: noop,
+    debouncedSaveSettings: noop,
+    saveSettingsWithTimestamp: async () => ({ success: true }),
+    maxCachedTabs: 5,
+    maxCachedFilesPerTab: 2000,
+    isMainWindow: false,
+  });
+  const tabCount = () => tabList.querySelectorAll('.tab-item').length;
+
+  controller.initializeTabs();
+  assert(state.tabsEnabled, 'tabs-and-navigation: controller did not enable tabs');
+  assert(
+    document.body.classList.contains('tabs-enabled'),
+    'tabs-and-navigation: body class missing after initialization'
+  );
+  let maxTabsRendered = tabCount();
+  assert(maxTabsRendered === 1, `tabs-and-navigation: initial tab count ${maxTabsRendered}`);
+
+  // Real button wiring from initializeTabs, not a direct addNewTab call.
+  document.getElementById('new-tab-btn').click();
+  await frame();
+  assert(
+    state.currentPath === '/home',
+    `tabs-and-navigation: new-tab button left ${state.currentPath}`
+  );
+  maxTabsRendered = Math.max(maxTabsRendered, tabCount());
+
+  await controller.addNewTab('/workspace/alpha');
+  await controller.addNewTab('/workspace/beta');
+  maxTabsRendered = Math.max(maxTabsRendered, tabCount());
+  assert(tabCount() === 4, `tabs-and-navigation: expected 4 tabs, saw ${tabCount()}`);
+  const alphaTab = state.tabs.find((tab) => tab.path === '/workspace/alpha');
+  const betaTab = state.tabs.find((tab) => tab.path === '/workspace/beta');
+  const homeTab = state.tabs.find((tab) => tab.path === '/home');
+  assert(alphaTab && betaTab && homeTab, 'tabs-and-navigation: tab data missing after addNewTab');
+
+  controller.switchToTab(alphaTab.id);
+  await waitFor(
+    () => state.currentPath === '/workspace/alpha',
+    'tabs-and-navigation: switchToTab did not navigate'
+  );
+  await frame();
+  const activePathAfterSwitch = state.currentPath;
+  const activeItem = tabList.querySelector('.tab-item.active');
+  assert(
+    activeItem?.dataset.tabId === alphaTab.id,
+    'tabs-and-navigation: .tab-item.active does not match the active tab'
+  );
+
+  controller.closeTab(homeTab.id);
+  controller.closeTab(betaTab.id);
+  await frame();
+  assert(tabCount() === 2, `tabs-and-navigation: closeTab left ${tabCount()} tabs`);
+
+  controller.restoreClosedTab();
+  await waitFor(
+    () => tabCount() === 3 && state.currentPath === '/workspace/beta',
+    'tabs-and-navigation: restoreClosedTab did not reopen the closed tab'
+  );
+  const reopenedPath = state.tabs.find((tab) => tab.id === state.activeTabId)?.path ?? '';
+  assert(
+    reopenedPath === '/workspace/beta',
+    `tabs-and-navigation: reopened ${reopenedPath} instead of the closed tab`
+  );
+  assert(
+    tabList.querySelectorAll('.tab-item .tab-close').length === tabCount(),
+    'tabs-and-navigation: tab close buttons missing'
+  );
+  results.push({
+    mode: 'tabs-and-navigation',
+    maxTabsRendered,
+    activePathAfterSwitch,
+    reopenedPath,
+  });
+}
+
+async function runSelectionSortSuite(results) {
+  document.body.innerHTML = `
+    <div id="file-view" class="file-view" style="height:400px">
+      <div id="file-grid" class="file-grid"></div>
+    </div>
+    <button id="sort-btn" type="button" aria-expanded="false"></button>
+    <div id="sort-menu" class="sort-menu" role="menu" style="display:none">
+      <button type="button" class="context-menu-item" data-sort="name" role="menuitem"><span class="sort-indicator" id="sort-name"></span></button>
+      <button type="button" class="context-menu-item" data-sort="date" role="menuitem"><span class="sort-indicator" id="sort-date"></span></button>
+      <button type="button" class="context-menu-item" data-sort="size" role="menuitem"><span class="sort-indicator" id="sort-size"></span></button>
+      <button type="button" class="context-menu-item" data-sort="type" role="menuitem"><span class="sort-indicator" id="sort-type"></span></button>
+    </div>
+  `;
+  const grid = document.getElementById('file-grid');
+  const sortMenu = document.getElementById('sort-menu');
+  assert(grid && sortMenu, 'selection-and-sort: fixture elements missing');
+  const files = Array.from({ length: 12 }, (_, index) =>
+    fixtureItem({
+      name: `file-${String(index).padStart(2, '0')}.txt`,
+      path: `/workspace/file-${String(index).padStart(2, '0')}.txt`,
+      size: 128 + index,
+    })
+  );
+  grid.innerHTML = files
+    .map(
+      (file, index) =>
+        `<div class="file-item" data-path="${file.path}" tabindex="${index === 0 ? 0 : -1}"><span class="file-name">${file.name}</span></div>`
+    )
+    .join('');
+  const selected = new Set();
+  const announcements = [];
+  const controller = createSelectionController({
+    getOrderedFiles: () => files,
+    ensureItemRendered: (path) => grid.querySelector(`[data-path="${path}"]`),
+    getSelectedItems: () => selected,
+    setSelectedItems: noop,
+    updateStatusBar: noop,
+    onSelectionChanged: noop,
+    isPreviewVisible: () => false,
+    updatePreview: noop,
+    clearPreview: noop,
+    getFileByPath: (path) => files.find((file) => file.path === path),
+    getViewMode: () => 'grid',
+    getFileGrid: () => grid,
+    openFileEntry: noop,
+    announceToScreenReader: (message) => announcements.push(message),
+  });
+
+  const focusBefore = grid.querySelector('.file-item[tabindex="0"]');
+  moveGridFocusWithinScope(grid, 'ArrowRight', 'grid');
+  const focusAfterRight = grid.querySelector('.file-item[tabindex="0"]');
+  assert(
+    focusAfterRight && focusAfterRight !== focusBefore,
+    'selection-and-sort: ArrowRight did not move grid focus'
+  );
+  assert(
+    focusAfterRight.tabIndex === 0 && focusBefore.tabIndex === -1,
+    'selection-and-sort: roving tabindex was not maintained'
+  );
+  moveGridFocusWithinScope(grid, 'ArrowDown', 'grid');
+  const focusAfterDown = grid.querySelector('.file-item[tabindex="0"]');
+  assert(
+    focusAfterDown && focusAfterDown !== focusAfterRight,
+    'selection-and-sort: ArrowDown did not move grid focus'
+  );
+
+  controller.selectAll();
+  const selectedAllCount = selected.size;
+  assert(
+    selectedAllCount === files.length,
+    `selection-and-sort: selectAll selected ${selectedAllCount}`
+  );
+  assert(
+    grid.querySelectorAll('.file-item.selected').length === files.length,
+    'selection-and-sort: selectAll did not mark every mounted row'
+  );
+  controller.clearSelection();
+  assert(
+    selected.size === 0 && grid.querySelectorAll('.file-item.selected').length === 0,
+    'selection-and-sort: clearSelection left rows selected'
+  );
+  controller.selectSingleItem(grid.querySelector('.file-item'));
+  assert(selected.size === 1, 'selection-and-sort: selectSingleItem did not select one row');
+
+  // rendererSelection exposes no dedicated invert primitive; invert through the
+  // production toggle path by clearing and re-selecting the complement.
+  const beforeInvert = [...selected];
+  controller.clearSelection();
+  for (const file of files) {
+    if (beforeInvert.includes(file.path)) continue;
+    const row = grid.querySelector(`[data-path="${file.path}"]`);
+    controller.toggleSelection(row);
+  }
+  const invertedCount = selected.size;
+  assert(
+    invertedCount === files.length - beforeInvert.length,
+    `selection-and-sort: inverted selection was ${invertedCount}`
+  );
+
+  const sortSettings = { sortBy: 'name', sortOrder: 'asc', viewMode: 'grid' };
+  let sortRenders = 0;
+  const sortController = createSortController({
+    getSortBtn: () => document.getElementById('sort-btn'),
+    getCurrentSettings: () => sortSettings,
+    getAllFiles: () => files,
+    saveSettingsWithTimestamp: async () => ({ success: true }),
+    renderFiles: () => {
+      sortRenders += 1;
+    },
+  });
+  sortController.showSortMenu(new window.MouseEvent('click'));
+  assert(
+    sortMenu.style.display === 'block',
+    'selection-and-sort: showSortMenu did not open the menu'
+  );
+  assert(
+    document.getElementById('sort-name').textContent === '▲',
+    'selection-and-sort: name sort indicator missing'
+  );
+  assert(
+    document.activeElement === sortMenu.querySelector('.context-menu-item'),
+    'selection-and-sort: showSortMenu did not focus the first item'
+  );
+  assert(
+    sortController.handleSortMenuKeyNav(
+      new window.KeyboardEvent('keydown', { key: 'ArrowDown', cancelable: true })
+    ) === true,
+    'selection-and-sort: sort menu key navigation failed'
+  );
+  sortController.hideSortMenu();
+  assert(sortMenu.style.display === 'none', 'selection-and-sort: hideSortMenu left the menu open');
+  await sortController.changeSortMode('size');
+  assert(
+    sortSettings.sortBy === 'size' && sortSettings.sortOrder === 'asc',
+    `selection-and-sort: sort settings were ${sortSettings.sortBy}/${sortSettings.sortOrder}`
+  );
+  assert(
+    document.getElementById('sort-size').textContent === '▲' &&
+      document.getElementById('sort-name').textContent === '',
+    'selection-and-sort: sort indicators did not follow the change'
+  );
+  assert(
+    sortRenders === 1 && announcements.length > 0,
+    'selection-and-sort: sort change did not re-render or announce the selection'
+  );
+  results.push({
+    mode: 'selection-and-sort',
+    selectedAllCount,
+    invertedCount,
+    activeSortBy: sortSettings.sortBy,
+  });
+}
+
+async function runCommandPaletteBookmarksSuite(results) {
+  document.body.innerHTML = `
+    <div class="modal-overlay" id="command-palette-modal" style="display:none">
+      <div class="modal">
+        <input id="command-palette-input" autocomplete="off" />
+        <div id="command-palette-results"></div>
+        <div id="command-palette-empty" style="display:none"></div>
+      </div>
+    </div>
+    <div id="bookmarks-list" role="list"></div>
+  `;
+  const fired = [];
+  const actions = {
+    createNewFolder: () => fired.push('createNewFolder'),
+    createNewFile: () => fired.push('createNewFile'),
+    refresh: () => fired.push('refresh'),
+    goBack: () => fired.push('goBack'),
+    goForward: () => fired.push('goForward'),
+    goUp: () => fired.push('goUp'),
+    goHome: () => fired.push('goHome'),
+    findDuplicates: () => fired.push('findDuplicates'),
+    showSettingsModal: () => fired.push('showSettingsModal'),
+    showShortcutsModal: () => fired.push('showShortcutsModal'),
+    selectAll: () => fired.push('selectAll'),
+    copyToClipboard: () => fired.push('copyToClipboard'),
+    cutToClipboard: () => fired.push('cutToClipboard'),
+    pasteFromClipboard: () => fired.push('pasteFromClipboard'),
+    deleteSelected: () => fired.push('deleteSelected'),
+    renameSelected: () => fired.push('renameSelected'),
+    setViewMode: (mode) => fired.push(`setViewMode:${mode}`),
+    addNewTab: () => fired.push('addNewTab'),
+  };
+  const palette = createCommandPaletteController({
+    activateModal: noop,
+    deactivateModal: noop,
+    showToast: noop,
+    getShortcutBinding: () => undefined,
+    fixedShortcuts: {},
+    remappableCommandIds: new Set(),
+    formatShortcutKeyLabel: (key) => key,
+    getTabsEnabled: () => true,
+    twemojiImg,
+    actions,
+  });
+  palette.initCommandPalette();
+  palette.showCommandPalette();
+  const modal = document.getElementById('command-palette-modal');
+  const input = document.getElementById('command-palette-input');
+  assert(
+    modal.style.display === 'flex' && input,
+    'command-palette-and-bookmarks: palette did not open'
+  );
+
+  input.value = 'duplicate';
+  input.dispatchEvent(new window.Event('input', { bubbles: true }));
+  const items = Array.from(
+    document.querySelectorAll('#command-palette-results .command-palette-item')
+  );
+  assert(items.length >= 1, 'command-palette-and-bookmarks: query matched no commands');
+  const matchedCommandTitles = items.map((item) => textOf(item, '.command-palette-item-title'));
+  assert(
+    matchedCommandTitles.includes('Copy'),
+    `command-palette-and-bookmarks: matched ${matchedCommandTitles.join(',')}`
+  );
+  input.dispatchEvent(
+    new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true })
+  );
+  await frame();
+  assert(fired.length === 1, `command-palette-and-bookmarks: executed ${JSON.stringify(fired)}`);
+  const executedCommandId = fired[0];
+  assert(
+    modal.style.display === 'none',
+    'command-palette-and-bookmarks: palette did not close after execution'
+  );
+
+  const settings = { bookmarks: [] };
+  const bookmarksList = document.getElementById('bookmarks-list');
+  const bookmarks = createBookmarksController({
+    bookmarksList,
+    getCurrentPath: () => '/workspace/alpha',
+    getCurrentSettings: () => settings,
+    saveSettingsWithTimestamp: async () => ({ success: true }),
+    showToast: noop,
+    navigateTo: noop,
+    getDraggedPaths: async () => [],
+    getDragOperation: () => 'copy',
+    handleDrop: async () => false,
+    showDropIndicator: noop,
+    hideDropIndicator: noop,
+    consumeEvent: noop,
+    renderHomeBookmarks: noop,
+  });
+  await bookmarks.addBookmark();
+  await bookmarks.addBookmarkByPath('/workspace/beta');
+  const bookmarksAdded = bookmarksList.querySelectorAll('.bookmark-item').length;
+  assert(bookmarksAdded === 2, `command-palette-and-bookmarks: added ${bookmarksAdded} bookmarks`);
+  const removeButton = bookmarksList.querySelector('.bookmark-item .bookmark-remove');
+  assert(removeButton, 'command-palette-and-bookmarks: bookmark remove control missing');
+  removeButton.click();
+  await waitFor(
+    () => bookmarksList.querySelectorAll('.bookmark-item').length === 1,
+    'command-palette-and-bookmarks: removing a bookmark did not update the list'
+  );
+  const bookmarksRemaining = bookmarksList.querySelectorAll('.bookmark-item').length;
+  assert(
+    settings.bookmarks.length === bookmarksRemaining,
+    'command-palette-and-bookmarks: bookmark state and DOM diverged'
+  );
+  results.push({
+    mode: 'command-palette-and-bookmarks',
+    matchedCommands: matchedCommandTitles.length,
+    matchedCommandTitles: matchedCommandTitles.join(', '),
+    executedCommand: true,
+    executedCommandId,
+    bookmarksAdded,
+    bookmarksRemaining,
+  });
+}
+
+async function runPreviewsMarkdownSuite(results) {
+  document.body.innerHTML = `
+    <div class="preview-panel" id="preview-panel" style="display:none">
+      <button id="preview-toggle-btn" type="button" aria-controls="preview-panel"></button>
+      <button id="preview-close" type="button"></button>
+      <div class="preview-content" id="preview-content"></div>
+    </div>
+    <div class="modal-overlay" id="quicklook-modal" style="display:none">
+      <h3 id="quicklook-title"></h3>
+      <div id="quicklook-content"></div>
+      <span id="quicklook-info"></span>
+      <button id="quicklook-close" type="button"></button>
+      <button id="quicklook-open" type="button"></button>
+    </div>
+  `;
+  const markdownSource = [
+    '# Smoke Heading',
+    '',
+    'Paragraph with `inline code`.',
+    '',
+    '```js',
+    'const answer = 42;',
+    '```',
+    '',
+    '[safe link](https://example.com/docs)',
+    '',
+    '<script>window.__xss = 1;</script>',
+    '<img src=x onerror="window.__xss = 1">',
+    '<a href="javascript:window.__xss = 1">bad</a>',
+  ].join('\n');
+  window.__xss = undefined;
+  window.tauriAPI.readFileContent = async () => ({
+    success: true,
+    content: markdownSource,
+    isTruncated: false,
+  });
+  window.tauriAPI.getItemProperties = async (path) => ({
+    success: true,
+    properties: {
+      path,
+      name: 'notes.md',
+      size: markdownSource.length,
+      isDirectory: false,
+      isFile: true,
+      created: new Date('2025-01-01T00:00:00Z'),
+      modified: new Date('2025-01-01T00:00:00Z'),
+      accessed: new Date('2025-01-01T00:00:00Z'),
+    },
+  });
+  const previewFile = fixtureItem({
+    name: 'notes.md',
+    path: '/workspace/notes.md',
+    size: markdownSource.length,
+  });
+  const settings = { maxPreviewSizeMB: 50, enableSyntaxHighlighting: false, autoPlayVideos: false };
+  const preview = createPreviewController({
+    getSelectedItems: () => new Set([previewFile.path]),
+    getFileByPath: (path) => (path === previewFile.path ? previewFile : undefined),
+    getCurrentSettings: () => settings,
+    formatFileSize: (size) => `${size} B`,
+    getFileExtension: (name) => name.split('.').pop()?.toLowerCase() ?? '',
+    getFileIcon: () => '',
+    openFileEntry: noop,
+    openExternal: noop,
+    showToast: noop,
+  });
+  preview.initPreviewUi();
+  preview.togglePreviewPanel();
+  const panel = document.getElementById('preview-panel');
+  assert(panel.style.display === 'flex', 'previews-and-markdown: preview panel did not open');
+  await waitFor(
+    () => document.querySelector('#preview-content .preview-markdown h1'),
+    'previews-and-markdown: controller never rendered the markdown preview'
+  );
+  const previewContent = document.getElementById('preview-content');
+
+  const xssBlocked = window.__xss === undefined;
+  assert(xssBlocked, 'previews-and-markdown: XSS payload executed');
+  assert(
+    previewContent.querySelectorAll('script').length === 0,
+    'previews-and-markdown: script element survived sanitization'
+  );
+  assert(
+    previewContent.querySelectorAll('[onerror]').length === 0,
+    'previews-and-markdown: onerror attribute survived sanitization'
+  );
+  const linkHrefs = Array.from(previewContent.querySelectorAll('a')).map(
+    (link) => link.getAttribute('href') ?? ''
+  );
+  assert(
+    linkHrefs.every((href) => !/^\s*javascript:/i.test(href)),
+    `previews-and-markdown: javascript: link survived (${linkHrefs.join(', ')})`
+  );
+  assert(
+    textOf(previewContent, '.preview-markdown h1') === 'Smoke Heading',
+    'previews-and-markdown: heading did not render'
+  );
+  const codeBlock = previewContent.querySelector('.preview-markdown pre code');
+  assert(
+    codeBlock && codeBlock.textContent.includes('const answer = 42;'),
+    'previews-and-markdown: fenced code block did not render'
+  );
+  assert(
+    previewContent.querySelector('.preview-markdown a')?.getAttribute('href') ===
+      'https://example.com/docs',
+    'previews-and-markdown: safe https link did not render'
+  );
+
+  // Exercise the loader and sanitizer directly as well, mirroring how any
+  // caller would render markdown outside the preview controller.
+  const markedModule = await loadMarked();
+  assert(
+    markedModule && typeof markedModule.marked.parse === 'function',
+    'previews-and-markdown: marked loader unavailable'
+  );
+  const directHtml = await sanitizeMarkdownHtml(
+    markedModule.marked.parse(markdownSource, { async: false, breaks: true })
+  );
+  const probe = document.createElement('div');
+  probe.innerHTML = directHtml;
+  assert(
+    probe.querySelectorAll('script, [onerror]').length === 0,
+    'previews-and-markdown: direct sanitize left active content'
+  );
+  assert(
+    textOf(probe, 'h1') === 'Smoke Heading',
+    'previews-and-markdown: direct render lost heading'
+  );
+  assert(
+    !/javascript:/i.test(directHtml),
+    'previews-and-markdown: direct sanitize kept a javascript: URL'
+  );
+
+  document.getElementById('preview-close').click();
+  await waitFor(
+    () => panel.style.display === 'none',
+    'previews-and-markdown: close button did not hide the panel'
+  );
+  results.push({
+    mode: 'previews-and-markdown',
+    markdownRendered: true,
+    xssBlocked: true,
+  });
+}
+
+async function runOperationsModalsSuite(results) {
+  document.body.innerHTML = `
+    <div id="progress-panel" class="progress-panel" role="region" style="display:none">
+      <button id="progress-panel-close" type="button"></button>
+      <span id="progress-panel-count"></span>
+      <div id="progress-panel-content"></div>
+    </div>
+    <div class="modal-overlay" id="batch-rename-modal" style="display:none">
+      <select id="batch-rename-mode" class="settings-select">
+        <option value="find-replace">Find &amp; Replace</option>
+        <option value="sequential">Sequential</option>
+        <option value="extension">Extension</option>
+      </select>
+      <div id="batch-rename-fields-find-replace">
+        <input id="batch-rename-find" />
+        <input id="batch-rename-replace" />
+        <input type="checkbox" id="batch-rename-use-regex" />
+      </div>
+      <div id="batch-rename-fields-sequential" style="display:none">
+        <input id="batch-rename-prefix" />
+        <input id="batch-rename-start" type="number" />
+      </div>
+      <div id="batch-rename-fields-extension" style="display:none">
+        <input id="batch-rename-new-ext" />
+      </div>
+      <div class="batch-rename-preview-list" id="batch-rename-preview-list"></div>
+      <button id="batch-rename-close" type="button"></button>
+      <button id="batch-rename-cancel" type="button"></button>
+      <button id="batch-rename-apply" type="button"></button>
+    </div>
+  `;
+  const panelState = { collapsed: false };
+  const cancelledIds = [];
+  const queue = createOperationQueueController({
+    cancelArchiveOperation: async () => ({ success: true }),
+    cancelChecksumCalculation: async () => ({ success: true }),
+    cancelFileOperation: async (id) => {
+      cancelledIds.push(id);
+      return { success: true };
+    },
+    getOperationPanelCollapsed: () => panelState.collapsed,
+    setOperationPanelCollapsed: (collapsed) => {
+      panelState.collapsed = collapsed;
+    },
+  });
+
+  queue.addOperation('op-copy', 'copy', 'Copy items', { cancellable: true, total: 10 });
+  queue.updateOperation('op-copy', { current: 4, total: 10, currentFile: 'file-04.txt' });
+  await waitFor(
+    () => document.querySelector('#progress-panel-content .operation-queue-cancel'),
+    'operations-and-modals: operation card never rendered a cancel button'
+  );
+  document.querySelector('#progress-panel-content .operation-queue-cancel').click();
+  await waitFor(
+    () => queue.isOperationCancelling('op-copy'),
+    'operations-and-modals: cancel click did not move the operation to cancelling'
+  );
+  const queueCancelled =
+    queue.isOperationCancelling('op-copy') && cancelledIds.join(',') === 'op-copy';
+  queue.completeOperation('op-copy', 'done');
+  queue.addOperation('op-delete', 'delete', 'Delete items', { total: 3 });
+  queue.updateOperation('op-delete', { current: 1, total: 3 });
+  queue.completeOperation('op-delete', 'failed', 'Permission denied');
+  await waitFor(
+    () => document.querySelector('#progress-panel-content .operation-queue-item.is-failed'),
+    'operations-and-modals: failed operation card never rendered'
+  );
+  assert(
+    document.getElementById('progress-panel').style.display === 'flex',
+    'operations-and-modals: failure did not reveal the progress panel'
+  );
+  assert(
+    textOf(
+      document.querySelector('#progress-panel-content .operation-queue-item.is-failed'),
+      '.operation-queue-file'
+    ) === 'Permission denied',
+    'operations-and-modals: failure reason missing from the card'
+  );
+
+  const renameItems = [
+    { name: 'file-alpha.txt', path: '/workspace/file-alpha.txt', isDirectory: false },
+    { name: 'file-beta.txt', path: '/workspace/file-beta.txt', isDirectory: false },
+    { name: 'file-gamma.txt', path: '/workspace/file-gamma.txt', isDirectory: false },
+  ];
+  const renameSelected = new Set(renameItems.map((item) => item.path));
+  const batchRenameCalls = [];
+  window.tauriAPI.batchRename = async (entries) => {
+    batchRenameCalls.push(entries);
+    return { success: true };
+  };
+  const batchRename = createBatchRenameController({
+    getSelectedItems: () => renameSelected,
+    getAllFiles: () => renameItems,
+    showToast: noop,
+    activateModal: noop,
+    deactivateModal: noop,
+    refresh: noop,
+    updateUndoRedoState: async () => {},
+    showConfirm: async () => true,
+  });
+  batchRename.initListeners();
+  batchRename.showBatchRenameModal();
+  const modal = document.getElementById('batch-rename-modal');
+  assert(modal.style.display === 'flex', 'operations-and-modals: batch rename modal did not open');
+  const findInput = document.getElementById('batch-rename-find');
+  const replaceInput = document.getElementById('batch-rename-replace');
+  findInput.value = 'file';
+  replaceInput.value = 'doc';
+  findInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+  replaceInput.dispatchEvent(new window.Event('input', { bubbles: true }));
+  const previewList = document.getElementById('batch-rename-preview-list');
+  const previewNames = Array.from(previewList.querySelectorAll('.batch-rename-preview-new')).map(
+    (element) => element.textContent.trim()
+  );
+  assert(
+    previewNames.join(',') === 'doc-alpha.txt,doc-beta.txt,doc-gamma.txt',
+    `operations-and-modals: preview showed ${previewNames.join(',')}`
+  );
+  document.getElementById('batch-rename-apply').click();
+  await waitFor(
+    () => batchRenameCalls.length === 1 && modal.style.display === 'none',
+    'operations-and-modals: applying the batch rename did not complete'
+  );
+  const batchRenamedCount = batchRenameCalls[0].length;
+  assert(
+    batchRenamedCount === 3 &&
+      batchRenameCalls[0].every((entry) => entry.newName.startsWith('doc-')),
+    `operations-and-modals: batch rename payload was ${JSON.stringify(batchRenameCalls[0])}`
+  );
+  results.push({
+    mode: 'operations-and-modals',
+    queueCancelled,
+    batchRenamedCount,
+  });
+}
+
+// The bundle can execute while the parser is still running (inside <head> or
+// before the implicit body exists), so every suite must wait for the body.
+const documentReady = () =>
+  new Promise((resolve) => {
+    if (document.body) {
+      resolve();
+      return;
+    }
+    document.addEventListener('DOMContentLoaded', () => resolve(), { once: true });
+  });
+
 globalThis.runFileRenderSmoke = async () => {
+  await documentReady();
   installTauriApi();
   const results = [];
   await runVirtualizationSuite(results);
   await runDualPaneSuite(results);
   await runColumnViewSuite(results);
   await runSearchSuite(results);
+  await runTabsNavigationSuite(results);
+  await runSelectionSortSuite(results);
+  await runCommandPaletteBookmarksSuite(results);
+  await runPreviewsMarkdownSuite(results);
+  await runOperationsModalsSuite(results);
   return results;
 };

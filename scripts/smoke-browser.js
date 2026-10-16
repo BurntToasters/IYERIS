@@ -7,11 +7,6 @@ import { build } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
-if (process.env.GITHUB_ACTIONS !== 'true' && !process.env.IYERIS_SMOKE_BROWSER) {
-  throw new Error(
-    'Local browser smoke requires an explicitly selected IYERIS_SMOKE_BROWSER. Automatic discovery runs only in CI.'
-  );
-}
 const candidates = [
   process.env.IYERIS_SMOKE_BROWSER,
   '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
@@ -48,9 +43,12 @@ try {
       },
     },
   });
+  // The bundle runs synchronously during parsing, so the script must sit inside
+  // the body: suites assign to document.body.innerHTML and it is null until the
+  // parser has opened the body element.
   fs.writeFileSync(
     path.join(temporary, 'page/index.html'),
-    '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="smoke.css"><script src="smoke.js"></script>'
+    '<!doctype html><meta charset="utf-8"><link rel="stylesheet" href="smoke.css"><body><script src="smoke.js"></script></body>'
   );
   browser = spawn(
     executable,
@@ -60,6 +58,9 @@ try {
       '--no-first-run',
       '--no-default-browser-check',
       '--disable-background-networking',
+      // Wide enough that viewport-gated panels (preview, sort menu) stay
+      // enabled; Chromium's default headless window is 800x600.
+      '--window-size=1400,900',
       `--user-data-dir=${path.join(temporary, 'profile')}`,
       '--remote-debugging-pipe',
       'about:blank',
@@ -91,13 +92,13 @@ try {
       }
     }
   });
-  const call = (method, params = {}, sessionId) =>
+  const call = (method, params = {}, sessionId, timeoutMs = 30000) =>
     new Promise((resolve, reject) => {
       const id = ++sequence;
       const timeout = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`Browser timeout: ${method}; ${diagnostics}`));
-      }, 30000);
+      }, timeoutMs);
       pending.set(id, {
         resolve: (value) => {
           clearTimeout(timeout);
@@ -117,6 +118,8 @@ try {
     { url: pathToFileURL(path.join(temporary, 'page/index.html')).href },
     sessionId
   );
+  // The whole E2E suite runs inside one evaluate awaiting the page's promise,
+  // so this call needs a much longer budget than the individual CDP commands.
   const result = await call(
     'Runtime.evaluate',
     {
@@ -129,12 +132,24 @@ try {
       awaitPromise: true,
       returnByValue: true,
     },
-    sessionId
+    sessionId,
+    120000
   );
   if (result.exceptionDetails)
     throw new Error(
       result.exceptionDetails.exception?.description || JSON.stringify(result.exceptionDetails)
     );
+  const suites = result.result.value;
+  if (!Array.isArray(suites) || suites.length < 9) {
+    throw new Error(
+      `Browser smoke returned ${Array.isArray(suites) ? suites.length : typeof suites} suites`
+    );
+  }
+  for (const suite of suites) {
+    if (typeof suite?.mode !== 'string' || suite.mode.length === 0) {
+      throw new Error(`Browser smoke suite is missing a mode: ${JSON.stringify(suite)}`);
+    }
+  }
   const artifactPath =
     process.env.IYERIS_SMOKE_ARTIFACT ||
     path.join(root, 'coverage-headless', 'browser-smoke-artifact.json');
@@ -147,7 +162,8 @@ try {
         appVersion: packageJson.version,
         browser: path.basename(executable),
         passed: true,
-        suites: result.result.value,
+        suiteCount: suites.length,
+        suites,
       },
       null,
       2
@@ -156,9 +172,24 @@ try {
   if (!fs.existsSync(artifactPath)) {
     throw new Error(`Browser smoke artifact was not written: ${artifactPath}`);
   }
+  // Read the file back through the same path a consumer would use so a
+  // truncated or malformed write fails the run instead of shipping.
+  const artifactText = fs.readFileSync(artifactPath, 'utf8');
+  if (artifactText.trim().length === 0) {
+    throw new Error(`Browser smoke artifact is empty: ${artifactPath}`);
+  }
+  const artifact = JSON.parse(artifactText);
+  if (artifact.passed !== true) {
+    throw new Error(`Browser smoke artifact recorded failure: ${artifactPath}`);
+  }
+  if (artifact.suites.length !== 10) {
+    throw new Error(
+      `Browser smoke artifact expected 10 suites, found ${artifact.suites.length}: ${artifactPath}`
+    );
+  }
   console.log(
     JSON.stringify(
-      { browser: executable, artifact: artifactPath, suites: result.result.value },
+      { browser: executable, artifact: artifactPath, suiteCount: artifact.suites.length, suites },
       null,
       2
     )

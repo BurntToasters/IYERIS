@@ -231,6 +231,34 @@ test('every planned step is represented in the results map that gates the proof'
   });
 });
 
+// Isolated gate failure modes to rule out before changing the runner:
+// - the frontend plan can keep calling the coverage-only script after the suite changes;
+// - browser smoke can be omitted or point at a script other than smoke:browser;
+// - browser smoke can fail while the gate still records a successful proof.
+test('the frontend plan step runs the maintained test script', () => {
+  const plan = createStepPlan({ npm: 'npm' });
+  assert.deepEqual(plan.find((step) => step.name === 'test')?.args, ['run', 'test']);
+});
+
+test('browser smoke is a gated plan step immediately after frontend tests', () => {
+  const plan = createStepPlan({ npm: 'npm' });
+  const browserSmokeIndex = plan.findIndex((step) => step.name === 'browserSmoke');
+  assert.ok(browserSmokeIndex >= 0, 'browserSmoke must be part of the quality-gate step plan');
+  assert.deepEqual(plan[browserSmokeIndex].args, ['run', 'smoke:browser']);
+  assert.equal(plan[browserSmokeIndex].label, 'Browser E2E');
+  assert.equal(plan[browserSmokeIndex - 1]?.name, 'test');
+});
+
+test('main does not record the quality-gate proof when browser smoke fails', () => {
+  const { calls, exitCode } = runGate({ failing: ['browserSmoke'] });
+  assert.ok(calls.includes('run:browserSmoke'), 'the browser smoke step must actually run');
+  assert.ok(
+    !calls.includes('recordProof'),
+    'a failing browser smoke step must never leave a valid proof behind'
+  );
+  assert.equal(exitCode, 1);
+});
+
 test('isQualityGateClean requires every step to have passed', () => {
   const plan = createStepPlan({ npm: 'npm' });
   assert.equal(isQualityGateClean(passingResults(plan)), true);

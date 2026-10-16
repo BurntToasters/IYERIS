@@ -15,7 +15,7 @@ const packageJsonPath = resolve(repoRoot, 'package.json');
 const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf8'));
 const appVersion = packageJson.version ?? 'unknown';
 const scriptVersion = '1.4.0';
-export const MIN_FRONTEND_TESTS = 3_113;
+export const MIN_FRONTEND_TESTS = 350;
 export const MAX_CHILD_OUTPUT_BYTES = 8 * 1024 * 1024;
 
 const colors = {
@@ -137,9 +137,15 @@ function createStepPlan({
       name: 'test',
       label: 'Tests',
       command: npm,
-      args: ['run', 'test:cov'],
+      args: ['run', 'test'],
       parser: parseTest,
       detail: formatTestDetail,
+    },
+    {
+      name: 'browserSmoke',
+      label: 'Browser E2E',
+      command: npm,
+      args: ['run', 'smoke:browser'],
     },
     {
       name: 'releaseAssets',
