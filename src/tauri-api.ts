@@ -1057,23 +1057,17 @@ const tauriAPI: TauriAPI = {
       return { success: false, error: String(e) } as never;
     }
   },
-  searchIndex: async (query, operationId) => {
+  searchIndex: async (query, operationId, filters, includeHidden) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_index', {
         query,
         operationId: operationId ?? null,
+        filters: filters ? JSON.stringify(filters) : null,
+        includeHidden: includeHidden === true,
       });
       return {
         success: true,
-        results: results.map((r) => ({
-          name: r.name as string,
-          path: r.path as string,
-          isDirectory: r.isDirectory as boolean,
-          isFile: !(r.isDirectory as boolean),
-          size: r.size as number,
-          modified: new Date(r.modified as number),
-          isHidden: Boolean(r.isHidden) || String(r.name ?? '').startsWith('.'),
-        })),
+        results: results.map(buildSearchResultItem).filter((item) => item !== null),
       } as never;
     } catch (e) {
       return { success: false, error: String(e) } as never;

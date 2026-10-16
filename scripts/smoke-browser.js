@@ -6,6 +6,7 @@ import { pathToFileURL, fileURLToPath } from 'node:url';
 import { build } from 'vite';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
 if (process.env.GITHUB_ACTIONS !== 'true' && !process.env.IYERIS_SMOKE_BROWSER) {
   throw new Error(
     'Local browser smoke requires an explicitly selected IYERIS_SMOKE_BROWSER. Automatic discovery runs only in CI.'
@@ -134,7 +135,34 @@ try {
     throw new Error(
       result.exceptionDetails.exception?.description || JSON.stringify(result.exceptionDetails)
     );
-  console.log(JSON.stringify({ browser: executable, results: result.result.value }, null, 2));
+  const artifactPath =
+    process.env.IYERIS_SMOKE_ARTIFACT ||
+    path.join(root, 'coverage-headless', 'browser-smoke-artifact.json');
+  fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
+  fs.writeFileSync(
+    artifactPath,
+    `${JSON.stringify(
+      {
+        schemaVersion: 1,
+        appVersion: packageJson.version,
+        browser: path.basename(executable),
+        passed: true,
+        suites: result.result.value,
+      },
+      null,
+      2
+    )}\n`
+  );
+  if (!fs.existsSync(artifactPath)) {
+    throw new Error(`Browser smoke artifact was not written: ${artifactPath}`);
+  }
+  console.log(
+    JSON.stringify(
+      { browser: executable, artifact: artifactPath, suites: result.result.value },
+      null,
+      2
+    )
+  );
 } finally {
   if (browser?.pid && browser.exitCode === null && browser.signalCode === null) {
     const exited = new Promise((resolve) => browser.once('exit', resolve));

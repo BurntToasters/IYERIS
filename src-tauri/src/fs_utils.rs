@@ -232,6 +232,96 @@ fn copy_symlink(source: &Path, target: &Path) -> Result<(), String> {
 
     Ok(())
 }
+#[cfg(windows)]
+pub fn copy_file_cancellable(
+    source: &Path,
+    destination: &Path,
+    cancelled: &impl Fn() -> bool,
+) -> Result<(), String> {
+    use std::{ffi::c_void, os::windows::io::AsRawHandle};
+    use windows::{
+        core::HSTRING,
+        Win32::{
+            Foundation::HANDLE,
+            Storage::FileSystem::{
+                CopyFileExW, GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
+                LPPROGRESS_ROUTINE_CALLBACK_REASON,
+            },
+        },
+    };
+    if cancelled() {
+        return Err("Operation cancelled".to_string());
+    }
+    let input = crate::file_operations::open_regular_read(source)?;
+    let mut expected = BY_HANDLE_FILE_INFORMATION::default();
+    unsafe { GetFileInformationByHandle(HANDLE(input.as_raw_handle()), &mut expected) }
+        .map_err(|error| error.to_string())?;
+    struct Context<'a, F> {
+        cancelled: &'a F,
+        expected: BY_HANDLE_FILE_INFORMATION,
+        changed: bool,
+    }
+    unsafe extern "system" fn progress<F: Fn() -> bool>(
+        _: i64,
+        _: i64,
+        _: i64,
+        _: i64,
+        _: u32,
+        _: LPPROGRESS_ROUTINE_CALLBACK_REASON,
+        source: HANDLE,
+        _: HANDLE,
+        data: *const c_void,
+    ) -> u32 {
+        let context = &mut *data.cast_mut().cast::<Context<'_, F>>();
+        let mut actual = BY_HANDLE_FILE_INFORMATION::default();
+        if GetFileInformationByHandle(source, &mut actual).is_err()
+            || actual.dwVolumeSerialNumber != context.expected.dwVolumeSerialNumber
+            || actual.nFileIndexHigh != context.expected.nFileIndexHigh
+            || actual.nFileIndexLow != context.expected.nFileIndexLow
+        {
+            context.changed = true;
+            return 1; // PROGRESS_CANCEL deletes partial output.
+        }
+        u32::from(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(context.cancelled))
+                .unwrap_or(true),
+        )
+    }
+    fn run<F: Fn() -> bool>(
+        source: &Path,
+        destination: &Path,
+        context: &mut Context<'_, F>,
+    ) -> windows::core::Result<()> {
+        unsafe {
+            CopyFileExW(
+                &HSTRING::from(source.as_os_str()),
+                &HSTRING::from(destination.as_os_str()),
+                Some(progress::<F>),
+                Some(std::ptr::from_mut(context).cast()),
+                None,
+                0x1 | 0x800, // COPY_FILE_FAIL_IF_EXISTS | COPY_FILE_COPY_SYMLINK
+            )
+        }
+    }
+    let mut context = Context {
+        cancelled,
+        expected,
+        changed: false,
+    };
+    let result = run(source, destination, &mut context);
+    if context.changed {
+        return Err("Source changed while copying".to_string());
+    }
+    if cancelled() {
+        return Err("Operation cancelled".to_string());
+    }
+    result.map_err(|error| format!("Cannot copy file and native streams: {error}"))?;
+    if let Err(error) = crate::copy_metadata::preserve_windows_acl(source, destination) {
+        let _ = fs::remove_file(destination);
+        return Err(error);
+    }
+    Ok(())
+}
 
 #[cfg(test)]
 mod tests {
@@ -388,95 +478,4 @@ mod tests {
             "leaf content"
         );
     }
-}
-
-#[cfg(windows)]
-pub fn copy_file_cancellable(
-    source: &Path,
-    destination: &Path,
-    cancelled: &impl Fn() -> bool,
-) -> Result<(), String> {
-    use std::{ffi::c_void, os::windows::io::AsRawHandle};
-    use windows::{
-        core::HSTRING,
-        Win32::{
-            Foundation::HANDLE,
-            Storage::FileSystem::{
-                CopyFileExW, GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION,
-                LPPROGRESS_ROUTINE_CALLBACK_REASON,
-            },
-        },
-    };
-    if cancelled() {
-        return Err("Operation cancelled".to_string());
-    }
-    let input = crate::file_operations::open_regular_read(source)?;
-    let mut expected = BY_HANDLE_FILE_INFORMATION::default();
-    unsafe { GetFileInformationByHandle(HANDLE(input.as_raw_handle()), &mut expected) }
-        .map_err(|error| error.to_string())?;
-    struct Context<'a, F> {
-        cancelled: &'a F,
-        expected: BY_HANDLE_FILE_INFORMATION,
-        changed: bool,
-    }
-    unsafe extern "system" fn progress<F: Fn() -> bool>(
-        _: i64,
-        _: i64,
-        _: i64,
-        _: i64,
-        _: u32,
-        _: LPPROGRESS_ROUTINE_CALLBACK_REASON,
-        source: HANDLE,
-        _: HANDLE,
-        data: *const c_void,
-    ) -> u32 {
-        let context = &mut *data.cast_mut().cast::<Context<'_, F>>();
-        let mut actual = BY_HANDLE_FILE_INFORMATION::default();
-        if GetFileInformationByHandle(source, &mut actual).is_err()
-            || actual.dwVolumeSerialNumber != context.expected.dwVolumeSerialNumber
-            || actual.nFileIndexHigh != context.expected.nFileIndexHigh
-            || actual.nFileIndexLow != context.expected.nFileIndexLow
-        {
-            context.changed = true;
-            return 1; // PROGRESS_CANCEL deletes partial output.
-        }
-        u32::from(
-            std::panic::catch_unwind(std::panic::AssertUnwindSafe(context.cancelled))
-                .unwrap_or(true),
-        )
-    }
-    fn run<F: Fn() -> bool>(
-        source: &Path,
-        destination: &Path,
-        context: &mut Context<'_, F>,
-    ) -> windows::core::Result<()> {
-        unsafe {
-            CopyFileExW(
-                &HSTRING::from(source.as_os_str()),
-                &HSTRING::from(destination.as_os_str()),
-                Some(progress::<F>),
-                Some(std::ptr::from_mut(context).cast()),
-                None,
-                0x1 | 0x800, // COPY_FILE_FAIL_IF_EXISTS | COPY_FILE_COPY_SYMLINK
-            )
-        }
-    }
-    let mut context = Context {
-        cancelled,
-        expected,
-        changed: false,
-    };
-    let result = run(source, destination, &mut context);
-    if context.changed {
-        return Err("Source changed while copying".to_string());
-    }
-    if cancelled() {
-        return Err("Operation cancelled".to_string());
-    }
-    result.map_err(|error| format!("Cannot copy file and native streams: {error}"))?;
-    if let Err(error) = crate::copy_metadata::preserve_windows_acl(source, destination) {
-        let _ = fs::remove_file(destination);
-        return Err(error);
-    }
-    Ok(())
 }

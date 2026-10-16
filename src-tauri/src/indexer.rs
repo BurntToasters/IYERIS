@@ -39,6 +39,8 @@ pub struct IndexEntry {
     pub path: String,
     pub is_directory: bool,
     pub is_file: bool,
+    #[serde(default)]
+    pub is_hidden: bool,
     pub size: u64,
     pub modified: f64,
 }
@@ -191,6 +193,19 @@ fn name_lower_of(name: &str) -> String {
     name.to_lowercase()
 }
 
+fn compute_is_hidden(name: &str, meta: &fs::Metadata) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if meta.file_attributes() & 0x2 != 0 {
+            return true;
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = meta;
+    name.starts_with('.')
+}
+
 fn populate_name_lower(entries: &mut [IndexEntry]) {
     for entry in entries.iter_mut() {
         if entry.name_lower.is_empty() {
@@ -260,12 +275,14 @@ fn build_index_sync() -> Vec<IndexEntry> {
                 .unwrap_or(0.0);
 
             let name_lower = name_lower_of(&name);
+            let is_hidden = compute_is_hidden(&name, &meta);
             entries.push(IndexEntry {
                 name,
                 name_lower,
                 path: path.to_string_lossy().to_string(),
                 is_directory: meta.is_dir(),
                 is_file: meta.is_file(),
+                is_hidden,
                 size: meta.len(),
                 modified,
             });
@@ -315,10 +332,16 @@ fn load_index_from_disk(path: &Path) -> Option<IndexFileData> {
         return None;
     }
     let data = String::from_utf8(bytes).ok()?;
-    let parsed: IndexFileData = serde_json::from_str(&data).ok()?;
+    let mut parsed: IndexFileData = serde_json::from_str(&data).ok()?;
     if parsed.version != 1 {
         log::info!("Ignoring unsupported file index version {}", parsed.version);
         return None;
+    }
+    // v1 index files predate the is_hidden field; restore dotfile hiddenness.
+    for entry in parsed.index.iter_mut() {
+        if entry.name.starts_with('.') {
+            entry.is_hidden = true;
+        }
     }
     Some(parsed)
 }
@@ -507,8 +530,93 @@ fn run_index_build(app: &tauri::AppHandle, force: bool) {
     log::info!("Index build complete: {} entries", count);
 }
 
-pub fn search_in_index_cancellable(
+/// Optional filters applied to index entries during search.
+pub struct IndexSearchFilters {
+    pub include_hidden: bool,
+    pub regex: Option<regex::Regex>,
+    pub file_type: Option<String>,
+    pub min_size: Option<u64>,
+    pub max_size: Option<u64>,
+    pub date_from_ms: Option<f64>,
+    pub date_to_ms: Option<f64>,
+}
+
+impl Default for IndexSearchFilters {
+    // Legacy defaults keep the pre-filter behavior: no filters, hidden included.
+    fn default() -> Self {
+        Self {
+            include_hidden: true,
+            regex: None,
+            file_type: None,
+            min_size: None,
+            max_size: None,
+            date_from_ms: None,
+            date_to_ms: None,
+        }
+    }
+}
+
+fn index_entry_matches_search(
+    entry: &IndexEntry,
+    query_lower: &str,
+    filters: &IndexSearchFilters,
+) -> bool {
+    if !filters.include_hidden && (entry.is_hidden || entry.name.starts_with('.')) {
+        return false;
+    }
+
+    let name_matches = match &filters.regex {
+        Some(regex) => regex.is_match(&entry.name),
+        None => entry.name_lower.contains(query_lower),
+    };
+    if !name_matches {
+        return false;
+    }
+
+    if let Some(file_type) = &filters.file_type {
+        if entry.is_directory {
+            return false;
+        }
+        let extension = Path::new(&entry.path)
+            .extension()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if extension != file_type.trim_start_matches('.').to_ascii_lowercase() {
+            return false;
+        }
+    }
+
+    if let Some(min_size) = filters.min_size {
+        if entry.is_file && entry.size < min_size {
+            return false;
+        }
+    }
+
+    if let Some(max_size) = filters.max_size {
+        if entry.is_file && entry.size > max_size {
+            return false;
+        }
+    }
+
+    if let Some(date_from) = filters.date_from_ms {
+        if entry.modified < date_from {
+            return false;
+        }
+    }
+
+    if let Some(date_to) = filters.date_to_ms {
+        if entry.modified > date_to {
+            return false;
+        }
+    }
+
+    true
+}
+
+pub fn search_in_index_filtered_cancellable(
     query: &str,
+    filters: &IndexSearchFilters,
     is_cancelled: impl Fn() -> bool,
 ) -> Vec<IndexEntry> {
     if !INDEXER_ENABLED.load(Ordering::Relaxed) {
@@ -528,7 +636,7 @@ pub fn search_in_index_cancellable(
         if is_cancelled() {
             break;
         }
-        if entry.name_lower.contains(&query_lower) {
+        if index_entry_matches_search(entry, &query_lower, filters) {
             results.push(entry.clone());
             if results.len() >= 10_000 {
                 break;
@@ -536,6 +644,15 @@ pub fn search_in_index_cancellable(
         }
     }
     results
+}
+
+// Legacy unfiltered entry point kept for existing callers and tests.
+#[allow(dead_code)]
+pub fn search_in_index_cancellable(
+    query: &str,
+    is_cancelled: impl Fn() -> bool,
+) -> Vec<IndexEntry> {
+    search_in_index_filtered_cancellable(query, &IndexSearchFilters::default(), is_cancelled)
 }
 
 pub fn get_status() -> (bool, usize, Option<String>) {
@@ -647,6 +764,7 @@ mod tests {
                 path: "/tmp/alpha.txt".to_string(),
                 is_directory: false,
                 is_file: true,
+                is_hidden: false,
                 size: 1,
                 modified: 0.0,
             },
@@ -656,6 +774,7 @@ mod tests {
                 path: "/tmp/alpine.txt".to_string(),
                 is_directory: false,
                 is_file: true,
+                is_hidden: false,
                 size: 1,
                 modified: 0.0,
             },
@@ -666,5 +785,189 @@ mod tests {
         assert!(results.is_empty());
 
         FILE_INDEX.write().unwrap().entries.clear();
+    }
+
+    fn index_entry(
+        name: &str,
+        is_directory: bool,
+        size: u64,
+        modified: f64,
+        is_hidden: bool,
+    ) -> IndexEntry {
+        IndexEntry {
+            name: name.to_string(),
+            name_lower: name.to_lowercase(),
+            path: format!("/tmp/{}", name),
+            is_directory,
+            is_file: !is_directory,
+            is_hidden,
+            size,
+            modified,
+        }
+    }
+
+    fn matched_names<'a>(
+        entries: &'a [IndexEntry],
+        query: &str,
+        filters: &IndexSearchFilters,
+    ) -> Vec<&'a str> {
+        let query_lower = query.to_lowercase();
+        entries
+            .iter()
+            .filter(|entry| index_entry_matches_search(entry, &query_lower, filters))
+            .map(|entry| entry.name.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn index_entry_hidden_flag_uses_dot_names_and_windows_attribute() {
+        let temp = tempfile::tempdir().unwrap();
+        let visible = temp.path().join("visible.txt");
+        fs::write(&visible, "visible").unwrap();
+        let meta = fs::symlink_metadata(&visible).unwrap();
+        assert!(!compute_is_hidden("visible.txt", &meta));
+        assert!(compute_is_hidden(".secret", &meta));
+
+        #[cfg(target_os = "windows")]
+        {
+            crate::native_windows::update_file_attributes(&visible, None, Some(true), None)
+                .unwrap();
+            let hidden_meta = fs::symlink_metadata(&visible).unwrap();
+            assert!(compute_is_hidden("visible.txt", &hidden_meta));
+        }
+    }
+
+    #[test]
+    fn legacy_index_files_recompute_dotfile_hidden_flag() {
+        let temp = tempfile::tempdir().unwrap();
+        let index_path = temp.path().join("file-index.json");
+        fs::write(
+            &index_path,
+            r#"{"index":[
+                {"name":"plain.txt","path":"/tmp/plain.txt","isDirectory":false,"isFile":true,"size":1,"modified":0.0},
+                {"name":".secret","path":"/tmp/.secret","isDirectory":false,"isFile":true,"size":1,"modified":0.0}
+            ],"lastIndexTime":0.0,"version":1}"#,
+        )
+        .unwrap();
+
+        let data = load_index_from_disk(&index_path).expect("legacy index file should load");
+        let plain = data
+            .index
+            .iter()
+            .find(|entry| entry.name == "plain.txt")
+            .unwrap();
+        assert!(!plain.is_hidden);
+        let secret = data
+            .index
+            .iter()
+            .find(|entry| entry.name == ".secret")
+            .unwrap();
+        assert!(secret.is_hidden);
+    }
+
+    #[test]
+    fn index_search_excludes_hidden_entries_unless_include_hidden() {
+        let entries = [
+            index_entry("notes.txt", false, 1, 0.0, false),
+            index_entry(".secret.txt", false, 1, 0.0, true),
+            index_entry("hidden-by-attribute.txt", false, 1, 0.0, true),
+            // Entries written before the flag existed still hide by dot name.
+            index_entry(".legacy.txt", false, 1, 0.0, false),
+        ];
+
+        let visible_only = IndexSearchFilters {
+            include_hidden: false,
+            ..IndexSearchFilters::default()
+        };
+        assert_eq!(matched_names(&entries, "txt", &visible_only), ["notes.txt"]);
+
+        let with_hidden = IndexSearchFilters {
+            include_hidden: true,
+            ..IndexSearchFilters::default()
+        };
+        assert_eq!(matched_names(&entries, "txt", &with_hidden).len(), 4);
+    }
+
+    #[test]
+    fn index_search_file_type_filter_skips_directories_and_other_extensions() {
+        let entries = [
+            index_entry("photo.PNG", false, 1, 0.0, false),
+            index_entry("photo.txt", false, 1, 0.0, false),
+            index_entry("photo.png", true, 1, 0.0, false),
+        ];
+        let filters = IndexSearchFilters {
+            file_type: Some(".PNG".to_string()),
+            ..IndexSearchFilters::default()
+        };
+        assert_eq!(matched_names(&entries, "photo", &filters), ["photo.PNG"]);
+    }
+
+    #[test]
+    fn index_search_size_filters_bound_files_only() {
+        let entries = [
+            index_entry("small.bin", false, 10, 0.0, false),
+            index_entry("medium.bin", false, 100, 0.0, false),
+            index_entry("large.bin", false, 1000, 0.0, false),
+            index_entry("folder.bin", true, 1000, 0.0, false),
+        ];
+
+        let min_filters = IndexSearchFilters {
+            min_size: Some(100),
+            ..IndexSearchFilters::default()
+        };
+        assert_eq!(
+            matched_names(&entries, "bin", &min_filters),
+            ["medium.bin", "large.bin", "folder.bin"]
+        );
+
+        let max_filters = IndexSearchFilters {
+            max_size: Some(100),
+            ..IndexSearchFilters::default()
+        };
+        assert_eq!(
+            matched_names(&entries, "bin", &max_filters),
+            ["small.bin", "medium.bin", "folder.bin"]
+        );
+    }
+
+    #[test]
+    fn index_search_date_filters_bound_modified_time() {
+        let entries = [
+            index_entry("old.txt", false, 1, 1_000.0, false),
+            index_entry("current.txt", false, 1, 2_000.0, false),
+            index_entry("future.txt", false, 1, 3_000.0, false),
+        ];
+
+        let from_filters = IndexSearchFilters {
+            date_from_ms: Some(2_000.0),
+            ..IndexSearchFilters::default()
+        };
+        assert_eq!(
+            matched_names(&entries, "txt", &from_filters),
+            ["current.txt", "future.txt"]
+        );
+
+        let to_filters = IndexSearchFilters {
+            date_to_ms: Some(2_000.0),
+            ..IndexSearchFilters::default()
+        };
+        assert_eq!(
+            matched_names(&entries, "txt", &to_filters),
+            ["old.txt", "current.txt"]
+        );
+    }
+
+    #[test]
+    fn index_search_regex_filter_matches_entry_names() {
+        let entries = [
+            index_entry("report-12.pdf", false, 1, 0.0, false),
+            index_entry("report-x.pdf", false, 1, 0.0, false),
+            index_entry("annual-report-3.pdf", false, 1, 0.0, false),
+        ];
+        let filters = IndexSearchFilters {
+            regex: Some(regex::Regex::new(r"^report-\d+\.pdf$").unwrap()),
+            ..IndexSearchFilters::default()
+        };
+        assert_eq!(matched_names(&entries, "txt", &filters), ["report-12.pdf"]);
     }
 }

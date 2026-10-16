@@ -70,9 +70,13 @@ fn git_common_config_args() -> [&'static str; 4] {
 }
 
 fn absolutize_git_path(repo_root: &std::path::Path, relative: &str) -> String {
-    let normalized = relative.replace('\\', "/");
-    repo_root
-        .join(std::path::Path::new(&normalized))
+    relative
+        .split(['/', '\\'])
+        .filter(|segment| !segment.is_empty())
+        .fold(repo_root.to_path_buf(), |mut acc, segment| {
+            acc.push(segment);
+            acc
+        })
         .to_string_lossy()
         .into_owned()
 }
@@ -439,6 +443,26 @@ mod tests {
         assert_eq!(
             std::path::PathBuf::from(absolutize_git_path(&root, "src\\win.rs")),
             root.join("src/win.rs")
+        );
+    }
+
+    #[test]
+    fn absolutize_git_path_uses_platform_native_separators() {
+        let root = std::path::Path::new(r"C:\repo\nested");
+        assert_eq!(
+            absolutize_git_path(root, "dir/file.txt"),
+            root.join("dir")
+                .join("file.txt")
+                .to_string_lossy()
+                .into_owned()
+        );
+        assert_eq!(
+            absolutize_git_path(root, "dir\\sub/file.txt"),
+            root.join("dir")
+                .join("sub")
+                .join("file.txt")
+                .to_string_lossy()
+                .into_owned()
         );
     }
 

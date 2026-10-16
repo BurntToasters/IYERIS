@@ -694,7 +694,12 @@ export interface TauriAPI {
   undoAction: () => Promise<UndoResponse>;
   redoAction: () => Promise<UndoResponse>;
   getUndoRedoState: () => Promise<UndoRedoStateResponse>;
-  searchIndex: (query: string, operationId?: string) => Promise<IndexSearchResponse>;
+  searchIndex: (
+    query: string,
+    operationId?: string,
+    filters?: SearchFilters,
+    includeHidden?: boolean
+  ) => Promise<SearchResponse>;
   cancelSearch: (operationId: string) => Promise<IpcResult>;
   rebuildIndex: () => Promise<IpcResult>;
   getIndexStatus: () => Promise<IndexStatusResponse>;

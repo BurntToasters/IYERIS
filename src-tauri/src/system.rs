@@ -1,7 +1,9 @@
 #[cfg(target_os = "linux")]
 use std::collections::HashSet;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Read;
+#[cfg(not(target_os = "windows"))]
+use std::io::Write;
 use std::path::Path;
 #[cfg(target_os = "linux")]
 use std::path::PathBuf;
@@ -1396,6 +1398,7 @@ fn app_exe_string() -> Result<String, String> {
         .map(|path| path.to_string_lossy().to_string())
 }
 
+#[cfg(not(target_os = "windows"))]
 fn write_native_integration_file(path: &Path, content: &[u8]) -> Result<(), String> {
     let parent = path
         .parent()

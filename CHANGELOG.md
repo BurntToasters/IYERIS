@@ -32,6 +32,10 @@
 - **Quality:** Added static DOM invariants, cache/cancellation/fixture/version tests, entry-JavaScript, CSS, and total initial-load bundle gates, and read-only cross-file version validation.
 - **Safety:** Native rename no longer replaces an existing sibling; batch rename uses uniquely reserved staging paths and keeps un-recovered staged files; archive extraction follows benign macOS symlink ancestors such as `/var` and `/tmp`.
 - **Tooling:** Repaired and safety-marked the measured 15,300-item performance fixture, linted maintained build scripts, made AppStream updates idempotent, de-duplicated CI audits, and removed stale release tooling and RustSec suppressions.
+- **Search:** Global indexed search now honors file-type, size, date, regex, and hidden-file filters; Windows `FILE_ATTRIBUTE_HIDDEN` is respected across search, indexer, and duplicate scans.
+- **Performance & Views:** Delegated column-view drag listeners to the pane container, added column-view sort/extension parity, and added cancellable, batched secondary-pane rendering with shared RAW/media thumbnail types in Dual Pane mode.
+- **Virtualization:** Fixed virtualized grid/list scroll-jump drift where offscreen `content-visibility: auto` placeholder sizing conflicted with the spacer-based window calculation, and row height is no longer reused across grid/list view switches.
+- **Security & Testing:** Updated npm and Cargo lockfiles for `dompurify`, `undici`, `brace-expansion`, `source-map-js`, and `rustls 0.23.46` advisories, and expanded real-browser E2E smoke verification with a repeatable JSON artifact.
 
 Beta promotion requires the full platform matrix and a minimum 72-hour soak. Release-blocking fixes restart the soak with a new beta.
 

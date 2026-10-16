@@ -69,7 +69,9 @@ export function createSearchController(deps: SearchDeps) {
   let searchSaveBtn: HTMLButtonElement | null = null;
   let searchHistoryActiveIndex = -1;
 
-  const SEARCH_RESULTS_CAP = 100;
+  // Keep in sync with the backend caps in src-tauri/src/search.rs and indexer.rs.
+  const SEARCH_NAME_RESULTS_CAP = 10_000;
+  const SEARCH_CONTENT_RESULTS_CAP = 5_000;
 
   function showSearchEmptyState(query: string): void {
     const fileGrid = deps.getFileGrid();
@@ -100,15 +102,18 @@ export function createSearchController(deps: SearchDeps) {
     </div>`;
   }
 
-  function showResultsCapBanner(count: number): void {
-    if (count < SEARCH_RESULTS_CAP) return;
+  function showResultsCapBanner(
+    count: number,
+    cap: number = searchInContents ? SEARCH_CONTENT_RESULTS_CAP : SEARCH_NAME_RESULTS_CAP
+  ): void {
+    if (count < cap) return;
     const fileGrid = deps.getFileGrid();
     if (!fileGrid) return;
 
     const banner = document.createElement('div');
     banner.className = 'search-results-cap-banner';
     banner.setAttribute('role', 'status');
-    banner.textContent = `Showing first ${SEARCH_RESULTS_CAP} results. Refine your search to see more specific matches.`;
+    banner.textContent = `Showing first ${cap.toLocaleString()} results. Refine your search to see more specific matches.`;
     fileGrid.prepend(banner);
   }
 
@@ -328,6 +333,7 @@ export function createSearchController(deps: SearchDeps) {
     let loadingShown = false;
     let operationIdForCleanup: string | null = null;
     let currentRequestId = 0;
+    let matchedResultCount: number | null = null;
     try {
       ensureElements();
       if (!searchInput) return;
@@ -420,12 +426,25 @@ export function createSearchController(deps: SearchDeps) {
             }
           } else {
             deps.setAllFiles(result.results);
+            matchedResultCount = result.results.length;
             deps.renderFiles(result.results, query);
             if (result.results.length === 0) showSearchEmptyState(query);
             else showResultsCapBanner(result.results.length);
           }
         } else {
-          result = await window.tauriAPI.searchIndex(query, operationId);
+          // The backend only accepts filters/hidden state when they are actually
+          // set, so the two-argument call stays intact for the common case.
+          const shouldIncludeHidden = includeHidden();
+          if (hasFilters || shouldIncludeHidden) {
+            result = await window.tauriAPI.searchIndex(
+              query,
+              operationId,
+              hasFilters ? currentSearchFilters : undefined,
+              shouldIncludeHidden
+            );
+          } else {
+            result = await window.tauriAPI.searchIndex(query, operationId);
+          }
           if (currentRequestId !== searchRequestId) return;
           const fileGrid2 = deps.getFileGrid();
           if (fileGrid2) clearHtml(fileGrid2);
@@ -460,6 +479,7 @@ export function createSearchController(deps: SearchDeps) {
             }
 
             deps.setAllFiles(fileItems);
+            matchedResultCount = fileItems.length;
             deps.renderFiles(fileItems, query);
             if (fileItems.length === 0) showSearchEmptyState(query);
             else showResultsCapBanner(fileItems.length);
@@ -493,6 +513,7 @@ export function createSearchController(deps: SearchDeps) {
           }
         } else {
           deps.setAllFiles(result.results);
+          matchedResultCount = result.results.length;
           deps.renderFiles(result.results, searchInContents ? query : undefined);
           if (result.results.length === 0) showSearchEmptyState(query);
           else showResultsCapBanner(result.results.length);
@@ -503,8 +524,10 @@ export function createSearchController(deps: SearchDeps) {
       deps.updateStatusBar();
       activeSearchOperationId = null;
 
-      // Announce result count to screen readers
-      const resultCount = (deps.getFileGrid()?.querySelectorAll('.file-item') ?? []).length;
+      // Announce the matched result count, not the mounted DOM rows: batched and
+      // virtualized renders mount fewer rows than the backend actually returned.
+      const resultCount =
+        matchedResultCount ?? (deps.getFileGrid()?.querySelectorAll('.file-item') ?? []).length;
       deps.announceToScreenReader?.(
         resultCount === 0
           ? 'No results found'

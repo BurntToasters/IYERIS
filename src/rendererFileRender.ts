@@ -82,6 +82,9 @@ export function createFileRenderController(config: FileRenderConfig) {
   let virtualFrame: number | null = null;
   let windowStart = -1;
   let rowHeight = 0;
+  // Which view mode produced the cached rowHeight, so switching grid/list never
+  // reuses the other mode's row height.
+  let rowHeightListMode: boolean | null = null;
 
   let renderItemIndex = 0;
   const animationCleanupItems: HTMLElement[] = [];
@@ -103,6 +106,7 @@ export function createFileRenderController(config: FileRenderConfig) {
     virtualizedSearchQuery = undefined;
     windowStart = -1;
     rowHeight = 0;
+    rowHeightListMode = null;
   }
 
   function scheduleWindow(): void {
@@ -121,10 +125,12 @@ export function createFileRenderController(config: FileRenderConfig) {
     const columns = Math.max(1, style.gridTemplateColumns.split(' ').filter(Boolean).length);
     const gap = parseFloat(style.rowGap) || 0;
     const first = grid.querySelector<HTMLElement>('.file-item');
-    rowHeight =
-      first?.getBoundingClientRect().height ||
-      rowHeight ||
-      (grid.classList.contains('list-view') ? 40 : 140);
+    const isListMode = grid.classList.contains('list-view');
+    if (isListMode !== rowHeightListMode) {
+      rowHeight = 0;
+      rowHeightListMode = isListMode;
+    }
+    rowHeight = first?.getBoundingClientRect().height || rowHeight || (isListMode ? 40 : 140);
     const stride = rowHeight + gap;
     const offset = virtualRoot
       ? grid.getBoundingClientRect().top -

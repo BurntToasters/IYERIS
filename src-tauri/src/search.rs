@@ -189,8 +189,38 @@ fn is_hidden_name(name: &str) -> bool {
     name.starts_with('.')
 }
 
+fn has_hidden_attribute(meta: &fs::Metadata) -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if meta.file_attributes() & 0x2 != 0 {
+            return true;
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = meta;
+    false
+}
+
+fn is_hidden_entry(name: &str, path: &Path) -> bool {
+    if is_hidden_name(name) {
+        return true;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(meta) = fs::symlink_metadata(path) {
+            return has_hidden_attribute(&meta);
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = path;
+    false
+}
+
 fn allow_search_walk_entry(entry: &walkdir::DirEntry, include_hidden: bool) -> bool {
-    include_hidden || entry.depth() == 0 || !is_hidden_name(&entry.file_name().to_string_lossy())
+    include_hidden
+        || entry.depth() == 0
+        || !is_hidden_entry(&entry.file_name().to_string_lossy(), entry.path())
 }
 
 fn open_content_search_file(path: &Path) -> Result<fs::File, String> {
@@ -208,7 +238,7 @@ fn make_search_result(
     match_context: Option<String>,
 ) -> SearchResult {
     SearchResult {
-        is_hidden: is_hidden_name(&name),
+        is_hidden: is_hidden_name(&name) || has_hidden_attribute(meta),
         name,
         path: path.to_string_lossy().into_owned(),
         is_directory: meta.is_dir(),
@@ -234,6 +264,38 @@ fn build_safe_regex(pattern: &str, case_insensitive: bool) -> Result<regex::Rege
         .dfa_size_limit(1_000_000)
         .build()
         .map_err(|e| format!("Invalid regex: {}", e))
+}
+
+fn build_index_search_regex(
+    query: &str,
+    parsed_filters: &ParsedFilters,
+) -> Result<Option<regex::Regex>, String> {
+    if !parsed_filters.regex {
+        return Ok(None);
+    }
+    if query.len() > MAX_REGEX_QUERY_BYTES {
+        return Err(format!(
+            "Regex pattern too long (max {} bytes)",
+            MAX_REGEX_QUERY_BYTES
+        ));
+    }
+    build_safe_regex(query, false).map(Some)
+}
+
+fn to_index_filters(
+    parsed_filters: &ParsedFilters,
+    include_hidden: bool,
+    regex: Option<regex::Regex>,
+) -> indexer::IndexSearchFilters {
+    indexer::IndexSearchFilters {
+        include_hidden,
+        regex,
+        file_type: parsed_filters.file_type.clone(),
+        min_size: parsed_filters.min_size,
+        max_size: parsed_filters.max_size,
+        date_from_ms: parsed_filters.date_from_ms,
+        date_to_ms: parsed_filters.date_to_ms,
+    }
 }
 
 fn snippet_around_match(
@@ -570,19 +632,33 @@ pub async fn search_index(
     app: tauri::AppHandle,
     query: String,
     operation_id: Option<String>,
+    filters: Option<serde_json::Value>,
+    include_hidden: Option<bool>,
 ) -> Result<Vec<SearchResult>, String> {
     validate_query(&query)?;
+    validate_filter_payload(filters.as_ref())?;
     let op_id = operation_id.unwrap_or_default();
     let cancellation = register_search_operation(&op_id)?;
     if !indexer::is_enabled() {
         ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
         return Err("Indexer is disabled".to_string());
     }
+    let parsed_filters = parse_filters(filters);
+    let regex = match build_index_search_regex(&query, &parsed_filters) {
+        Ok(regex) => regex,
+        Err(error) => {
+            ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
+            return Err(error);
+        }
+    };
+    let index_filters = to_index_filters(&parsed_filters, include_hidden.unwrap_or(false), regex);
     // Lazy build on first search; poller reflects progress.
     indexer::ensure_index_built(&app);
     let scan_cancellation = cancellation.clone();
     let result = tokio::task::spawn_blocking(move || {
-        indexer::search_in_index_cancellable(&query, || is_cancelled(scan_cancellation.as_ref()))
+        indexer::search_in_index_filtered_cancellable(&query, &index_filters, || {
+            is_cancelled(scan_cancellation.as_ref())
+        })
     })
     .await;
     ACTIVE_SEARCHES.finish(&op_id, cancellation.as_ref());
@@ -595,7 +671,7 @@ pub async fn search_index(
                 .extension()
                 .map(|ext| ext.to_string_lossy().to_string())
                 .unwrap_or_default(),
-            is_hidden: is_hidden_name(&e.name),
+            is_hidden: e.is_hidden || is_hidden_name(&e.name),
             name: e.name,
             path: e.path,
             is_directory: e.is_directory,
@@ -701,7 +777,7 @@ mod tests {
         .unwrap();
         assert!(results
             .iter()
-            .any(|r| r.path.contains(".git") && r.is_hidden == false));
+            .any(|r| r.path.contains(".git") && !r.is_hidden));
         let git = results
             .iter()
             .find(|r| r.path.contains(".git"))
@@ -743,5 +819,179 @@ mod tests {
         {
             let _ = (target, link);
         }
+    }
+
+    #[test]
+    fn hidden_entry_detection_covers_dotfiles_without_metadata() {
+        assert!(is_hidden_name(".bashrc"));
+        assert!(!is_hidden_name("bashrc"));
+        assert!(is_hidden_entry(".bashrc", Path::new("/home/u/.bashrc")));
+    }
+
+    #[test]
+    fn hidden_entry_detection_reads_windows_file_attribute() {
+        let temp = tempfile::tempdir().unwrap();
+        let visible = temp.path().join("visible.txt");
+        fs::write(&visible, "visible").unwrap();
+        let meta = fs::symlink_metadata(&visible).unwrap();
+        assert!(!has_hidden_attribute(&meta));
+        assert!(!is_hidden_entry("visible.txt", &visible));
+
+        #[cfg(target_os = "windows")]
+        {
+            crate::native_windows::update_file_attributes(&visible, None, Some(true), None)
+                .unwrap();
+            let hidden_meta = fs::symlink_metadata(&visible).unwrap();
+            assert!(has_hidden_attribute(&hidden_meta));
+            assert!(is_hidden_entry("visible.txt", &visible));
+            assert!(
+                make_search_result("visible.txt".to_string(), &visible, &hidden_meta, None)
+                    .is_hidden
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn name_search_skips_windows_hidden_attribute_entries() {
+        let temp = write_tree();
+        let flagged = temp.path().join("flagged.txt");
+        fs::write(&flagged, "flagged").unwrap();
+        crate::native_windows::update_file_attributes(&flagged, None, Some(true), None).unwrap();
+
+        let hidden_off = collect_name_search_results(
+            temp.path(),
+            "flagged",
+            false,
+            None,
+            &ParsedFilters::default(),
+            || false,
+        )
+        .unwrap();
+        assert!(hidden_off.is_empty());
+
+        let hidden_on = collect_name_search_results(
+            temp.path(),
+            "flagged",
+            true,
+            None,
+            &ParsedFilters::default(),
+            || false,
+        )
+        .unwrap();
+        assert_eq!(hidden_on.len(), 1);
+        assert!(hidden_on[0].is_hidden);
+    }
+
+    #[test]
+    fn parse_filters_reads_bounds_types_dates_and_regex() {
+        let parsed = parse_filters(Some(serde_json::json!({
+            "fileType": " .PNG ",
+            "minSize": 10,
+            "maxSize": 2048,
+            "dateFrom": "2024-01-02",
+            "dateTo": "2024-01-03T04:05:06Z",
+            "regex": true,
+        })));
+
+        assert_eq!(parsed.file_type.as_deref(), Some(".png"));
+        assert_eq!(parsed.min_size, Some(10));
+        assert_eq!(parsed.max_size, Some(2048));
+        assert_eq!(
+            parsed.date_from_ms,
+            Some(
+                Utc.with_ymd_and_hms(2024, 1, 2, 0, 0, 0)
+                    .unwrap()
+                    .timestamp_millis() as f64
+            )
+        );
+        assert_eq!(
+            parsed.date_to_ms,
+            Some(
+                Utc.with_ymd_and_hms(2024, 1, 3, 4, 5, 6)
+                    .unwrap()
+                    .timestamp_millis() as f64
+            )
+        );
+        assert!(parsed.regex);
+    }
+
+    #[test]
+    fn parse_filters_ignores_invalid_dates_and_defaults_regex_off() {
+        let parsed = parse_filters(Some(serde_json::json!({
+            "dateFrom": "not-a-date",
+            "dateTo": "",
+        })));
+        assert!(parsed.date_from_ms.is_none());
+        assert!(parsed.date_to_ms.is_none());
+        assert!(!parsed.regex);
+        assert_eq!(parse_filters(None).file_type, None);
+    }
+
+    #[test]
+    fn index_filter_conversion_carries_all_parsed_fields() {
+        let parsed = parse_filters(Some(serde_json::json!({
+            "fileType": "txt",
+            "minSize": 5,
+            "maxSize": 50,
+            "dateFrom": "2024-01-02",
+            "dateTo": "2024-01-03",
+        })));
+        let regex = build_safe_regex(r"^notes", false).unwrap();
+        let filters = to_index_filters(&parsed, true, Some(regex));
+
+        assert!(filters.include_hidden);
+        assert_eq!(filters.file_type.as_deref(), Some("txt"));
+        assert_eq!(filters.min_size, Some(5));
+        assert_eq!(filters.max_size, Some(50));
+        assert_eq!(filters.date_from_ms, parsed.date_from_ms);
+        assert_eq!(filters.date_to_ms, parsed.date_to_ms);
+        assert!(filters.regex.is_some());
+    }
+
+    #[test]
+    fn index_search_regex_is_skipped_when_not_requested() {
+        let literal = build_index_search_regex("alpha", &ParsedFilters::default()).unwrap();
+        assert!(literal.is_none());
+    }
+
+    #[test]
+    fn index_search_regex_compiles_with_size_caps() {
+        let parsed = ParsedFilters {
+            regex: true,
+            ..ParsedFilters::default()
+        };
+        let regex = build_index_search_regex(r"^alpha\.\d+$", &parsed)
+            .unwrap()
+            .expect("regex should compile");
+        assert!(regex.is_match("alpha.42"));
+        assert!(!regex.is_match("alpha.x"));
+    }
+
+    #[test]
+    fn index_search_regex_rejects_oversized_pattern() {
+        let parsed = ParsedFilters {
+            regex: true,
+            ..ParsedFilters::default()
+        };
+        let query = "a".repeat(MAX_REGEX_QUERY_BYTES + 1);
+        let error = build_index_search_regex(&query, &parsed).unwrap_err();
+        assert_eq!(
+            error,
+            format!(
+                "Regex pattern too long (max {} bytes)",
+                MAX_REGEX_QUERY_BYTES
+            )
+        );
+    }
+
+    #[test]
+    fn index_search_regex_rejects_invalid_pattern() {
+        let parsed = ParsedFilters {
+            regex: true,
+            ..ParsedFilters::default()
+        };
+        let error = build_index_search_regex("([unclosed", &parsed).unwrap_err();
+        assert!(error.starts_with("Invalid regex"), "{error}");
     }
 }

@@ -70,7 +70,7 @@ pub(crate) fn open_regular_read(path: &Path) -> Result<fs::File, String> {
         {
             return Err("Refusing to read a non-regular file".to_string());
         }
-        return Ok(file);
+        Ok(file)
     }
     #[cfg(not(any(unix, target_os = "windows")))]
     {
@@ -1314,6 +1314,28 @@ fn duplicate_scan_operation_id(window_label: &str) -> String {
     format!("{window_label}::{DUPLICATE_SCAN_OPERATION_ID}")
 }
 
+fn is_hidden_entry(name: &str, path: &Path) -> bool {
+    if name.starts_with('.') {
+        return true;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if let Ok(meta) = fs::symlink_metadata(path) {
+            return meta.file_attributes() & 0x2 != 0;
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = path;
+    false
+}
+
+fn allow_duplicate_walk_entry(entry: &walkdir::DirEntry, include_hidden: bool) -> bool {
+    include_hidden
+        || entry.depth() == 0
+        || !is_hidden_entry(&entry.file_name().to_string_lossy(), entry.path())
+}
+
 fn create_renamed_target(dest: &Path, original_name: &str, reserved: &HashSet<String>) -> PathBuf {
     let (base, ext) = split_filename(original_name);
     for i in 2..10_000 {
@@ -2160,7 +2182,7 @@ pub async fn find_duplicate_files(
         for (visited, entry) in walkdir::WalkDir::new(&root)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|entry| include_hidden || entry.depth() == 0 || !entry.file_name().to_string_lossy().starts_with('.'))
+            .filter_entry(|entry| allow_duplicate_walk_entry(entry, include_hidden))
             .enumerate()
         {
             if is_cancelled(scan_cancellation.as_ref()) {
@@ -2180,11 +2202,6 @@ pub async fn find_duplicate_files(
             };
 
             if !entry.file_type().is_file() {
-                continue;
-            }
-
-            let file_name = entry.file_name().to_string_lossy();
-            if !include_hidden && file_name.starts_with('.') {
                 continue;
             }
 
@@ -3361,6 +3378,66 @@ mod tests {
             duplicate_scan_operation_id("main"),
             duplicate_scan_operation_id("secondary")
         );
+    }
+
+    #[test]
+    fn hidden_detection_covers_dotfiles_without_metadata() {
+        assert!(is_hidden_entry(".secret", Path::new("/home/u/.secret")));
+        assert!(!is_hidden_entry(
+            "visible.txt",
+            Path::new("/home/u/visible.txt")
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn duplicate_walk_filter_skips_windows_hidden_attribute_entries() {
+        let temp = tempfile::tempdir().unwrap();
+        let visible = temp.path().join("visible.txt");
+        let flagged = temp.path().join("flagged.txt");
+        fs::write(&visible, "visible").unwrap();
+        fs::write(&flagged, "flagged").unwrap();
+        assert!(!is_hidden_entry("flagged.txt", &flagged));
+
+        crate::native_windows::update_file_attributes(&flagged, None, Some(true), None).unwrap();
+        assert!(is_hidden_entry("flagged.txt", &flagged));
+
+        let visited: Vec<PathBuf> = walkdir::WalkDir::new(temp.path())
+            .into_iter()
+            .filter_entry(|entry| allow_duplicate_walk_entry(entry, false))
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path().to_path_buf())
+            .collect();
+
+        assert!(visited.iter().any(|path| path == temp.path()));
+        assert!(visited.iter().any(|path| path.ends_with("visible.txt")));
+        assert!(!visited.iter().any(|path| path.ends_with("flagged.txt")));
+
+        let with_hidden: Vec<PathBuf> = walkdir::WalkDir::new(temp.path())
+            .into_iter()
+            .filter_entry(|entry| allow_duplicate_walk_entry(entry, true))
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path().to_path_buf())
+            .collect();
+        assert!(with_hidden.iter().any(|path| path.ends_with("flagged.txt")));
+    }
+
+    #[test]
+    fn duplicate_walk_filter_skips_dotfiles_but_keeps_root() {
+        let temp = tempfile::tempdir().unwrap();
+        fs::write(temp.path().join("visible.txt"), "visible").unwrap();
+        fs::write(temp.path().join(".secret.txt"), "secret").unwrap();
+
+        let visited: Vec<PathBuf> = walkdir::WalkDir::new(temp.path())
+            .into_iter()
+            .filter_entry(|entry| allow_duplicate_walk_entry(entry, false))
+            .filter_map(|entry| entry.ok())
+            .map(|entry| entry.path().to_path_buf())
+            .collect();
+
+        assert!(visited.iter().any(|path| path == temp.path()));
+        assert!(visited.iter().any(|path| path.ends_with("visible.txt")));
+        assert!(!visited.iter().any(|path| path.ends_with(".secret.txt")));
     }
 }
 
