@@ -11,6 +11,8 @@ import { loadMarked, sanitizeMarkdownHtml } from '../src/rendererMarkdown.ts';
 import { createPreviewController } from '../src/rendererPreviews.ts';
 import { createOperationQueueController } from '../src/rendererOperationQueue.ts';
 import { createBatchRenameController } from '../src/rendererBatchRename.ts';
+import { createThumbnailController } from '../src/rendererThumbnails.ts';
+import { createCompressExtractController } from '../src/rendererCompressExtract.ts';
 import { twemojiImg } from '../src/rendererUtils.ts';
 import '../src/css/main.css';
 
@@ -1202,6 +1204,306 @@ async function runOperationsModalsSuite(results) {
   });
 }
 
+function thumbnailDataUrl(color) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="2" height="2"><rect width="2" height="2" fill="${color}"/></svg>`;
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
+function createThumbnailRow(item, thumbnailType = 'image') {
+  const row = document.createElement('div');
+  row.className = 'file-item has-thumbnail';
+  row.dataset.path = item.path;
+  row.dataset.thumbnailType = thumbnailType;
+  const icon = document.createElement('div');
+  icon.className = 'file-icon';
+  row.append(icon);
+  document.body.append(row);
+  return row;
+}
+
+async function readThumbnailPixel(row, expected, message) {
+  await waitFor(() => {
+    const image = row.querySelector('img.file-thumbnail');
+    return image?.complete && image.naturalWidth > 0;
+  }, `${message}: image did not decode`);
+  const image = row.querySelector('img.file-thumbnail');
+  const canvas = document.createElement('canvas');
+  canvas.width = 2;
+  canvas.height = 2;
+  const context = canvas.getContext('2d');
+  assert(context, `${message}: canvas context unavailable`);
+  context.drawImage(image, 0, 0, 2, 2);
+  const pixel = Array.from(context.getImageData(1, 1, 1, 1).data).slice(0, 3);
+  assert(
+    pixel.every((channel, index) => Math.abs(channel - expected[index]) <= 2),
+    `${message}: expected pixel ${expected.join(',')}, received ${pixel.join(',')}`
+  );
+  return pixel;
+}
+
+function makeThumbnailController(itemsByPath, settings) {
+  return createThumbnailController({
+    getCurrentSettings: () => settings,
+    getFileIcon: () => '<span class="thumbnail-fallback">file</span>',
+    getFileExtension: (name) => name.split('.').pop()?.toLowerCase() || '',
+    formatFileSize: (bytes) => `${bytes} bytes`,
+    getFileByPath: (filePath) => itemsByPath.get(filePath),
+  });
+}
+
+async function runThumbnailFingerprintSuite(results) {
+  document.body.innerHTML = '';
+  const settings = {
+    thumbnailQuality: 'medium',
+    maxThumbnailSizeMB: 20,
+    maxPreviewSizeMB: 100,
+  };
+  const itemV1 = fixtureItem({
+    name: 'photo.jpg',
+    path: '/fixture/photo.jpg',
+    size: 100,
+    modified: new Date('2025-01-01T00:00:00Z'),
+  });
+  const itemV2 = {
+    ...itemV1,
+    size: 101,
+    modified: new Date('2025-01-01T00:00:01Z'),
+  };
+  const itemsByPath = new Map([[itemV1.path, itemV1]]);
+  const cacheCalls = [];
+  const expectedResponses = [
+    {
+      mtime: itemV1.modified.getTime(),
+      size: itemV1.size,
+      variant: 'v1:medium:image',
+      color: '#ff0000',
+    },
+    {
+      mtime: itemV2.modified.getTime(),
+      size: itemV2.size,
+      variant: 'v1:medium:image',
+      color: '#00ff00',
+    },
+    {
+      mtime: itemV2.modified.getTime(),
+      size: itemV2.size,
+      variant: 'v1:high:image',
+      color: '#0000ff',
+    },
+    {
+      mtime: itemV2.modified.getTime(),
+      size: itemV2.size,
+      variant: 'v1:high:raw',
+      color: '#ffff00',
+    },
+  ];
+  window.tauriAPI.getCachedThumbnail = async (filePath, mtime, size, variant) => {
+    cacheCalls.push({ filePath, mtime, size, variant });
+    const expected = expectedResponses.shift();
+    assert(expected, `thumbnails: unexpected cache lookup ${variant}`);
+    assert(filePath === itemV1.path, `thumbnails: unexpected path ${filePath}`);
+    assert(
+      mtime === expected.mtime && size === expected.size && variant === expected.variant,
+      `thumbnails: lookup fingerprint mismatch ${JSON.stringify({ mtime, size, variant })}`
+    );
+    return { success: true, dataUrl: thumbnailDataUrl(expected.color) };
+  };
+  window.tauriAPI.saveCachedThumbnail = async () => ({ success: true });
+
+  const controller = makeThumbnailController(itemsByPath, settings);
+  const row = createThumbnailRow(itemV1);
+  controller.loadThumbnail(row, itemV1);
+  await readThumbnailPixel(row, [255, 0, 0], 'thumbnails: initial image');
+
+  itemsByPath.set(itemV2.path, itemV2);
+  controller.loadThumbnail(row, itemV2);
+  await readThumbnailPixel(row, [0, 255, 0], 'thumbnails: changed file fingerprint');
+
+  settings.thumbnailQuality = 'high';
+  controller.loadThumbnail(row, itemV2);
+  await readThumbnailPixel(row, [0, 0, 255], 'thumbnails: changed quality variant');
+
+  row.dataset.thumbnailType = 'raw';
+  controller.loadThumbnail(row, itemV2);
+  await readThumbnailPixel(row, [255, 255, 0], 'thumbnails: changed type variant');
+  assert(expectedResponses.length === 0, 'thumbnails: not all variant lookups ran');
+  controller.destroy();
+
+  document.body.innerHTML = '';
+  const sharedItem = fixtureItem({
+    name: 'shared.jpg',
+    path: '/fixture/shared.jpg',
+    size: 200,
+    modified: new Date('2025-01-01T00:00:02Z'),
+  });
+  const sharedItems = new Map([[sharedItem.path, sharedItem]]);
+  let releaseSharedLookup;
+  const sharedLookup = new Promise((resolve) => {
+    releaseSharedLookup = resolve;
+  });
+  const sharedCalls = [];
+  window.tauriAPI.getCachedThumbnail = (...args) => {
+    sharedCalls.push(args);
+    return sharedLookup;
+  };
+  const sharedController = makeThumbnailController(sharedItems, settings);
+  const firstRow = createThumbnailRow(sharedItem);
+  const secondRow = createThumbnailRow(sharedItem);
+  sharedController.loadThumbnail(firstRow, sharedItem);
+  sharedController.loadThumbnail(secondRow, sharedItem);
+  await Promise.resolve();
+  await Promise.resolve();
+  assert(sharedCalls.length === 1, `thumbnails: identical work used ${sharedCalls.length} lookups`);
+  releaseSharedLookup({ success: true, dataUrl: thumbnailDataUrl('#ff00ff') });
+  await readThumbnailPixel(firstRow, [255, 0, 255], 'thumbnails: first shared row');
+  await readThumbnailPixel(secondRow, [255, 0, 255], 'thumbnails: second shared row');
+  sharedController.destroy();
+
+  document.body.innerHTML = '';
+  const oldItem = fixtureItem({
+    name: 'old.jpg',
+    path: '/fixture/old.jpg',
+    size: 300,
+    modified: new Date('2025-01-01T00:00:03Z'),
+  });
+  const newItem = fixtureItem({
+    name: 'new.jpg',
+    path: '/fixture/new.jpg',
+    size: 400,
+    modified: new Date('2025-01-01T00:00:04Z'),
+  });
+  const reusedItems = new Map([
+    [oldItem.path, oldItem],
+    [newItem.path, newItem],
+  ]);
+  let releaseOldLookup;
+  const oldLookup = new Promise((resolve) => {
+    releaseOldLookup = resolve;
+  });
+  window.tauriAPI.getCachedThumbnail = (filePath) =>
+    filePath === oldItem.path
+      ? oldLookup
+      : Promise.resolve({ success: true, dataUrl: thumbnailDataUrl('#00ffff') });
+  const reusedController = makeThumbnailController(reusedItems, settings);
+  const reusedRow = createThumbnailRow(oldItem);
+  reusedController.loadThumbnail(reusedRow, oldItem);
+  reusedRow.dataset.path = newItem.path;
+  reusedController.loadThumbnail(reusedRow, newItem);
+  await readThumbnailPixel(reusedRow, [0, 255, 255], 'thumbnails: replacement row');
+  releaseOldLookup({ success: true, dataUrl: thumbnailDataUrl('#ff8800') });
+  await new Promise((resolve) => setTimeout(resolve, 80));
+  await readThumbnailPixel(reusedRow, [0, 255, 255], 'thumbnails: stale completion guard');
+  assert(
+    reusedRow.querySelector('img.file-thumbnail')?.getAttribute('src') ===
+      thumbnailDataUrl('#00ffff'),
+    'thumbnails: old request replaced the current row image'
+  );
+  reusedController.destroy();
+
+  results.push({
+    mode: 'thumbnails-fingerprint-and-inflight',
+    fingerprintLookups: cacheCalls.length,
+    variants: ['v1:medium:image', 'v1:high:image', 'v1:high:raw'],
+    identicalWorkLookups: sharedCalls.length,
+    staleCompletionBlocked: true,
+  });
+}
+
+async function runArchiveWhitespacePasswordSuite(results) {
+  document.body.innerHTML = `
+    <div id="extract-modal" style="display:none">
+      <div id="extract-modal-message"></div>
+      <label id="extract-password-field"><input id="extract-password" type="password" /></label>
+      <input id="extract-destination-input" />
+      <div id="extract-preview-path"></div>
+    </div>
+  `;
+  const extractCalls = [];
+  window.tauriAPI.onExtractProgress = () => noop;
+  window.tauriAPI.extractArchive = async (...args) => {
+    extractCalls.push(args);
+    return { success: true };
+  };
+  const controller = createCompressExtractController({
+    getCurrentPath: () => '/fixture',
+    getSelectedItems: () => new Set(),
+    getAllFiles: () => [],
+    showToast: noop,
+    showConfirm: async () => true,
+    navigateTo: async () => {},
+    activateModal: noop,
+    deactivateModal: noop,
+    addToRecentFiles: noop,
+    generateOperationId: () => 'extract-whitespace-e2e',
+    addOperation: noop,
+    getOperation: () => ({ aborted: false }),
+    updateOperation: noop,
+    completeOperation: noop,
+    removeOperation: noop,
+    isWindowsPlatform: () => false,
+  });
+  controller.showExtractModal('/fixture/archive.zip');
+  const password = ' \t ';
+  document.getElementById('extract-password').value = password;
+  await controller.confirmExtractModal();
+  assert(extractCalls.length === 1, 'archive-password: extraction IPC was not called');
+  assert(
+    extractCalls[0][3] === password,
+    `archive-password: whitespace changed (${JSON.stringify(extractCalls[0][3])})`
+  );
+  results.push({ mode: 'archive-whitespace-password', exactWhitespacePreserved: true });
+}
+
+async function runOperationQueueLifetimeSuite(results) {
+  document.body.innerHTML = `
+    <div id="progress-panel" class="progress-panel" role="region" style="display:none">
+      <button id="progress-panel-close" type="button"></button>
+      <span id="progress-panel-count"></span>
+      <div id="progress-panel-content"></div>
+    </div>
+  `;
+  const panelState = { collapsed: false };
+  let retryCount = 0;
+  const queue = createOperationQueueController({
+    cancelArchiveOperation: async () => ({ success: true }),
+    cancelChecksumCalculation: async () => ({ success: true }),
+    getOperationPanelCollapsed: () => panelState.collapsed,
+    setOperationPanelCollapsed: (collapsed) => {
+      panelState.collapsed = collapsed;
+    },
+  });
+  queue.addOperation('e2e-done', 'copy', 'Completed item');
+  queue.completeOperation('e2e-done', 'done');
+  queue.addOperation('e2e-failed', 'delete', 'Failed item', { retry: () => (retryCount += 1) });
+  queue.completeOperation('e2e-failed', 'failed', 'Fixture failure');
+  await waitFor(
+    () => document.querySelector('#progress-panel-content .operation-queue-item.is-failed'),
+    'operation-queue-lifetime: failed card never rendered'
+  );
+  await new Promise((resolve) => setTimeout(resolve, 4250));
+  await frame();
+  const failedCard = document.querySelector(
+    '#progress-panel-content .operation-queue-item.is-failed'
+  );
+  assert(failedCard, 'operation-queue-lifetime: failed card disappeared after four seconds');
+  assert(
+    !queue.getOperation('e2e-done'),
+    'operation-queue-lifetime: successful card did not expire after four seconds'
+  );
+  const retryButton = failedCard.querySelector('.operation-queue-retry');
+  assert(retryButton, 'operation-queue-lifetime: failed card has no retry action');
+  retryButton.click();
+  assert(retryCount === 1, 'operation-queue-lifetime: retry action was not invoked');
+  assert(!queue.getOperation('e2e-failed'), 'operation-queue-lifetime: retry did not dismiss card');
+  queue.cleanup();
+  results.push({
+    mode: 'operation-queue-lifetime',
+    failedVisibleAfterMs: 4250,
+    doneExpired: true,
+    retryDismissedFailure: true,
+  });
+}
+
 // The bundle can execute while the parser is still running (inside <head> or
 // before the implicit body exists), so every suite must wait for the body.
 const documentReady = () =>
@@ -1217,6 +1519,7 @@ globalThis.runFileRenderSmoke = async () => {
   await documentReady();
   installTauriApi();
   const results = [];
+  globalThis.fileRenderSmokeResults = results;
   await runVirtualizationSuite(results);
   await runDualPaneSuite(results);
   await runColumnViewSuite(results);
@@ -1226,5 +1529,8 @@ globalThis.runFileRenderSmoke = async () => {
   await runCommandPaletteBookmarksSuite(results);
   await runPreviewsMarkdownSuite(results);
   await runOperationsModalsSuite(results);
+  await runThumbnailFingerprintSuite(results);
+  await runArchiveWhitespacePasswordSuite(results);
+  await runOperationQueueLifetimeSuite(results);
   return results;
 };

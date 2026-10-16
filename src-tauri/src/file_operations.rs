@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::process::Command;
 use std::sync::Mutex;
+use std::sync::TryLockError;
 #[cfg(target_os = "linux")]
 use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -101,6 +102,38 @@ pub(crate) fn mutation_lock() -> Result<std::sync::MutexGuard<'static, ()>, Stri
         log::warn!("[FileOps] mutation lock poisoned; recovering");
         Ok(poisoned.into_inner())
     })
+}
+
+/// Wait for the mutation lock in short intervals so queued file operations can
+/// observe cancellation without first entering the serialized mutation phase.
+pub(crate) fn mutation_lock_cancellable(
+    token: Option<&CancellationToken>,
+) -> Result<std::sync::MutexGuard<'static, ()>, String> {
+    const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
+    loop {
+        if is_cancelled(token) {
+            return Err("Operation cancelled".to_string());
+        }
+        match FILE_OP_LOCK.try_lock() {
+            Ok(guard) => {
+                if is_cancelled(token) {
+                    drop(guard);
+                    return Err("Operation cancelled".to_string());
+                }
+                return Ok(guard);
+            }
+            Err(TryLockError::WouldBlock) => std::thread::sleep(POLL_INTERVAL),
+            Err(TryLockError::Poisoned(poisoned)) => {
+                log::warn!("[FileOps] mutation lock poisoned; recovering");
+                let guard = poisoned.into_inner();
+                if is_cancelled(token) {
+                    drop(guard);
+                    return Err("Operation cancelled".to_string());
+                }
+                return Ok(guard);
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -713,7 +746,7 @@ pub async fn copy_items(
             operation_id: progress_operation_id.clone(),
             token: cancellation.clone(),
         };
-        let mut lock = Some(mutation_lock()?);
+        let mut lock = Some(mutation_lock_cancellable(Some(&cancellation))?);
         // Re-check: the user may have cancelled while we waited for the lock.
         ensure_file_operation_active(Some(&cancellation))?;
         let dest = validate_mutation_destination(&dest_path)?;
@@ -721,18 +754,34 @@ pub async fn copy_items(
         let resolutions = conflict_resolutions.unwrap_or_default();
         let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
         let total = planned.len();
-        let mut copied_paths: Vec<PathBuf> = Vec::new();
+        if planned.is_empty() {
+            return Ok(());
+        }
+        let recovery_sources = planned
+            .iter()
+            .map(|item| item.source_path.clone())
+            .collect::<Vec<_>>();
+        let recovery_destinations = planned
+            .iter()
+            .map(|item| item.dest_path.clone())
+            .collect::<Vec<_>>();
+        let recovery_record_id = crate::recovery::begin_operation(
+            "copy",
+            Some(&progress_operation_id),
+            &recovery_sources,
+            &recovery_destinations,
+        )?;
         let mut copy_entries = Vec::new();
         let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
         let operation = (|| -> Result<(), String> {
             for (index, item) in planned.iter().enumerate() {
                 ensure_file_operation_active(Some(&cancellation))?;
-                ensure_overwrite_backup(&mut backups, item)?;
+                ensure_overwrite_backup(&mut backups, item, recovery_record_id.as_deref())?;
                 ensure_file_operation_active(Some(&cancellation))?;
 
                 let cancelled = || is_cancelled(Some(&cancellation));
-                let entry = copy_entry_checked(
+                let entry = copy_entry_checked_with_recovery(
                     &item.source_path,
                     &item.dest_path,
                     &cancelled,
@@ -747,13 +796,13 @@ pub async fn copy_items(
                             staged,
                             &cancelled,
                         );
-                        lock = Some(mutation_lock()?);
+                        lock = Some(mutation_lock_cancellable(Some(&cancellation))?);
                         ensure_file_operation_active(Some(&cancellation))?;
                         recorded
                     },
+                    recovery_record_id.as_deref(),
                 )?;
                 copy_entries.push(entry);
-                copied_paths.push(item.dest_path.clone());
 
                 let _ = app.emit(
                     "file-operation-progress",
@@ -770,24 +819,47 @@ pub async fn copy_items(
         })();
 
         if lock.is_none() {
-            lock = Some(mutation_lock()?);
+            lock = Some(mutation_lock_cancellable(Some(&cancellation))?);
         }
         let _lock = lock;
 
         if let Err(error) = operation {
-            remove_paths_reversed(&copied_paths);
-            return Err(with_recovery_errors(
-                error,
-                restore_overwrite_backups(&backups),
-            ));
+            let mut recovery_errors =
+                rollback_published_copies_with_recovery(&copy_entries, recovery_record_id.as_deref());
+            recovery_errors.extend(restore_overwrite_backups(&backups));
+            if recovery_errors.is_empty() {
+                if let Err(journal_error) = crate::recovery::complete(recovery_record_id.as_deref()) {
+                    recovery_errors.push(format!("Recovery journal update failed: {}", journal_error));
+                }
+            }
+            if !recovery_errors.is_empty() {
+                crate::recovery::record_error(
+                    recovery_record_id.as_deref(),
+                    &recovery_errors.join("; "),
+                );
+            }
+            return Err(with_recovery_errors(error, recovery_errors));
         }
 
-        cleanup_backups(&backups);
-
-        if !planned.is_empty() {
-            undo::push_recorded_copy_action(copy_entries).map_err(|error| {
-                format!("Copy completed, but undo could not be recorded: {}", error)
-            })?;
+        let backup_entries = retained_backup_entries(&backups);
+        if let Err(error) = undo::push_recorded_copy_action_with_recovery(
+            copy_entries,
+            backup_entries.clone(),
+            recovery_record_id.clone(),
+        ) {
+            crate::recovery::record_error(
+                recovery_record_id.as_deref(),
+                &format!("Copy completed, but undo could not be recorded: {}", error),
+            );
+            return Err(format!("Copy completed, but undo could not be recorded: {}", error));
+        }
+        if !backup_entries.is_empty() {
+            crate::recovery::mark_history_owned(
+                recovery_record_id.as_deref(),
+                &backups.values().map(|backup| backup.backup_path.clone()).collect::<Vec<_>>(),
+            )?;
+        } else {
+            crate::recovery::complete(recovery_record_id.as_deref())?;
         }
 
         Ok(())
@@ -811,6 +883,16 @@ fn copy_entry_checked<T>(
     destination: &Path,
     cancelled: &impl Fn() -> bool,
     before_publish: &mut impl FnMut(&Path) -> Result<T, String>,
+) -> Result<T, String> {
+    copy_entry_checked_with_recovery(source, destination, cancelled, before_publish, None)
+}
+
+fn copy_entry_checked_with_recovery<T>(
+    source: &Path,
+    destination: &Path,
+    cancelled: &impl Fn() -> bool,
+    before_publish: &mut impl FnMut(&Path) -> Result<T, String>,
+    recovery_record_id: Option<&str>,
 ) -> Result<T, String> {
     let parent = destination
         .parent()
@@ -840,8 +922,22 @@ fn copy_entry_checked<T>(
         }
     }
     let workspace = workspace.ok_or("Cannot reserve copy workspace")?;
+    let workspace_identity = match undo::path_identity(&workspace) {
+        Ok(identity) => identity,
+        Err(error) => {
+            let _ = fs::remove_dir(&workspace);
+            return Err(error);
+        }
+    };
     let staged = workspace.join("content");
     let result = (|| {
+        crate::recovery::record_paths(
+            recovery_record_id,
+            crate::recovery::RecoveryPaths {
+                staging: vec![workspace.clone(), staged.clone()],
+                ..crate::recovery::RecoveryPaths::default()
+            },
+        )?;
         let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
         if metadata.file_type().is_symlink() {
             copy_symlink_path(source, &staged)?;
@@ -857,17 +953,47 @@ fn copy_entry_checked<T>(
         if cancelled() {
             return Err("Operation cancelled".to_string());
         }
+        crate::recovery::record_paths(
+            recovery_record_id,
+            crate::recovery::RecoveryPaths {
+                staging: vec![staged.clone()],
+                ..crate::recovery::RecoveryPaths::default()
+            },
+        )?;
         rename_exclusive(&staged, destination).map_err(|error| error.to_string())?;
         Ok(recorded)
     })();
-    if let Err(error) = fs::remove_dir_all(&workspace) {
-        log::warn!(
+    let cleanup_result = match fs::symlink_metadata(&workspace) {
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            Err("Copy workspace was replaced by a non-directory entry".to_string())
+        }
+        Ok(_) => match undo::path_identity(&workspace) {
+            Ok(identity) if identity == workspace_identity => {
+                fs::remove_dir_all(&workspace).map_err(|error| error.to_string())
+            }
+            Ok(_) => Err("Copy workspace identity changed; preserving it".to_string()),
+            Err(error) => Err(format!("Cannot verify copy workspace identity: {}", error)),
+        },
+    };
+    if let Err(cleanup_error) = cleanup_result {
+        let message = format!(
             "Copy workspace cleanup failed at {}: {}",
             workspace.display(),
-            error
+            cleanup_error
         );
+        crate::recovery::record_error(recovery_record_id, &message);
+        match result {
+            Ok(value) => {
+                log::error!("{}", message);
+                Ok(value)
+            }
+            Err(error) => Err(format!("{}; {}", error, message)),
+        }
+    } else {
+        result
     }
-    result
 }
 
 pub(crate) fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
@@ -952,7 +1078,7 @@ pub async fn move_items(
             operation_id: progress_operation_id.clone(),
             token: cancellation.clone(),
         };
-        let _lock = mutation_lock()?;
+        let _lock = mutation_lock_cancellable(Some(&cancellation))?;
         // Re-check: the user may have cancelled while we waited for the lock.
         ensure_file_operation_active(Some(&cancellation))?;
         let dest = validate_mutation_destination(&dest_path)?;
@@ -960,6 +1086,23 @@ pub async fn move_items(
         let resolutions = conflict_resolutions.unwrap_or_default();
         let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
         let total = planned.len();
+        if planned.is_empty() {
+            return Ok(());
+        }
+        let recovery_sources = planned
+            .iter()
+            .map(|item| item.source_path.clone())
+            .collect::<Vec<_>>();
+        let recovery_destinations = planned
+            .iter()
+            .map(|item| item.dest_path.clone())
+            .collect::<Vec<_>>();
+        let recovery_record_id = crate::recovery::begin_operation(
+            "move",
+            Some(&progress_operation_id),
+            &recovery_sources,
+            &recovery_destinations,
+        )?;
         let mut moved_paths: Vec<String> = Vec::new();
         let mut original_paths: Vec<String> = Vec::new();
         let mut completed_moves: Vec<CompletedMove> = Vec::new();
@@ -968,11 +1111,14 @@ pub async fn move_items(
         let operation = (|| -> Result<(), String> {
             for (index, item) in planned.iter().enumerate() {
                 ensure_file_operation_active(Some(&cancellation))?;
-                ensure_overwrite_backup(&mut backups, item)?;
+                ensure_overwrite_backup(&mut backups, item, recovery_record_id.as_deref())?;
                 ensure_file_operation_active(Some(&cancellation))?;
-                move_path_with_fallback_cancellable(&item.source_path, &item.dest_path, &|| {
-                    is_cancelled(Some(&cancellation))
-                })?;
+                move_path_with_fallback_cancellable_and_recovery(
+                    &item.source_path,
+                    &item.dest_path,
+                    &|| is_cancelled(Some(&cancellation)),
+                    recovery_record_id.as_deref(),
+                )?;
 
                 moved_paths.push(item.dest_path.to_string_lossy().to_string());
                 original_paths.push(item.source_path.to_string_lossy().to_string());
@@ -996,13 +1142,54 @@ pub async fn move_items(
         })();
 
         if let Err(error) = operation {
-            let mut recovery_errors = rollback_moves(&completed_moves);
+            let mut recovery_errors = rollback_moves(&completed_moves, recovery_record_id.as_deref());
             recovery_errors.extend(restore_overwrite_backups(&backups));
+            crate::recovery::record_error(
+                recovery_record_id.as_deref(),
+                &with_recovery_errors(error.clone(), recovery_errors.clone()),
+            );
             return Err(with_recovery_errors(error, recovery_errors));
         }
 
-        cleanup_backups(&backups);
-        undo::push_move_action(moved_paths, original_paths, dest_path)?;
+        let item_fingerprints = match moved_paths
+            .iter()
+            .map(|path| undo::content_fingerprint(Path::new(path), &|| false))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(fingerprints) => fingerprints,
+            Err(error) => {
+                let mut recovery_errors = rollback_moves(&completed_moves, recovery_record_id.as_deref());
+                recovery_errors.extend(restore_overwrite_backups(&backups));
+                crate::recovery::record_error(
+                    recovery_record_id.as_deref(),
+                    &with_recovery_errors(error.clone(), recovery_errors.clone()),
+                );
+                return Err(with_recovery_errors(error, recovery_errors));
+            }
+        };
+        let backup_entries = retained_backup_entries(&backups);
+        if let Err(error) = undo::push_move_action_with_recovery(
+            moved_paths,
+            original_paths,
+            dest_path,
+            backup_entries.clone(),
+            Some(item_fingerprints),
+            recovery_record_id.clone(),
+        ) {
+            crate::recovery::record_error(
+                recovery_record_id.as_deref(),
+                &format!("Move completed, but undo could not be recorded: {}", error),
+            );
+            return Err(format!("Move completed, but undo could not be recorded: {}", error));
+        }
+        if !backup_entries.is_empty() {
+            crate::recovery::mark_history_owned(
+                recovery_record_id.as_deref(),
+                &backups.values().map(|backup| backup.backup_path.clone()).collect::<Vec<_>>(),
+            )?;
+        } else {
+            crate::recovery::complete(recovery_record_id.as_deref())?;
+        }
         Ok(())
     })
     .await
@@ -1050,7 +1237,7 @@ pub async fn cancel_file_operation(
     Ok(())
 }
 
-fn remove_existing_path(path: &Path) -> Result<(), String> {
+pub(crate) fn remove_existing_path(path: &Path) -> Result<(), String> {
     let meta = match fs::symlink_metadata(path) {
         Ok(meta) => meta,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -1226,6 +1413,13 @@ fn rename_no_replace(from: &Path, to: &Path) -> Result<(), String> {
 }
 
 pub(crate) fn reserve_staging_rename(original: &Path) -> Result<PathBuf, String> {
+    reserve_staging_rename_with_recovery(original, None)
+}
+
+pub(crate) fn reserve_staging_rename_with_recovery(
+    original: &Path,
+    recovery_record_id: Option<&str>,
+) -> Result<PathBuf, String> {
     let parent = original
         .parent()
         .ok_or_else(|| "Cannot determine parent directory".to_string())?;
@@ -1239,6 +1433,13 @@ pub(crate) fn reserve_staging_rename(original: &Path) -> Result<PathBuf, String>
             .unwrap_or_default()
             .as_nanos();
         let temp_path = parent.join(format!(".iyeris-rename-tmp-{attempt}-{nonce}-{stem}"));
+        crate::recovery::record_paths(
+            recovery_record_id,
+            crate::recovery::RecoveryPaths {
+                staging: vec![temp_path.clone()],
+                ..crate::recovery::RecoveryPaths::default()
+            },
+        )?;
         match rename_exclusive(original, &temp_path) {
             Ok(()) => return Ok(temp_path),
             Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
@@ -1251,6 +1452,13 @@ pub(crate) fn reserve_staging_rename(original: &Path) -> Result<PathBuf, String>
 /// Stage every source before publishing a rename cycle. Recovery never replaces
 /// an occupied entry; unresolved content remains at its reported staging path.
 pub(crate) fn rename_batch_transaction(paths: &[(PathBuf, PathBuf)]) -> Result<(), String> {
+    rename_batch_transaction_with_recovery(paths, None)
+}
+
+pub(crate) fn rename_batch_transaction_with_recovery(
+    paths: &[(PathBuf, PathBuf)],
+    recovery_record_id: Option<&str>,
+) -> Result<(), String> {
     let paths: Vec<_> = paths.iter().filter(|(from, to)| from != to).collect();
     let mut sources = HashSet::new();
     let mut targets = HashSet::new();
@@ -1273,7 +1481,7 @@ pub(crate) fn rename_batch_transaction(paths: &[(PathBuf, PathBuf)]) -> Result<(
     let mut published = 0;
     let result = (|| {
         for (from, _) in &paths {
-            staged.push(reserve_staging_rename(from)?);
+            staged.push(reserve_staging_rename_with_recovery(from, recovery_record_id)?);
         }
         for ((_, to), temp) in paths.iter().zip(&staged) {
             rename_exclusive(temp, to).map_err(map_rename_io_error)?;
@@ -1404,6 +1612,7 @@ struct CompletedMove {
 struct OverwriteBackup {
     dest_path: PathBuf,
     backup_path: PathBuf,
+    fingerprint: String,
 }
 
 pub(crate) fn plan_file_operations(
@@ -1571,6 +1780,15 @@ fn move_path_with_fallback_cancellable(
     target: &Path,
     is_cancelled: &impl Fn() -> bool,
 ) -> Result<(), String> {
+    move_path_with_fallback_cancellable_and_recovery(source, target, is_cancelled, None)
+}
+
+pub(crate) fn move_path_with_fallback_cancellable_and_recovery(
+    source: &Path,
+    target: &Path,
+    is_cancelled: &impl Fn() -> bool,
+    recovery_record_id: Option<&str>,
+) -> Result<(), String> {
     if is_cancelled() {
         return Err("Operation cancelled".to_string());
     }
@@ -1598,7 +1816,14 @@ fn move_path_with_fallback_cancellable(
         Err(_) => {}
     }
 
-    copy_then_remove_source(source, target, is_symlink, is_directory, is_cancelled)
+    copy_then_remove_source_with_recovery(
+        source,
+        target,
+        is_symlink,
+        is_directory,
+        is_cancelled,
+        recovery_record_id,
+    )
 }
 
 fn copy_then_remove_source(
@@ -1608,10 +1833,27 @@ fn copy_then_remove_source(
     is_directory: bool,
     cancelled: &impl Fn() -> bool,
 ) -> Result<(), String> {
+    copy_then_remove_source_with_recovery(source, target, is_symlink, is_directory, cancelled, None)
+}
+
+fn copy_then_remove_source_with_recovery(
+    source: &Path,
+    target: &Path,
+    is_symlink: bool,
+    is_directory: bool,
+    cancelled: &impl Fn() -> bool,
+    recovery_record_id: Option<&str>,
+) -> Result<(), String> {
     // Reserve the original entry so a new occupant at its old path is never
     // deleted during cross-volume cleanup. Restore it on failed/cancelled copy.
-    let staged_source = reserve_staging_rename(source)?;
-    if let Err(error) = copy_entry_exclusive(&staged_source, target, cancelled) {
+    let staged_source = reserve_staging_rename_with_recovery(source, recovery_record_id)?;
+    if let Err(error) = copy_entry_checked_with_recovery(
+        &staged_source,
+        target,
+        cancelled,
+        &mut |_| Ok(()),
+        recovery_record_id,
+    ) {
         return match rename_exclusive(&staged_source, source) {
             Ok(()) => Err(error),
             Err(recovery) => Err(format!(
@@ -1620,6 +1862,13 @@ fn copy_then_remove_source(
             )),
         };
     }
+    crate::recovery::record_paths(
+        recovery_record_id,
+        crate::recovery::RecoveryPaths {
+            staging: vec![staged_source.clone()],
+            ..crate::recovery::RecoveryPaths::default()
+        },
+    )?;
     let cleanup = if is_symlink {
         remove_symlink_path(&staged_source)
     } else if is_directory {
@@ -1664,45 +1913,122 @@ fn create_backup_path(dest_path: &Path) -> Result<PathBuf, String> {
 fn ensure_overwrite_backup(
     backups: &mut HashMap<String, OverwriteBackup>,
     operation: &PlannedFileOperation,
+    recovery_record_id: Option<&str>,
 ) -> Result<(), String> {
     if !operation.overwrite {
         return Ok(());
     }
 
     let key = normalize_case_key(&operation.dest_path);
-    if backups.contains_key(&key) || !path_entry_exists(&operation.dest_path) {
+    if backups.contains_key(&key) {
         return Ok(());
     }
+    match fs::symlink_metadata(&operation.dest_path) {
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "Cannot inspect overwrite destination {}: {}",
+                operation.dest_path.display(),
+                error
+            ));
+        }
+        Ok(_) => {}
+    }
 
+    let fingerprint = undo::copy_fingerprint(&operation.dest_path, &|| false)?;
     let backup_path = create_backup_path(&operation.dest_path)?;
-    move_path_with_fallback(&operation.dest_path, &backup_path)?;
+    crate::recovery::record_paths(
+        recovery_record_id,
+        crate::recovery::RecoveryPaths {
+            backups: vec![backup_path.clone()],
+            ..crate::recovery::RecoveryPaths::default()
+        },
+    )?;
+    rename_exclusive(&operation.dest_path, &backup_path).map_err(|error| {
+        format!(
+            "Failed to retain overwrite destination {}: {}",
+            operation.dest_path.display(),
+            error
+        )
+    })?;
     backups.insert(
-        key,
+        key.clone(),
         OverwriteBackup {
             dest_path: operation.dest_path.clone(),
-            backup_path,
+            backup_path: backup_path.clone(),
+            fingerprint: fingerprint.clone(),
         },
     );
+    if let Err(error) = undo::verify_copy(&backup_path, &fingerprint) {
+        crate::recovery::record_error(recovery_record_id, &error);
+        return Err(format!(
+            "Overwrite destination changed while being retained: {}; original retained at {}",
+            error,
+            backup_path.display()
+        ));
+    }
     Ok(())
+}
+
+fn retained_backup_entries(
+    backups: &HashMap<String, OverwriteBackup>,
+) -> Vec<undo::OverwriteBackupEntry> {
+    backups
+        .values()
+        .map(|backup| undo::OverwriteBackupEntry {
+            original_path: backup.dest_path.to_string_lossy().into_owned(),
+            backup_path: backup.backup_path.to_string_lossy().into_owned(),
+            fingerprint: backup.fingerprint.clone(),
+        })
+        .collect()
 }
 
 fn restore_overwrite_backups(backups: &HashMap<String, OverwriteBackup>) -> Vec<String> {
     let mut errors = Vec::new();
     for backup in backups.values() {
-        if !path_entry_exists(&backup.backup_path) {
-            continue;
+        match fs::symlink_metadata(&backup.backup_path) {
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => {
+                errors.push(format!(
+                    "Cannot inspect overwrite backup {}; preserving it: {}",
+                    backup.backup_path.display(),
+                    error
+                ));
+                continue;
+            }
+            Ok(_) => {}
         }
-        if path_entry_exists(&backup.dest_path) {
+        if let Err(error) = undo::verify_copy(&backup.backup_path, &backup.fingerprint) {
             errors.push(format!(
-                "Destination occupied; original retained at {}",
-                backup.backup_path.display()
+                "Overwrite backup changed and was retained at {}: {}",
+                backup.backup_path.display(),
+                error
             ));
             continue;
         }
-        if let Err(error) = move_path_with_fallback(&backup.backup_path, &backup.dest_path) {
+        match fs::symlink_metadata(&backup.dest_path) {
+            Ok(_) => {
+                errors.push(format!(
+                    "Destination occupied; original retained at {}",
+                    backup.backup_path.display()
+                ));
+                continue;
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => {
+                errors.push(format!(
+                    "Cannot inspect destination {}; original retained at {}: {}",
+                    backup.dest_path.display(),
+                    backup.backup_path.display(),
+                    error
+                ));
+                continue;
+            }
+        }
+        if let Err(error) = rename_exclusive(&backup.backup_path, &backup.dest_path) {
             errors.push(format!(
                 "Restore failed: {}. Original retained at {}",
-                error,
+                error.to_string(),
                 backup.backup_path.display()
             ));
         }
@@ -1718,24 +2044,86 @@ fn with_recovery_errors(error: String, recovery_errors: Vec<String>) -> String {
     }
 }
 
-fn cleanup_backups(backups: &HashMap<String, OverwriteBackup>) {
-    for backup in backups.values() {
-        if path_entry_exists(&backup.backup_path) {
-            let _ = remove_existing_path(&backup.backup_path);
+fn rollback_published_copies(entries: &[undo::CopyEntry]) -> Vec<String> {
+    rollback_published_copies_with_recovery(entries, None)
+}
+
+fn rollback_published_copies_with_recovery(
+    entries: &[undo::CopyEntry],
+    recovery_record_id: Option<&str>,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    for entry in entries.iter().rev() {
+        let destination = PathBuf::from(&entry.dest_path);
+        match fs::symlink_metadata(&destination) {
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => {
+                errors.push(format!(
+                    "Cannot inspect copied destination {}; retained for recovery: {}",
+                    destination.display(),
+                    error
+                ));
+                continue;
+            }
+            Ok(_) => {}
+        }
+
+        let quarantine = match reserve_staging_rename_with_recovery(
+            &destination,
+            recovery_record_id,
+        ) {
+            Ok(path) => path,
+            Err(error) => {
+                errors.push(format!(
+                    "Cannot quarantine copied destination {}; retained for recovery: {}",
+                    destination.display(),
+                    error
+                ));
+                continue;
+            }
+        };
+        if let Err(error) = undo::verify_copy(&quarantine, &entry.fingerprint) {
+            let recovery = if path_entry_exists(&destination) {
+                Err(format!(
+                    "destination is now occupied; entry retained at {}",
+                    quarantine.display()
+                ))
+            } else {
+                rename_exclusive(&quarantine, &destination)
+                    .map_err(|restore| format!("restore failed: {}; entry retained at {}", restore, quarantine.display()))
+            };
+            let recovery = match recovery {
+                Ok(()) => format!("entry restored at {}", destination.display()),
+                Err(recovery_error) => recovery_error,
+            };
+            errors.push(format!(
+                "Copied destination changed or was replaced at {}; preserving it. {}; {}",
+                destination.display(),
+                error,
+                recovery
+            ));
+            continue;
+        }
+        if let Err(error) = remove_existing_path(&quarantine) {
+            errors.push(format!(
+                "Copy rollback cleanup failed; content retained at {}: {}",
+                quarantine.display(),
+                error
+            ));
         }
     }
+    errors
 }
 
-fn remove_paths_reversed(paths: &[PathBuf]) {
-    for path in paths.iter().rev() {
-        let _ = remove_existing_path(path);
-    }
-}
-
-fn rollback_moves(completed: &[CompletedMove]) -> Vec<String> {
+fn rollback_moves(completed: &[CompletedMove], recovery_record_id: Option<&str>) -> Vec<String> {
     let mut errors = Vec::new();
     for item in completed.iter().rev() {
-        if let Err(e) = move_path_with_fallback(&item.dest_path, &item.source_path) {
+        if let Err(e) = move_path_with_fallback_cancellable_and_recovery(
+            &item.dest_path,
+            &item.source_path,
+            &|| false,
+            recovery_record_id,
+        ) {
             errors.push(format!(
                 "Rollback failed: {}. Moved content retained at {}",
                 e,
@@ -2897,6 +3285,62 @@ mod tests {
     }
 
     #[test]
+    fn later_copy_failure_keeps_and_reports_replaced_published_entry() {
+        let temp = tempfile::tempdir().unwrap();
+        let source_a = temp.path().join("source-a");
+        let source_b = temp.path().join("source-b");
+        let destination_a = temp.path().join("destination-a");
+        let destination_b = temp.path().join("destination-b");
+        fs::write(&source_a, b"first copy").unwrap();
+        fs::write(&source_b, b"second copy").unwrap();
+
+        let recorded = copy_entry_checked(&source_a, &destination_a, &|| false, &mut |staged| {
+            undo::record_copy_entry(&source_a, &destination_a, staged, &|| false)
+        })
+        .unwrap();
+        fs::write(&destination_a, b"user edit").unwrap();
+        let second = copy_entry_checked(&source_b, &destination_b, &|| false, &mut |_| {
+            Err::<(), _>("injected later fingerprint failure".to_string())
+        });
+        assert_eq!(second.unwrap_err(), "injected later fingerprint failure");
+
+        let cleanup_errors = rollback_published_copies(&[recorded]);
+        assert_eq!(fs::read(&destination_a).unwrap(), b"user edit");
+        assert_eq!(fs::read(&source_a).unwrap(), b"first copy");
+        assert_eq!(cleanup_errors.len(), 1);
+        assert!(cleanup_errors[0].contains(&destination_a.to_string_lossy().to_string()));
+    }
+
+    #[test]
+    fn queued_mutation_wait_cancels_without_entering_the_global_lock() {
+        use std::sync::atomic::AtomicBool;
+        use std::sync::mpsc;
+        use std::thread;
+        use std::time::{Duration, Instant};
+
+        let held = mutation_lock().unwrap();
+        let token = std::sync::Arc::new(AtomicBool::new(false));
+        let queued_token = std::sync::Arc::clone(&token);
+        let (sender, receiver) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let started = Instant::now();
+            let result = mutation_lock_cancellable(Some(&queued_token));
+            sender.send((started.elapsed(), result.is_err())).unwrap();
+        });
+
+        thread::sleep(Duration::from_millis(30));
+        token.store(true, Ordering::Relaxed);
+        let (elapsed, cancelled) = receiver
+            .recv_timeout(Duration::from_millis(500))
+            .expect("queued operation should observe cancellation promptly");
+        assert!(cancelled);
+        assert!(elapsed < Duration::from_millis(500));
+        assert!(try_mutation_lock().is_err(), "cancelled waiter must not acquire the lock");
+        drop(held);
+        worker.join().unwrap();
+    }
+
+    #[test]
     fn cross_volume_staging_cancellation_restores_source() {
         let temp = tempfile::tempdir().unwrap();
         let source = temp.path().join("source");
@@ -2949,6 +3393,7 @@ mod tests {
             OverwriteBackup {
                 dest_path: destination.clone(),
                 backup_path: backup.clone(),
+                fingerprint: undo::copy_fingerprint(&backup, &|| false).unwrap(),
             },
         )]);
         let errors = restore_overwrite_backups(&backups);

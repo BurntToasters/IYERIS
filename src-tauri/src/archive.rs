@@ -836,12 +836,7 @@ fn zip_entry_options<'a>(
         .compression_method(method)
         .compression_level(level.map(i64::from));
 
-    if let Some(password) = advanced_options
-        .password
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
+    if let Some(password) = nonempty_archive_password(advanced_options.password.as_deref()) {
         options = match advanced_options.encryption_method.as_deref() {
             Some("ZipCrypto") => options.with_deprecated_encryption(password.as_bytes()),
             _ => options.with_aes_encryption(zip::AesMode::Aes256, password),
@@ -849,6 +844,10 @@ fn zip_entry_options<'a>(
     }
 
     options
+}
+
+fn nonempty_archive_password(password: Option<&str>) -> Option<&str> {
+    password.filter(|value| !value.is_empty())
 }
 
 fn compress_zip(
@@ -1101,6 +1100,23 @@ fn build_lzma2_options(
     lzma2
 }
 
+fn configure_7z_compression_options(
+    writer: &mut sevenz_rust2::ArchiveWriter<fs::File>,
+    options: &AdvancedCompressOptions,
+) {
+    let lzma2 = build_lzma2_options(options);
+    if let Some(password) = nonempty_archive_password(options.password.as_deref()) {
+        writer.set_content_methods(vec![
+            sevenz_rust2::encoder_options::AesEncoderOptions::new(password.into()).into(),
+            lzma2.into(),
+        ]);
+        writer.set_encrypt_header(options.encrypt_file_names.unwrap_or(false));
+    } else {
+        writer.set_content_methods(vec![lzma2.into()]);
+        writer.set_encrypt_header(false);
+    }
+}
+
 fn compress_7z(
     sources: &[PathBuf],
     file: fs::File,
@@ -1112,24 +1128,7 @@ fn compress_7z(
 ) -> Result<(), String> {
     let result = (|| -> Result<(), String> {
         let mut sz = sevenz_rust2::ArchiveWriter::new(file).map_err(|e| e.to_string())?;
-        let lzma2 = build_lzma2_options(&advanced_options);
-        let password = advanced_options
-            .password
-            .as_deref()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned);
-
-        if let Some(password_value) = password.as_deref() {
-            sz.set_content_methods(vec![
-                sevenz_rust2::encoder_options::AesEncoderOptions::new(password_value.into()).into(),
-                lzma2.into(),
-            ]);
-            sz.set_encrypt_header(advanced_options.encrypt_file_names.unwrap_or(false));
-        } else {
-            sz.set_content_methods(vec![lzma2.into()]);
-            sz.set_encrypt_header(false);
-        }
+        configure_7z_compression_options(&mut sz, &advanced_options);
 
         let sz_cell = std::cell::RefCell::new(sz);
         let total = sources.len() as u64;
@@ -1252,11 +1251,7 @@ pub async fn extract_archive(
         ACTIVE_OPS.finish(&op_id, cancellation.as_ref());
         return Err("Operation cancelled".to_string());
     }
-    let extract_password = password
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(str::to_owned);
+    let extract_password = nonempty_archive_password(password.as_deref()).map(str::to_owned);
 
     let extract_op_id = op_id.clone();
     let extract_cancellation = cancellation.clone();
@@ -1384,7 +1379,7 @@ fn extract_zip(
     }
     let mut cumulative_bytes: u64 = 0;
     let mut extracted: Vec<PathBuf> = Vec::new();
-    let password_bytes = password.map(|value| value.as_bytes());
+    let password_bytes = nonempty_archive_password(password).map(|value| value.as_bytes());
 
     let result = (|| {
         for i in 0..total {
@@ -1465,7 +1460,7 @@ fn extract_tar_gz(
     cancellation: Option<&CancellationToken>,
     password: Option<&str>,
 ) -> Result<(), String> {
-    if password.is_some() {
+    if nonempty_archive_password(password).is_some() {
         return Err("Password-protected tar.gz archives are not supported".to_string());
     }
     let file = open_regular_read(archive)?;
@@ -1482,7 +1477,7 @@ fn extract_tar_bz2(
     cancellation: Option<&CancellationToken>,
     password: Option<&str>,
 ) -> Result<(), String> {
-    if password.is_some() {
+    if nonempty_archive_password(password).is_some() {
         return Err("Password-protected tar.bz2 archives are not supported".to_string());
     }
     let file = open_regular_read(archive)?;
@@ -1499,7 +1494,7 @@ fn extract_tar(
     cancellation: Option<&CancellationToken>,
     password: Option<&str>,
 ) -> Result<(), String> {
-    if password.is_some() {
+    if nonempty_archive_password(password).is_some() {
         return Err("Password-protected tar archives are not supported".to_string());
     }
     let file = open_regular_read(archive)?;
@@ -1520,6 +1515,7 @@ fn extract_7z(
     let mut count = 0usize;
     let mut cumulative_bytes: u64 = 0;
     let mut extracted: Vec<PathBuf> = Vec::new();
+    let password = nonempty_archive_password(password);
     let sevenz_password = sevenz_rust2::Password::from(password.unwrap_or(""));
 
     let extract_fn = |entry: &sevenz_rust2::ArchiveEntry,
@@ -1595,7 +1591,7 @@ fn extract_7z(
         Ok(true)
     };
 
-    let result = if password.map(str::is_empty).unwrap_or(true) {
+    let result = if password.is_none() {
         sevenz_rust2::decompress_with_extract_fn(reader, dest, extract_fn)
     } else {
         sevenz_rust2::decompress_with_extract_fn_and_password(
@@ -1624,7 +1620,7 @@ fn extract_tar_xz(
     cancellation: Option<&CancellationToken>,
     password: Option<&str>,
 ) -> Result<(), String> {
-    if password.is_some() {
+    if nonempty_archive_password(password).is_some() {
         return Err("Password-protected tar.xz archives are not supported".to_string());
     }
     let file = open_regular_read(archive)?;
@@ -2412,6 +2408,96 @@ mod tests {
     //! and tar archives crafted in-memory (no fixture files on disk).
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn zip_whitespace_password_round_trips_without_normalization() {
+        let temp = tmp();
+        let password = "  archive password  ";
+        let options = AdvancedCompressOptions {
+            password: Some(password.to_string()),
+            ..AdvancedCompressOptions::default()
+        };
+        let archive_path = temp.path().join("whitespace.zip");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&archive_path).unwrap());
+        writer
+            .start_file("payload.txt", zip_entry_options(&options))
+            .unwrap();
+        writer.write_all(b"round trip payload").unwrap();
+        writer.finish().unwrap();
+
+        assert_eq!(nonempty_archive_password(Some(password)), Some(password));
+        let mut archive = zip::ZipArchive::new(fs::File::open(archive_path).unwrap()).unwrap();
+        let mut entry = archive
+            .by_index_decrypt(0, password.as_bytes())
+            .expect("exact whitespace password should decrypt ZIP entry");
+        let mut contents = Vec::new();
+        entry.read_to_end(&mut contents).unwrap();
+        assert_eq!(contents, b"round trip payload");
+    }
+
+    #[test]
+    fn seven_zip_whitespace_password_round_trips_without_normalization() {
+        let temp = tmp();
+        let password = "  archive password  ";
+        let options = AdvancedCompressOptions {
+            password: Some(password.to_string()),
+            ..AdvancedCompressOptions::default()
+        };
+        let source_path = temp.path().join("payload.txt");
+        fs::write(&source_path, b"round trip payload").unwrap();
+        let archive_path = temp.path().join("whitespace.7z");
+        let mut writer =
+            sevenz_rust2::ArchiveWriter::new(fs::File::create(&archive_path).unwrap()).unwrap();
+        configure_7z_compression_options(&mut writer, &options);
+        writer
+            .push_archive_entry(
+                sevenz_rust2::ArchiveEntry::from_path(&source_path, "payload.txt".to_string()),
+                Some(fs::File::open(&source_path).unwrap()),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+
+        assert_eq!(nonempty_archive_password(Some(password)), Some(password));
+        let mut contents = Vec::new();
+        sevenz_rust2::decompress_with_extract_fn_and_password(
+            BufReader::new(fs::File::open(archive_path).unwrap()),
+            temp.path().join("out"),
+            sevenz_rust2::Password::from(password),
+            |entry, reader, _| {
+                if !entry.is_directory() {
+                    reader.read_to_end(&mut contents)?;
+                }
+                Ok(true)
+            },
+        )
+        .expect("exact whitespace password should decrypt 7z entry");
+        assert_eq!(contents, b"round trip payload");
+    }
+
+    #[test]
+    fn only_an_exactly_empty_archive_password_means_no_password() {
+        assert_eq!(nonempty_archive_password(Some("")), None);
+        assert_eq!(nonempty_archive_password(None), None);
+        assert_eq!(nonempty_archive_password(Some(" \t ")), Some(" \t "));
+
+        let options = AdvancedCompressOptions {
+            password: Some(String::new()),
+            ..AdvancedCompressOptions::default()
+        };
+        let temp = tmp();
+        let path = temp.path().join("empty-password.zip");
+        let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
+        writer
+            .start_file("payload.txt", zip_entry_options(&options))
+            .unwrap();
+        writer.write_all(b"plain payload").unwrap();
+        writer.finish().unwrap();
+        let mut archive = zip::ZipArchive::new(fs::File::open(path).unwrap()).unwrap();
+        let mut entry = archive.by_index(0).unwrap();
+        let mut contents = Vec::new();
+        entry.read_to_end(&mut contents).unwrap();
+        assert_eq!(contents, b"plain payload");
+    }
 
     #[test]
     fn compression_reader_stops_inside_a_large_entry() {

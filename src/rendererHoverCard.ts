@@ -7,7 +7,7 @@ type HoverCardDeps = {
   formatFileSize: (size: number) => string;
   getFileTypeFromName: (name: string) => string;
   getFileIcon: (name: string) => string;
-  getThumbnailForPath: (path: string) => string | undefined;
+  getThumbnailForPath: (path: string, item?: FileItem) => string | undefined;
   isRubberBandActive: () => boolean;
   getHoverRoot?: () => HTMLElement | Document | null;
   getScrollContainer?: () => HTMLElement | Document | null;
@@ -89,7 +89,7 @@ export function createHoverCardController(deps: HoverCardDeps) {
       typeEl.textContent = item.isDirectory ? 'Folder' : deps.getFileTypeFromName(item.name);
       dateEl.textContent = new Date(item.modified).toLocaleString();
 
-      const cached = deps.getThumbnailForPath(item.path);
+      const cached = deps.getThumbnailForPath(item.path, item);
       clearHtml(thumbnail);
       if (cached) {
         const img = document.createElement('img');

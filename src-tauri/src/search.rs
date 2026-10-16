@@ -715,17 +715,31 @@ pub async fn rebuild_index(app: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn get_index_status() -> Result<serde_json::Value, String> {
-    let (is_building, entry_count, last_built) = indexer::get_status();
+    let (is_building, entry_count, last_built, metadata) = indexer::get_status();
     Ok(serde_json::json!({
         "isBuilding": is_building,
         "entryCount": entry_count,
         "lastBuilt": last_built,
+        "truncated": metadata.truncated,
+        "truncationReasons": metadata.truncation_reasons,
+        "indexedRoots": metadata.indexed_roots,
     }))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn index_status_exposes_partial_scan_metadata() {
+        let status = get_index_status().await.unwrap();
+        assert!(status["isBuilding"].is_boolean());
+        assert!(status["entryCount"].is_number());
+        assert!(status["lastBuilt"].is_null() || status["lastBuilt"].is_string());
+        assert!(status["truncated"].is_boolean());
+        assert!(status["truncationReasons"].is_array());
+        assert!(status["indexedRoots"].is_array());
+    }
 
     #[test]
     fn indexed_search_guard_releases_operation_when_readiness_wait_fails() {

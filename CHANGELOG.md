@@ -35,10 +35,13 @@
 - **Tooling:** Repaired and safety-marked the measured 15,300-item performance fixture, linted maintained build scripts, made AppStream updates idempotent, de-duplicated CI audits, and removed stale release tooling and RustSec suppressions.
 - **Search:** Global indexed search now honors file-type, size, date, regex, and hidden-file filters; Windows `FILE_ATTRIBUTE_HIDDEN` is respected across search, indexer, and duplicate scans.
 - **Search:** Global indexed search waits for index readiness, refreshes persisted data on the first search of each session, and refreshes again on searches when the index is at least five minutes old. No scan runs at startup.
+- **Search:** Index roots now include OS-resolved user folders and explicit additional locations. Overlapping roots and file paths are deduplicated, and persisted index status reports entry/depth caps and traversal failures as partial results.
+- **Thumbnails:** Memory and disk cache lookups include file fingerprints and rendering variants, so edits, replacements, quality changes, and media-type changes do not reuse stale thumbnail pixels.
+- **Archives:** ZIP and 7z password strings are preserved exactly during compression and extraction, including passwords made only of whitespace.
 - **Performance & Views:** Delegated column-view drag listeners to the pane container, added column-view sort/extension parity, and added cancellable, batched secondary-pane rendering with shared RAW/media thumbnail types in Dual Pane mode.
 - **Virtualization:** Fixed virtualized grid/list scroll-jump drift where offscreen `content-visibility: auto` placeholder sizing conflicted with the spacer-based window calculation, and row height is no longer reused across grid/list view switches.
-- **Security & Testing:** Updated npm and Cargo lockfiles for `dompurify`, `undici`, `brace-expansion`, `source-map-js`, and `rustls 0.23.46` advisories, and expanded real-browser E2E smoke verification with a repeatable JSON artifact.
-- **Testing:** Removed 98 synthetic and post-hoc JSDOM suites (about 49,500 lines), retaining 28 failure-mode, security, and static suites. `test:all` gates the 352-test headless suite and 10 real-browser smoke suites, with results recorded in `coverage-headless/browser-smoke-artifact.json`. The browser smoke stubs the native Tauri API, so it does not cover native desktop behavior.
+- **Security & Testing:** Updated npm and Cargo lockfiles for `dompurify`, `undici`, `brace-expansion`, `source-map-js`, and `rustls 0.23.46` advisories. The renderer-browser smoke now checks thumbnail cache freshness and sharing, exact whitespace archive passwords, and operation-card lifetime.
+- **Testing:** `test:all` gates the retained headless checks and 13 renderer-browser E2E suites. The repeatable artifact records commit and working-tree state, timestamps, runtime and actual CDP browser versions, per-suite output, and failures; CI uploads the browser evidence. The browser smoke stubs native Tauri IPC and does not cover native desktop commands.
 
 Beta promotion requires the full platform matrix and a minimum 72-hour soak. Release-blocking fixes restart the soak with a new beta.
 

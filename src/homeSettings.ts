@@ -53,6 +53,14 @@ export function sanitizeHomeSettings(
 
   if (!isRecord(raw)) return clean;
 
+  if (
+    typeof raw._revision === 'number' &&
+    Number.isSafeInteger(raw._revision) &&
+    raw._revision >= 0
+  ) {
+    clean._revision = raw._revision;
+  }
+
   if (typeof raw.showQuickAccess === 'boolean') clean.showQuickAccess = raw.showQuickAccess;
   if (typeof raw.showRecents === 'boolean') clean.showRecents = raw.showRecents;
   if (typeof raw.showBookmarks === 'boolean') clean.showBookmarks = raw.showBookmarks;

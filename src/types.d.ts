@@ -62,6 +62,7 @@ export interface SavedSearch {
 }
 
 export interface Settings {
+  _revision?: number;
   _timestamp?: number;
   shortcuts: { [actionId: string]: string[] };
   theme:
@@ -87,6 +88,7 @@ export interface Settings {
   searchHistory: string[];
   savedSearches: SavedSearch[];
   directoryHistory: string[];
+  additionalIndexLocations?: string[];
   recentTransferDestinations?: string[];
   enableIndexer: boolean;
   minimizeToTray: boolean;
@@ -157,6 +159,7 @@ export interface Settings {
 }
 
 export interface HomeSettings {
+  _revision?: number;
   showQuickAccess: boolean;
   showRecents: boolean;
   showBookmarks: boolean;
@@ -305,7 +308,27 @@ export type PropertiesResponse = IpcResult<{ properties: ItemProperties }>;
 
 export type SettingsResponse = IpcResult<{ settings: Settings }>;
 
+export type SettingsSaveResponse =
+  | { success: true; settings: Settings }
+  | {
+      success: false;
+      error: string;
+      settings?: Settings;
+      conflictKeys?: string[];
+      changedKeys?: string[];
+    };
+
 export type HomeSettingsResponse = IpcResult<{ settings: HomeSettings }>;
+
+export type HomeSettingsSaveResponse =
+  | { success: true; settings: HomeSettings }
+  | {
+      success: false;
+      error: string;
+      settings?: HomeSettings;
+      conflictKeys?: string[];
+      changedKeys?: string[];
+    };
 
 export type PathResponse = IpcResult<{ path: string }>;
 
@@ -389,7 +412,10 @@ export type ThumbnailCacheSizeResponse = IpcResult<{
   fileCount: number;
 }>;
 
-export type DiagnosticsResponse = IpcResult<{ path: string }>;
+export type DiagnosticsResponse =
+  | { success: true; status: 'saved'; path: string }
+  | { success: true; status: 'cancelled'; path?: undefined }
+  | { success: false; error: string };
 
 export type UndoRedoStateResponse = IpcResult<{
   canUndo: boolean;
@@ -436,6 +462,9 @@ export interface IndexStatus {
   totalFiles: number;
   indexedFiles: number;
   lastIndexTime: Date | null;
+  truncated?: boolean;
+  truncationReasons?: string[];
+  indexedRoots?: string[];
 }
 
 export interface UndoCreateAction {
@@ -585,19 +614,39 @@ export interface TauriAPI {
     attrs: { readOnly?: boolean; hidden?: boolean; system?: boolean }
   ) => Promise<IpcResult>;
   getSettings: () => Promise<SettingsResponse>;
-  saveSettings: (settings: Settings) => Promise<IpcResult>;
-  saveSettingsSync: (settings: Settings) => Promise<IpcResult>;
+  saveSettings: (settings: Settings, replace?: boolean) => Promise<SettingsSaveResponse>;
+  saveSettingsSync: (settings: Settings, replace?: boolean) => Promise<SettingsSaveResponse>;
+  reconcileSettingsSnapshot: (
+    remote: Settings,
+    local: Settings,
+    canonical?: Record<string, unknown>
+  ) => Settings;
+  resolveSettingsConflict: (
+    settings: Settings,
+    keys: string[],
+    resolution: 'keepLocal' | 'useLatest'
+  ) => Settings;
   resetSettings: () => Promise<IpcResult>;
   relaunchApp: () => Promise<void>;
   getSettingsPath: () => Promise<string>;
   getHomeSettings: () => Promise<HomeSettingsResponse>;
-  saveHomeSettings: (settings: HomeSettings) => Promise<IpcResult>;
+  saveHomeSettings: (settings: HomeSettings) => Promise<HomeSettingsSaveResponse>;
+  reconcileHomeSettingsSnapshot: (
+    remote: HomeSettings,
+    local: HomeSettings,
+    canonical?: Record<string, unknown>
+  ) => HomeSettings;
+  resolveHomeSettingsConflict: (
+    settings: HomeSettings,
+    keys: string[],
+    resolution: 'keepLocal' | 'useLatest'
+  ) => HomeSettings;
   resetHomeSettings: () => Promise<IpcResult>;
   getHomeSettingsPath: () => Promise<string>;
 
   setClipboard: (clipboardData: ClipboardOperation | null) => Promise<void>;
   getClipboard: () => Promise<ClipboardOperation | null>;
-  getSystemClipboardData: () => Promise<ClipboardOperation>;
+  getSystemClipboardData: () => Promise<ClipboardOperation | null>;
   getSystemClipboardFiles: () => Promise<string[]>;
   writeToSystemClipboard: (text: string) => Promise<void>;
   onClipboardChanged: (callback: (clipboardData: ClipboardOperation | null) => void) => () => void;
@@ -608,8 +657,12 @@ export interface TauriAPI {
   getPathForFile?: (file: File) => string;
   onNativeDragDrop: (callback: (event: NativeDragDropEvent) => void) => () => void;
 
-  onSettingsChanged: (callback: (settings: Settings) => void) => () => void;
-  onHomeSettingsChanged: (callback: (settings: HomeSettings) => void) => () => void;
+  onSettingsChanged: (
+    callback: (settings: Settings, canonical?: Record<string, unknown>) => void
+  ) => () => void;
+  onHomeSettingsChanged: (
+    callback: (settings: HomeSettings, canonical?: Record<string, unknown>) => void
+  ) => () => void;
 
   copyItems: (
     sourcePaths: string[],
@@ -761,13 +814,15 @@ export interface TauriAPI {
   getCachedThumbnail: (
     filePath: string,
     mtimeMs?: number,
-    fileSize?: number
+    fileSize?: number,
+    variant?: string
   ) => Promise<ThumbnailCacheResponse>;
   saveCachedThumbnail: (
     filePath: string,
     dataUrl: string,
     mtimeMs?: number,
-    fileSize?: number
+    fileSize?: number,
+    variant?: string
   ) => Promise<ThumbnailSaveResponse>;
   clearThumbnailCache: () => Promise<ThumbnailClearResponse>;
   getThumbnailCacheSize: () => Promise<ThumbnailCacheSizeResponse>;

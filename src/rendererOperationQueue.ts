@@ -262,15 +262,18 @@ export function createOperationQueueController(deps: QueueDeps) {
       });
     }
     if (timers.has(id)) clearTimeout(timers.get(id));
-    timers.set(
-      id,
-      setTimeout(() => {
-        operations.delete(id);
-        timers.delete(id);
-        render();
-        hidePanelIfEmpty();
-      }, COMPLETE_REMOVE_DELAY_MS)
-    );
+    timers.delete(id);
+    if (status === 'done') {
+      timers.set(
+        id,
+        setTimeout(() => {
+          operations.delete(id);
+          timers.delete(id);
+          render();
+          hidePanelIfEmpty();
+        }, COMPLETE_REMOVE_DELAY_MS)
+      );
+    }
     scheduleRender();
   }
 

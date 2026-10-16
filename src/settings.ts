@@ -34,6 +34,7 @@ export function createDefaultSettings(): Settings {
     searchHistory: [],
     savedSearches: [],
     directoryHistory: [],
+    additionalIndexLocations: [],
     recentTransferDestinations: [],
     enableIndexer: true,
     minimizeToTray: false,
@@ -341,6 +342,9 @@ export function sanitizeSettings(
     bookmarks: [...defaults.bookmarks],
     searchHistory: [...defaults.searchHistory],
     directoryHistory: [...defaults.directoryHistory],
+    additionalIndexLocations: defaults.additionalIndexLocations
+      ? [...defaults.additionalIndexLocations]
+      : [],
     recentTransferDestinations: defaults.recentTransferDestinations
       ? [...defaults.recentTransferDestinations]
       : [],
@@ -477,6 +481,26 @@ export function sanitizeSettings(
     if (val !== null) assignKey(clean, key, val as Settings[keyof Settings]);
   }
 
+  if (Array.isArray(raw.additionalIndexLocations)) {
+    const locations: string[] = [];
+    for (const location of raw.additionalIndexLocations) {
+      if (typeof location !== 'string' || location.length === 0 || location.length > 4096) {
+        continue;
+      }
+      if (
+        !location.startsWith('/') &&
+        !/^[A-Za-z]:[\\/]/.test(location) &&
+        !/^\\\\[^\\]+\\[^\\]+/.test(location)
+      ) {
+        continue;
+      }
+      if (locations.includes(location)) continue;
+      locations.push(location);
+      if (locations.length === 64) break;
+    }
+    clean.additionalIndexLocations = locations;
+  }
+
   const customTheme = sanitizeCustomTheme(raw.customTheme);
   if (customTheme) clean.customTheme = customTheme;
 
@@ -525,6 +549,13 @@ export function sanitizeSettings(
 
   if (typeof raw._timestamp === 'number' && Number.isFinite(raw._timestamp)) {
     clean._timestamp = raw._timestamp;
+  }
+  if (
+    typeof raw._revision === 'number' &&
+    Number.isSafeInteger(raw._revision) &&
+    raw._revision >= 0
+  ) {
+    clean._revision = raw._revision;
   }
 
   if (Array.isArray(raw.savedSearches)) {

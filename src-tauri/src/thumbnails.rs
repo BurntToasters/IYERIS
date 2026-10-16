@@ -44,10 +44,23 @@ fn ensure_cache_dir(dir: &Path) -> Result<(), String> {
     crate::ensure_real_directory_tree(dir, "Thumbnail cache directory")
 }
 
+#[cfg(test)]
 fn cache_key(file_path: &str, mtime_ms: u64, size: u64) -> String {
+    cache_key_with_variant(file_path, mtime_ms, size, None)
+}
+
+fn cache_key_with_variant(
+    file_path: &str,
+    mtime_ms: u64,
+    size: u64,
+    variant: Option<&str>,
+) -> String {
     use sha2::{Digest, Sha256};
     // Include mtime and size so a modified file doesn't serve a stale thumbnail.
-    let input = format!("{}|{}|{}", file_path, mtime_ms, size);
+    let input = match variant {
+        Some(variant) => format!("{}|{}|{}|{}", file_path, mtime_ms, size, variant),
+        None => format!("{}|{}|{}", file_path, mtime_ms, size),
+    };
     let hash = Sha256::digest(input.as_bytes());
     hex::encode(&hash[..16])
 }
@@ -139,20 +152,38 @@ pub async fn get_cached_thumbnail(
     file_path: String,
     mtime_ms: Option<u64>,
     file_size: Option<u64>,
+    variant: Option<String>,
 ) -> Result<Option<String>, String> {
     let dir = cache_dir_path(&app)?;
     tokio::task::spawn_blocking(move || {
-        get_cached_thumbnail_at(&dir, &file_path, mtime_ms, file_size)
+        get_cached_thumbnail_at_with_variant(
+            &dir,
+            &file_path,
+            mtime_ms,
+            file_size,
+            variant.as_deref(),
+        )
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
+#[cfg(test)]
 fn get_cached_thumbnail_at(
     dir: &Path,
     file_path: &str,
     mtime_ms: Option<u64>,
     file_size: Option<u64>,
+) -> Result<Option<String>, String> {
+    get_cached_thumbnail_at_with_variant(dir, file_path, mtime_ms, file_size, None)
+}
+
+fn get_cached_thumbnail_at_with_variant(
+    dir: &Path,
+    file_path: &str,
+    mtime_ms: Option<u64>,
+    file_size: Option<u64>,
+    variant: Option<&str>,
 ) -> Result<Option<String>, String> {
     // Windows cannot remove an open file. Serialize the bounded cache read
     // with clear/rename so clearing never races a live file handle.
@@ -160,7 +191,12 @@ fn get_cached_thumbnail_at(
     ensure_cache_dir(dir)?;
     // Key on the same caller-supplied mtime/size that save uses, so the read
     // and write keys are byte-identical (no cross-path float/units mismatch).
-    let key = cache_key(file_path, mtime_ms.unwrap_or(0), file_size.unwrap_or(0));
+    let key = cache_key_with_variant(
+        file_path,
+        mtime_ms.unwrap_or(0),
+        file_size.unwrap_or(0),
+        variant,
+    );
     let thumb_path = dir.join(&key);
 
     let metadata = match fs::symlink_metadata(&thumb_path) {
@@ -219,15 +255,24 @@ pub async fn save_cached_thumbnail(
     data_url: String,
     mtime_ms: Option<u64>,
     file_size: Option<u64>,
+    variant: Option<String>,
 ) -> Result<(), String> {
     let dir = cache_dir_path(&app)?;
     tokio::task::spawn_blocking(move || {
-        save_cached_thumbnail_at(&dir, &file_path, &data_url, mtime_ms, file_size)
+        save_cached_thumbnail_at_with_variant(
+            &dir,
+            &file_path,
+            &data_url,
+            mtime_ms,
+            file_size,
+            variant.as_deref(),
+        )
     })
     .await
     .map_err(|e| e.to_string())?
 }
 
+#[cfg(test)]
 fn save_cached_thumbnail_at(
     dir: &Path,
     file_path: &str,
@@ -235,11 +280,27 @@ fn save_cached_thumbnail_at(
     mtime_ms: Option<u64>,
     file_size: Option<u64>,
 ) -> Result<(), String> {
+    save_cached_thumbnail_at_with_variant(dir, file_path, data_url, mtime_ms, file_size, None)
+}
+
+fn save_cached_thumbnail_at_with_variant(
+    dir: &Path,
+    file_path: &str,
+    data_url: &str,
+    mtime_ms: Option<u64>,
+    file_size: Option<u64>,
+    variant: Option<&str>,
+) -> Result<(), String> {
     if data_url.len() > MAX_THUMBNAIL_BYTES {
         return Err("Thumbnail payload too large".to_string());
     }
     let generation = CACHE_GENERATION.load(Ordering::Acquire);
-    let key = cache_key(file_path, mtime_ms.unwrap_or(0), file_size.unwrap_or(0));
+    let key = cache_key_with_variant(
+        file_path,
+        mtime_ms.unwrap_or(0),
+        file_size.unwrap_or(0),
+        variant,
+    );
     let thumb_path = dir.join(&key);
 
     // Atomic write (temp + rename) so concurrent saves / cache trims can't

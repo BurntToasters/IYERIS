@@ -61,12 +61,95 @@ function cacheDriveInfo(drives: DriveInfo[]): void {
   });
 }
 
-async function saveSettingsWithTimestamp(settings: Settings) {
+function cloneSettingsSnapshot(settings: Settings): Settings {
+  return sanitizeSettings(JSON.parse(JSON.stringify(settings)) as unknown);
+}
+
+function getSettingField(settings: Settings, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(settings, key)?.value;
+}
+
+function changedSettingsKeys(current: Settings, baseline: Settings): string[] {
+  return Object.keys(current).filter((key) => {
+    if (key === '_revision' || key === '_timestamp') return false;
+    return (
+      JSON.stringify(getSettingField(current, key)) !==
+      JSON.stringify(getSettingField(baseline, key))
+    );
+  });
+}
+
+function presentSettingsConflict(conflictKeys: string[], fullReplacement = false): void {
+  const resolve = (resolution: 'keepLocal' | 'useLatest') => {
+    currentSettings = window.tauriAPI.resolveSettingsConflict(
+      currentSettings,
+      conflictKeys,
+      resolution
+    );
+    applySettings(currentSettings);
+    if (resolution === 'keepLocal') {
+      if (fullReplacement) {
+        void saveSettingsWithTimestamp(currentSettings, true).then((result) => {
+          if (!result.success && !result.conflictKeys) notifySettingsSaveError(result.error);
+        });
+      } else {
+        debouncedSaveSettings(0);
+      }
+    }
+  };
+  showToast(
+    'Another window changed settings you edited. Choose which values to keep.',
+    'Settings conflict',
+    'warning',
+    [
+      { label: 'Keep my changes', onClick: () => resolve('keepLocal') },
+      { label: 'Use latest', onClick: () => resolve('useLatest') },
+    ]
+  );
+}
+
+async function saveSettingsWithTimestamp(settings: Settings, replace = false) {
   if (isResettingSettings) {
-    return { success: true as const };
+    return { success: true as const, settings };
   }
-  settings._timestamp = Date.now();
-  return window.tauriAPI.saveSettings(settings);
+  const submitted = cloneSettingsSnapshot(settings);
+  const liveSnapshot = cloneSettingsSnapshot(currentSettings);
+  const result = await window.tauriAPI.saveSettings(settings, replace);
+  const changedAfterSubmit = changedSettingsKeys(currentSettings, liveSnapshot);
+
+  if (result.success) {
+    const merged: Record<string, unknown> = { ...result.settings };
+    for (const key of changedAfterSubmit) {
+      merged[key] = getSettingField(currentSettings, key);
+    }
+    currentSettings = sanitizeSettings(merged);
+    Object.assign(settings, currentSettings);
+    return { success: true as const, settings: currentSettings };
+  }
+
+  if (result.settings && result.conflictKeys) {
+    const merged: Record<string, unknown> = { ...result.settings };
+    if (replace) {
+      Object.assign(merged, submitted);
+      merged._revision = result.settings._revision;
+    } else {
+      const changedKeys = result.changedKeys ?? changedSettingsKeys(submitted, liveSnapshot);
+      for (const key of changedKeys) {
+        if (key !== 'settings' && Object.prototype.hasOwnProperty.call(settings, key)) {
+          merged[key] = getSettingField(settings, key);
+        }
+      }
+    }
+    for (const key of changedAfterSubmit) {
+      merged[key] = getSettingField(currentSettings, key);
+    }
+    currentSettings = sanitizeSettings(merged);
+    Object.assign(settings, currentSettings);
+    presentSettingsConflict(result.conflictKeys, replace);
+    return { ...result, settings: currentSettings };
+  }
+
+  return result;
 }
 
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -94,7 +177,7 @@ function executeSettingsSave(): void {
   settingsSavePending = false;
   saveSettingsWithTimestamp(currentSettings)
     .then((result) => {
-      if (!result.success) {
+      if (!result.success && !result.conflictKeys) {
         notifySettingsSaveError(result.error);
       }
     })
@@ -119,13 +202,19 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   }, delay);
 }
 
-function flushDebouncedSettingsSave(): void {
-  if (!settingsSaveTimeout) return;
-  clearTimeout(settingsSaveTimeout);
-  settingsSaveTimeout = null;
+function flushDebouncedSettingsSave(force = false): void {
+  const hasScheduledSave = settingsSaveTimeout !== null;
+  if (!hasScheduledSave && !force && !settingsSaveInFlight && !settingsSavePending) return;
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
+    settingsSaveTimeout = null;
+  }
   if (isResettingSettings) return;
-  currentSettings._timestamp = Date.now();
-  void window.tauriAPI.saveSettingsSync(currentSettings);
+  if (settingsSaveInFlight) {
+    settingsSavePending = true;
+    return;
+  }
+  executeSettingsSave();
 }
 
 const ipcCleanupFunctions: (() => void)[] = [];
@@ -808,7 +897,13 @@ async function saveSettings() {
 
   const result = await saveSettingsWithTimestamp(currentSettings);
   if (!result.success) {
-    showToast('Failed to save settings: ' + (result.error || 'Operation failed'), 'Error', 'error');
+    if (!result.conflictKeys) {
+      showToast(
+        'Failed to save settings: ' + (result.error || 'Operation failed'),
+        'Error',
+        'error'
+      );
+    }
     return;
   }
   try {
@@ -2397,7 +2492,6 @@ document.addEventListener('mousedown', (e) => {
 })();
 
 window.addEventListener('beforeunload', () => {
-  flushDebouncedSettingsSave();
   stopIndexStatusPolling();
   cleanupSearch();
   cleanupHoverCard();
@@ -2429,13 +2523,8 @@ window.addEventListener('beforeunload', () => {
         activeTabId,
       };
     }
-    currentSettings._timestamp = Date.now();
-    void window.tauriAPI.saveSettingsSync(currentSettings);
   }
-  if (settingsSaveTimeout) {
-    clearTimeout(settingsSaveTimeout);
-    settingsSaveTimeout = null;
-  }
+  flushDebouncedSettingsSave(true);
   cleanupTabs();
   cleanupOperationQueue();
 

@@ -12,6 +12,9 @@ use walkdir::WalkDir;
 const MAX_INDEX_SIZE: usize = 50_000;
 const MAX_INDEX_FILE_BYTES: u64 = 64 * 1024 * 1024;
 const MAX_SCAN_DEPTH: usize = 20;
+const MAX_ADDITIONAL_INDEX_LOCATIONS: usize = 64;
+const MAX_ADDITIONAL_INDEX_LOCATION_BYTES: usize = 32 * 1024;
+const MAX_ADDITIONAL_INDEX_LOCATIONS_BYTES: usize = 64 * 1024;
 const INDEX_REFRESH_INTERVAL: Duration = Duration::from_secs(5 * 60);
 const BUILD_WAIT_INTERVAL: Duration = Duration::from_millis(25);
 // Yield CPU every N entries so bg build can't peg a core.
@@ -23,6 +26,8 @@ static FILE_INDEX: std::sync::LazyLock<Arc<RwLock<FileIndex>>> =
 
 static BUILD_CANCEL: AtomicBool = AtomicBool::new(false);
 static INDEXER_ENABLED: AtomicBool = AtomicBool::new(true);
+static ADDITIONAL_INDEX_LOCATIONS: std::sync::LazyLock<RwLock<Vec<String>>> =
+    std::sync::LazyLock::new(|| RwLock::new(Vec::new()));
 
 static INDEX_BUILD_COORDINATOR: std::sync::LazyLock<IndexBuildCoordinator> =
     std::sync::LazyLock::new(IndexBuildCoordinator::default);
@@ -48,6 +53,19 @@ pub struct IndexEntry {
     pub modified: f64,
 }
 
+#[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", default)]
+pub struct IndexMetadata {
+    pub truncated: bool,
+    pub truncation_reasons: Vec<String>,
+    pub indexed_roots: Vec<String>,
+}
+
+struct IndexBuildResult {
+    entries: Vec<IndexEntry>,
+    metadata: IndexMetadata,
+}
+
 #[derive(Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 struct IndexFileData {
@@ -57,12 +75,15 @@ struct IndexFileData {
     last_index_time: Option<f64>,
     #[serde(default)]
     version: u32,
+    #[serde(default)]
+    metadata: IndexMetadata,
 }
 
 #[derive(Default)]
 pub struct FileIndex {
     pub entries: Vec<IndexEntry>,
     pub last_built: Option<String>,
+    pub metadata: IndexMetadata,
 }
 
 type StatusCheck = Arc<dyn Fn() -> bool + Send + Sync>;
@@ -136,7 +157,7 @@ impl IndexBuildCoordinator {
     // The callbacks are injected so lifecycle tests can use temporary roots
     // and independently control query/build cancellation.
     #[allow(clippy::too_many_arguments)]
-    fn ensure_ready<B, P>(
+    fn ensure_ready<T, B, P>(
         &self,
         force: bool,
         is_enabled: StatusCheck,
@@ -147,8 +168,9 @@ impl IndexBuildCoordinator {
         publish: P,
     ) -> Result<(), String>
     where
-        B: FnOnce() -> Result<Vec<IndexEntry>, String> + Send + 'static,
-        P: FnOnce(Vec<IndexEntry>) -> Result<(), String> + Send + 'static,
+        T: Send + 'static,
+        B: FnOnce() -> Result<T, String> + Send + 'static,
+        P: FnOnce(T) -> Result<(), String> + Send + 'static,
     {
         if !is_enabled() {
             return Err("Indexer is disabled".to_string());
@@ -348,38 +370,49 @@ fn should_exclude(path: &Path, excl_segments: &HashSet<&str>, excl_files: &HashS
 fn get_index_locations() -> Vec<PathBuf> {
     let mut locations = Vec::new();
 
+    // Explicit user roots are highest priority so a large default folder set
+    // cannot consume the entry budget before a newly selected folder is read.
+    let additional = ADDITIONAL_INDEX_LOCATIONS
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    locations.extend(additional.into_iter().map(PathBuf::from));
+
     if let Some(user_dirs) = directories::UserDirs::new() {
-        let home = user_dirs.home_dir();
-        for dir in &[
-            "Desktop",
-            "Documents",
-            "Downloads",
-            "Pictures",
-            "Music",
-            "Videos",
-        ] {
-            let p = home.join(dir);
-            if p.exists() {
-                locations.push(p);
+        for path in [
+            user_dirs.desktop_dir(),
+            user_dirs.document_dir(),
+            user_dirs.download_dir(),
+            user_dirs.picture_dir(),
+            user_dirs.audio_dir(),
+            user_dirs.video_dir(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if path.exists() {
+                locations.push(path.to_path_buf());
             }
         }
+    }
 
-        #[cfg(target_os = "macos")]
-        {
-            let movies = home.join("Movies");
+    #[cfg(target_os = "macos")]
+    {
+        if let Some(user_dirs) = directories::UserDirs::new() {
+            let movies = user_dirs.home_dir().join("Movies");
             if movies.exists() {
                 locations.push(movies);
             }
-            // Skip /Applications + /Volumes: deep .app trees, external mounts. Opt-in later.
         }
+        // Skip /Applications + /Volumes: deep .app trees, external mounts. Opt-in later.
+    }
 
-        #[cfg(target_os = "linux")]
-        {
-            for p in &["/usr", "/opt"] {
-                let path = Path::new(p);
-                if path.exists() {
-                    locations.push(path.to_path_buf());
-                }
+    #[cfg(target_os = "linux")]
+    {
+        for p in &["/usr", "/opt"] {
+            let path = Path::new(p);
+            if path.exists() {
+                locations.push(path.to_path_buf());
             }
         }
     }
@@ -393,6 +426,12 @@ fn get_index_locations() -> Vec<PathBuf> {
             }
         }
     }
+
+    let mut seen_roots = HashSet::new();
+    locations.retain(|location| {
+        let identity = fs::canonicalize(location).unwrap_or_else(|_| location.to_path_buf());
+        seen_roots.insert(normalized_path_key(&identity))
+    });
 
     locations
 }
@@ -422,14 +461,202 @@ fn populate_name_lower(entries: &mut [IndexEntry]) {
     }
 }
 
-fn build_index_sync() -> Vec<IndexEntry> {
-    build_index_from_locations(&get_index_locations())
+fn build_index_sync() -> IndexBuildResult {
+    build_index_from_locations_with_limits(&get_index_locations(), MAX_INDEX_SIZE, MAX_SCAN_DEPTH)
 }
 
+#[cfg(test)]
 fn build_index_from_locations(locations: &[PathBuf]) -> Vec<IndexEntry> {
+    build_index_from_locations_with_limits(locations, MAX_INDEX_SIZE, MAX_SCAN_DEPTH).entries
+}
+
+fn canonical_path_string(path: &Path) -> String {
+    path.to_string_lossy().to_string()
+}
+
+fn normalized_path_key(path: &Path) -> String {
+    #[cfg(target_os = "windows")]
+    {
+        canonical_path_string(path)
+            .replace('/', "\\")
+            .to_lowercase()
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        canonical_path_string(path)
+    }
+}
+
+fn path_key_is_within(candidate: &str, parent: &str) -> bool {
+    if candidate == parent {
+        return true;
+    }
+    #[cfg(target_os = "windows")]
+    let separator = '\\';
+    #[cfg(not(target_os = "windows"))]
+    let separator = '/';
+    if parent.ends_with(separator) {
+        candidate.starts_with(parent)
+    } else {
+        candidate.starts_with(&format!("{parent}{separator}"))
+    }
+}
+
+fn validate_additional_index_location(location: &str) -> Result<PathBuf, String> {
+    if location.len() > MAX_ADDITIONAL_INDEX_LOCATION_BYTES {
+        return Err(format!(
+            "Index location exceeds the {} byte limit",
+            MAX_ADDITIONAL_INDEX_LOCATION_BYTES
+        ));
+    }
+    let path = crate::validate_path(location, "Index location")?;
+    if path
+        .components()
+        .any(|component| matches!(component, std::path::Component::ParentDir))
+    {
+        return Err("Index location path contains a parent traversal".to_string());
+    }
+
+    let mut existing = path.as_path();
+    loop {
+        match fs::symlink_metadata(existing) {
+            Ok(_) => {
+                crate::ensure_no_symlink_components(existing, "Index location")?;
+                break;
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                existing = existing.parent().ok_or_else(|| {
+                    format!(
+                        "Cannot find an existing parent for index location {}",
+                        path.display()
+                    )
+                })?;
+            }
+            Err(error) => {
+                return Err(format!(
+                    "Cannot inspect index location {}: {}",
+                    existing.display(),
+                    error
+                ));
+            }
+        }
+    }
+    Ok(path)
+}
+
+/// Validate user-selected index roots without requiring them to exist. Missing
+/// removable roots are kept so the subsequent scan can report them as partial.
+pub fn validate_additional_index_locations(locations: &[String]) -> Result<(), String> {
+    if locations.len() > MAX_ADDITIONAL_INDEX_LOCATIONS {
+        return Err(format!(
+            "At most {} additional index locations are allowed",
+            MAX_ADDITIONAL_INDEX_LOCATIONS
+        ));
+    }
+    let mut total_bytes = 0usize;
+    for location in locations {
+        total_bytes = total_bytes
+            .checked_add(location.len())
+            .ok_or_else(|| "Additional index locations exceed the size limit".to_string())?;
+        if total_bytes > MAX_ADDITIONAL_INDEX_LOCATIONS_BYTES {
+            return Err(format!(
+                "Additional index locations exceed the {} byte limit",
+                MAX_ADDITIONAL_INDEX_LOCATIONS_BYTES
+            ));
+        }
+        validate_additional_index_location(location)?;
+    }
+    Ok(())
+}
+
+fn additional_index_location_key(location: &str) -> String {
+    let path = Path::new(location);
+    let identity = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    normalized_path_key(&identity)
+}
+
+/// Replace the user-selected roots and stale the current index only if the
+/// ordered, canonical root set changed.
+pub fn set_additional_index_locations(locations: Vec<String>) -> Result<bool, String> {
+    validate_additional_index_locations(&locations)?;
+
+    let mut unique_locations = Vec::with_capacity(locations.len());
+    let mut unique_keys = HashSet::new();
+    for location in locations {
+        if unique_keys.insert(additional_index_location_key(&location)) {
+            unique_locations.push(location);
+        }
+    }
+
+    let current_keys: Vec<_> = ADDITIONAL_INDEX_LOCATIONS
+        .read()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .iter()
+        .map(|location| additional_index_location_key(location))
+        .collect();
+    let next_keys: Vec<_> = unique_locations
+        .iter()
+        .map(|location| additional_index_location_key(location))
+        .collect();
+    if current_keys == next_keys {
+        return Ok(false);
+    }
+
+    *ADDITIONAL_INDEX_LOCATIONS
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner()) = unique_locations;
+    request_build_cancel();
+    INDEX_BUILD_COORDINATOR.mark_stale();
+    Ok(true)
+}
+
+fn add_truncation_reason(metadata: &mut IndexMetadata, reason: &str) {
+    metadata.truncated = true;
+    if !metadata
+        .truncation_reasons
+        .iter()
+        .any(|existing| existing == reason)
+    {
+        metadata.truncation_reasons.push(reason.to_string());
+    }
+}
+
+fn directory_has_unindexed_scannable_child(
+    path: &Path,
+    already_indexed: &HashSet<String>,
+    excl_segments: &HashSet<&str>,
+    excl_files: &HashSet<&str>,
+) -> Result<bool, ()> {
+    let children = fs::read_dir(path).map_err(|_| ())?;
+    for child in children {
+        let child = child.map_err(|_| ())?;
+        let child_path = child.path();
+        if should_exclude(&child_path, excl_segments, excl_files) {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(&child_path).map_err(|_| ())?;
+        if metadata.file_type().is_symlink() || (!metadata.is_file() && !metadata.is_dir()) {
+            continue;
+        }
+        if !already_indexed.contains(&normalized_path_key(&child_path)) {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
+
+fn build_index_from_locations_with_limits(
+    locations: &[PathBuf],
+    max_entries: usize,
+    max_depth: usize,
+) -> IndexBuildResult {
     let excl_segments = exclude_segments();
     let excl_files = exclude_files();
     let mut entries = Vec::new();
+    let mut metadata = IndexMetadata::default();
+    let mut seen_roots = HashSet::new();
+    let mut completed_roots: Vec<String> = Vec::new();
+    let mut seen_entries = HashSet::new();
     let mut scanned = 0usize;
 
     for location in locations {
@@ -437,19 +664,68 @@ fn build_index_from_locations(locations: &[PathBuf]) -> Vec<IndexEntry> {
             break;
         }
 
-        for entry in WalkDir::new(location)
-            .max_depth(MAX_SCAN_DEPTH)
+        let canonical_root = match fs::canonicalize(location) {
+            Ok(path) => path,
+            Err(error) => {
+                log::warn!(
+                    "[Indexer] could not resolve root {}: {}",
+                    location.display(),
+                    error
+                );
+                let missing_key = normalized_path_key(location);
+                if seen_roots.insert(missing_key) {
+                    add_truncation_reason(&mut metadata, "readErrors");
+                }
+                continue;
+            }
+        };
+        let root_key = normalized_path_key(&canonical_root);
+        if !seen_roots.insert(root_key.clone()) {
+            continue;
+        }
+        if completed_roots
+            .iter()
+            .any(|completed| path_key_is_within(&root_key, completed))
+        {
+            continue;
+        }
+
+        metadata
+            .indexed_roots
+            .push(canonical_path_string(&canonical_root));
+        let mut root_complete = true;
+        let mut entry_limit_hit = false;
+
+        for entry in WalkDir::new(&canonical_root)
+            .max_depth(max_depth)
             .follow_links(false)
             .into_iter()
-            .filter_entry(|e| !should_exclude(e.path(), &excl_segments, &excl_files))
-            .filter_map(|e| {
-                e.map_err(|err| log::warn!("[Indexer] walk error: {}", err))
-                    .ok()
+            .filter_entry(|entry| {
+                if entry.depth() > 0 {
+                    let entry_key = normalized_path_key(entry.path());
+                    if completed_roots
+                        .iter()
+                        .any(|completed| completed == &entry_key)
+                    {
+                        return false;
+                    }
+                }
+                !should_exclude(entry.path(), &excl_segments, &excl_files)
             })
         {
-            if is_build_cancelled() || entries.len() >= MAX_INDEX_SIZE {
+            if is_build_cancelled() {
                 break;
             }
+
+            let entry = match entry {
+                Ok(entry) => entry,
+                Err(error) => {
+                    log::warn!("[Indexer] walk error: {}", error);
+                    add_truncation_reason(&mut metadata, "readErrors");
+                    root_complete = false;
+                    continue;
+                }
+            };
 
             // Throttle: sleep every SCAN_YIELD_EVERY entries; re-check cancel.
             scanned += 1;
@@ -467,11 +743,49 @@ fn build_index_from_locations(locations: &[PathBuf]) -> Vec<IndexEntry> {
             // not disclose target metadata from symlink entries.
             let meta = match fs::symlink_metadata(path) {
                 Ok(m) => m,
-                Err(_) => continue,
+                Err(error) => {
+                    log::warn!("[Indexer] could not inspect {}: {}", path.display(), error);
+                    add_truncation_reason(&mut metadata, "readErrors");
+                    root_complete = false;
+                    continue;
+                }
             };
             if meta.file_type().is_symlink() || (!meta.is_file() && !meta.is_dir()) {
                 continue;
             }
+
+            let path_key = normalized_path_key(path);
+            let already_indexed = seen_entries.contains(&path_key);
+            if entries.len() >= max_entries && !already_indexed {
+                add_truncation_reason(&mut metadata, "entryLimit");
+                root_complete = false;
+                entry_limit_hit = true;
+                break;
+            }
+
+            if entry.depth() == max_depth && meta.is_dir() {
+                match directory_has_unindexed_scannable_child(
+                    path,
+                    &seen_entries,
+                    &excl_segments,
+                    &excl_files,
+                ) {
+                    Ok(true) => {
+                        add_truncation_reason(&mut metadata, "depthLimit");
+                        root_complete = false;
+                    }
+                    Ok(false) => {}
+                    Err(()) => {
+                        add_truncation_reason(&mut metadata, "readErrors");
+                        root_complete = false;
+                    }
+                }
+            }
+
+            if already_indexed {
+                continue;
+            }
+            seen_entries.insert(path_key);
 
             let name = path
                 .file_name()
@@ -499,12 +813,15 @@ fn build_index_from_locations(locations: &[PathBuf]) -> Vec<IndexEntry> {
             });
         }
 
-        if entries.len() >= MAX_INDEX_SIZE {
+        if root_complete && !is_build_cancelled() {
+            completed_roots.push(root_key);
+        }
+        if entry_limit_hit {
             break;
         }
     }
 
-    entries
+    IndexBuildResult { entries, metadata }
 }
 
 fn is_build_cancelled() -> bool {
@@ -557,12 +874,17 @@ fn load_index_from_disk(path: &Path) -> Option<IndexFileData> {
     Some(parsed)
 }
 
-fn save_index_to_disk(path: &Path, entries: &[IndexEntry]) -> Result<(), String> {
+fn save_index_to_disk(
+    path: &Path,
+    entries: &[IndexEntry],
+    metadata: &IndexMetadata,
+) -> Result<(), String> {
     #[derive(serde::Serialize)]
     struct IndexFileDataRef<'a> {
         index: &'a [IndexEntry],
         last_index_time: Option<f64>,
         version: u32,
+        metadata: &'a IndexMetadata,
     }
 
     let data = IndexFileDataRef {
@@ -575,6 +897,7 @@ fn save_index_to_disk(path: &Path, entries: &[IndexEntry]) -> Result<(), String>
                 * 1000.0,
         ),
         version: 1,
+        metadata,
     };
 
     let json = serde_json::to_string(&data).map_err(|e| e.to_string())?;
@@ -620,6 +943,7 @@ pub fn initialize_index(app: &tauri::AppHandle) {
     if let Some(data) = load_index_from_disk(&idx_path) {
         if let Ok(mut index) = FILE_INDEX.write() {
             index.entries = data.index;
+            index.metadata = data.metadata;
             populate_name_lower(&mut index.entries);
             index.last_built = data.last_index_time.map(|t| {
                 chrono::DateTime::from_timestamp_millis(t as i64)
@@ -644,7 +968,7 @@ fn prepare_index_build() -> Result<(), String> {
     Ok(())
 }
 
-fn publish_index(app: &tauri::AppHandle, entries: Vec<IndexEntry>) -> Result<(), String> {
+fn publish_index(app: &tauri::AppHandle, build: IndexBuildResult) -> Result<(), String> {
     let _commit_guard = BUILD_COMMIT_MUTEX.lock().unwrap_or_else(|poisoned| {
         log::warn!("[Indexer] commit mutex poisoned; recovering");
         poisoned.into_inner()
@@ -656,12 +980,13 @@ fn publish_index(app: &tauri::AppHandle, entries: Vec<IndexEntry>) -> Result<(),
         return Err("Index build was cancelled".to_string());
     }
 
-    let count = entries.len();
+    let count = build.entries.len();
     {
         let mut index = FILE_INDEX
             .write()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        index.entries = entries;
+        index.entries = build.entries;
+        index.metadata = build.metadata;
         index.last_built = Some(chrono::Utc::now().to_rfc3339());
     }
 
@@ -672,7 +997,7 @@ fn publish_index(app: &tauri::AppHandle, entries: Vec<IndexEntry>) -> Result<(),
             let index = FILE_INDEX
                 .read()
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
-            if let Err(error) = save_index_to_disk(&idx_path, &index.entries) {
+            if let Err(error) = save_index_to_disk(&idx_path, &index.entries, &index.metadata) {
                 log::warn!("Failed to save index to disk: {}", error);
             }
         }
@@ -860,11 +1185,16 @@ pub fn search_in_index_cancellable(
     search_in_index_filtered_cancellable(query, &IndexSearchFilters::default(), is_cancelled)
 }
 
-pub fn get_status() -> (bool, usize, Option<String>) {
+pub fn get_status() -> (bool, usize, Option<String>, IndexMetadata) {
     let is_building = INDEX_BUILD_COORDINATOR.is_running();
     match FILE_INDEX.read() {
-        Ok(idx) => (is_building, idx.entries.len(), idx.last_built.clone()),
-        Err(_) => (is_building, 0, None),
+        Ok(idx) => (
+            is_building,
+            idx.entries.len(),
+            idx.last_built.clone(),
+            idx.metadata.clone(),
+        ),
+        Err(_) => (is_building, 0, None, IndexMetadata::default()),
     }
 }
 
@@ -904,6 +1234,7 @@ pub fn set_enabled(enabled: bool, app: Option<&tauri::AppHandle>) {
     if let Ok(mut index) = FILE_INDEX.write() {
         index.entries.clear();
         index.last_built = None;
+        index.metadata = IndexMetadata::default();
     }
     if let Some(app) = app {
         if let Ok(path) = index_path(app) {
@@ -1058,6 +1389,9 @@ mod tests {
         .unwrap();
 
         let data = load_index_from_disk(&index_path).expect("legacy index file should load");
+        assert!(!data.metadata.truncated);
+        assert!(data.metadata.truncation_reasons.is_empty());
+        assert!(data.metadata.indexed_roots.is_empty());
         let plain = data
             .index
             .iter()
@@ -1070,6 +1404,130 @@ mod tests {
             .find(|entry| entry.name == ".secret")
             .unwrap();
         assert!(secret.is_hidden);
+    }
+
+    #[test]
+    fn index_scan_skips_overlapping_roots_and_deduplicates_canonical_entries() {
+        let temp = tempfile::tempdir().unwrap();
+        let child = temp.path().join("child");
+        fs::create_dir_all(&child).unwrap();
+        fs::write(child.join("needle.txt"), "x").unwrap();
+        fs::write(temp.path().join("other.txt"), "y").unwrap();
+
+        let result = build_index_from_locations_with_limits(
+            &[temp.path().to_path_buf(), child.clone()],
+            MAX_INDEX_SIZE,
+            MAX_SCAN_DEPTH,
+        );
+
+        let paths: HashSet<_> = result
+            .entries
+            .iter()
+            .map(|entry| normalized_path_key(Path::new(&entry.path)))
+            .collect();
+        assert_eq!(paths.len(), result.entries.len());
+        assert!(!result.metadata.truncated);
+        assert!(result.metadata.truncation_reasons.is_empty());
+        assert_eq!(
+            result.metadata.indexed_roots,
+            [canonical_path_string(temp.path())]
+        );
+    }
+
+    #[test]
+    fn index_scan_reports_entry_limit_only_when_an_unique_entry_is_omitted() {
+        let exact = tempfile::tempdir().unwrap();
+        fs::write(exact.path().join("only.txt"), "x").unwrap();
+        let exact_result = build_index_from_locations_with_limits(
+            &[exact.path().to_path_buf()],
+            2,
+            MAX_SCAN_DEPTH,
+        );
+        assert_eq!(exact_result.entries.len(), 2);
+        assert!(!exact_result.metadata.truncated);
+        assert!(exact_result.metadata.truncation_reasons.is_empty());
+
+        let over = tempfile::tempdir().unwrap();
+        fs::write(over.path().join("one.txt"), "x").unwrap();
+        fs::write(over.path().join("two.txt"), "y").unwrap();
+        let over_result =
+            build_index_from_locations_with_limits(&[over.path().to_path_buf()], 2, MAX_SCAN_DEPTH);
+        assert_eq!(over_result.entries.len(), 2);
+        assert!(over_result.metadata.truncated);
+        assert_eq!(over_result.metadata.truncation_reasons, ["entryLimit"]);
+    }
+
+    #[test]
+    fn index_scan_reports_depth_and_filesystem_errors_as_partial() {
+        let deep = tempfile::tempdir().unwrap();
+        let mut directory = deep.path().to_path_buf();
+        for level in 0..3 {
+            directory.push(format!("level-{level}"));
+        }
+        fs::create_dir_all(&directory).unwrap();
+        fs::write(directory.join("deep.txt"), "x").unwrap();
+        let depth_result =
+            build_index_from_locations_with_limits(&[deep.path().to_path_buf()], MAX_INDEX_SIZE, 2);
+        assert!(depth_result.metadata.truncated);
+        assert_eq!(depth_result.metadata.truncation_reasons, ["depthLimit"]);
+
+        let parent = tempfile::tempdir().unwrap();
+        let missing = parent.path().join("missing-root");
+        let error_result =
+            build_index_from_locations_with_limits(&[missing], MAX_INDEX_SIZE, MAX_SCAN_DEPTH);
+        assert!(error_result.metadata.truncated);
+        assert_eq!(error_result.metadata.truncation_reasons, ["readErrors"]);
+    }
+
+    #[test]
+    fn index_metadata_persists_and_legacy_index_loads_with_defaults() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("file-index.json");
+        let metadata = IndexMetadata {
+            truncated: true,
+            truncation_reasons: vec!["entryLimit".to_string(), "readErrors".to_string()],
+            indexed_roots: vec![canonical_path_string(temp.path())],
+        };
+
+        save_index_to_disk(&path, &[], &metadata).unwrap();
+        let data = load_index_from_disk(&path).expect("new metadata should load");
+        assert_eq!(data.metadata.truncated, metadata.truncated);
+        assert_eq!(
+            data.metadata.truncation_reasons,
+            metadata.truncation_reasons
+        );
+        assert_eq!(data.metadata.indexed_roots, metadata.indexed_roots);
+    }
+
+    #[test]
+    fn index_locations_include_existing_os_resolved_user_directories() {
+        let user_dirs = directories::UserDirs::new().expect("user directories are available");
+        let expected: Vec<_> = [
+            user_dirs.desktop_dir(),
+            user_dirs.document_dir(),
+            user_dirs.download_dir(),
+            user_dirs.picture_dir(),
+            user_dirs.audio_dir(),
+            user_dirs.video_dir(),
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|path| path.exists())
+        .map(canonical_path_string)
+        .collect();
+        let actual: HashSet<_> = get_index_locations()
+            .iter()
+            .filter_map(|path| path.canonicalize().ok())
+            .map(|path| canonical_path_string(&path))
+            .collect();
+
+        assert!(!expected.is_empty());
+        for path in expected {
+            assert!(
+                actual.contains(&path),
+                "missing OS-resolved location {path}"
+            );
+        }
     }
 
     #[test]
@@ -1696,7 +2154,7 @@ mod index_lifecycle_tests {
                 || false,
                 move || {
                     scans_for_build.fetch_add(1, Ordering::SeqCst);
-                    Ok(Vec::new())
+                    Ok(Vec::<IndexEntry>::new())
                 },
                 |_| Ok(()),
             )

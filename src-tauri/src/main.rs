@@ -13,6 +13,7 @@ mod native_macos;
 #[cfg(target_os = "windows")]
 mod native_windows;
 mod platform;
+mod recovery;
 mod search;
 mod settings;
 mod system;
@@ -803,6 +804,47 @@ fn main() {
                 }
             };
 
+            match app.path().app_data_dir() {
+                Ok(app_data_dir) => {
+                    if let Err(error) = recovery::initialize_app_data(&app_data_dir) {
+                        log::error!(
+                            "[Setup] Transfer recovery is unavailable; transfers will fail closed: {}",
+                            error
+                        );
+                    }
+                }
+                Err(error) => {
+                    let message = format!("Cannot resolve application data directory: {}", error);
+                    recovery::set_initialization_error(message.clone());
+                    log::error!(
+                        "[Setup] Transfer recovery is unavailable; transfers will fail closed: {}",
+                        message
+                    );
+                }
+            }
+
+            let additional_index_locations = match settings_value.get("additionalIndexLocations") {
+                None | Some(serde_json::Value::Null) => Vec::new(),
+                Some(serde_json::Value::Array(values)) => {
+                    let parsed = values.iter().map(serde_json::Value::as_str).collect::<Option<Vec<_>>>();
+                    match parsed {
+                        Some(locations) => locations.into_iter().map(str::to_string).collect(),
+                        None => {
+                            log::warn!("[Setup] additionalIndexLocations contains non-string values; using defaults");
+                            Vec::new()
+                        }
+                    }
+                }
+                Some(_) => {
+                    log::warn!("[Setup] additionalIndexLocations is not an array; using defaults");
+                    Vec::new()
+                }
+            };
+            if let Err(error) = indexer::set_additional_index_locations(additional_index_locations) {
+                log::warn!("[Setup] Additional index locations were rejected; using defaults: {}", error);
+                let _ = indexer::set_additional_index_locations(Vec::new());
+            }
+
             let native_menu_enabled = settings_value
                 .get("nativeMenuEnabled")
                 .and_then(|flag| flag.as_bool())
@@ -945,6 +987,8 @@ fn main() {
             file_operations::copy_items,
             file_operations::move_items,
             file_operations::cancel_file_operation,
+            recovery::list_transfer_recovery,
+            recovery::acknowledge_transfer_recovery,
             file_operations::get_item_properties,
             file_operations::set_permissions,
             file_operations::set_attributes,
@@ -1131,6 +1175,61 @@ mod tests {
         std::os::unix::fs::symlink(&real, root.join("link")).unwrap();
         assert!(ensure_real_directory_tree(&root.join("link/existing/new"), "State").is_err());
         assert!(!real.join("existing/new").exists());
+    }
+
+    #[test]
+    fn transfer_recovery_journal_reload_and_acknowledgement_keep_referenced_data() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let journal_path = root.join("transfer-recovery").join("journal.json");
+        let staging = root.join(".iyeris-copy-staging");
+        let backup = root.join(".iyeris-overwrite-backup");
+        let destination = root.join("destination");
+        std::fs::write(&staging, b"partial copy").unwrap();
+        std::fs::write(&backup, b"original destination").unwrap();
+
+        let store = recovery::RecoveryJournal::open(&journal_path).unwrap();
+        let record_id = store
+            .begin_operation("copy", Some("copy-op-1"), &[], &[destination.clone()])
+            .unwrap();
+        store
+            .record_paths(
+                &record_id,
+                recovery::RecoveryPaths {
+                    staging: vec![staging.clone()],
+                    backups: vec![backup.clone()],
+                    retained: Vec::new(),
+                },
+            )
+            .unwrap();
+        drop(store);
+
+        let reloaded = recovery::RecoveryJournal::open(&journal_path).unwrap();
+        let unfinished = reloaded.list_unfinished().unwrap();
+        assert_eq!(unfinished.len(), 1);
+        assert_eq!(unfinished[0].id, record_id);
+        assert_eq!(unfinished[0].kind, "copy");
+        assert_eq!(
+            unfinished[0].staging_paths,
+            vec![staging.to_string_lossy().to_string()]
+        );
+        assert_eq!(
+            unfinished[0].backup_paths,
+            vec![backup.to_string_lossy().to_string()]
+        );
+        reloaded.acknowledge(&record_id).unwrap();
+        assert!(reloaded.list_unfinished().unwrap().is_empty());
+        assert_eq!(std::fs::read(&staging).unwrap(), b"partial copy");
+        assert_eq!(std::fs::read(&backup).unwrap(), b"original destination");
+    }
+
+    #[test]
+    fn transfer_recovery_journal_rejects_oversized_state_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().canonicalize().unwrap();
+        let journal_path = root.join("journal.json");
+        std::fs::write(&journal_path, vec![b'x'; recovery::MAX_JOURNAL_BYTES + 1]).unwrap();
+        assert!(recovery::RecoveryJournal::open(&journal_path).is_err());
     }
 
     #[test]

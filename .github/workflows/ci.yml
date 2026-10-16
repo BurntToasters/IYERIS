@@ -77,6 +77,18 @@ jobs:
       - name: Run full quality gate (audits run once in security job)
         run: npm run test:all -- --skip-audits
 
+      - name: Upload browser and test evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-test-evidence-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            coverage-headless/browser-smoke-artifact.json
+            coverage-headless/browser-smoke-diagnostics.log
+            coverage-headless/browser-smoke-*.png
+          if-no-files-found: warn
+          retention-days: 14
+
   security:
     name: Security Audit
     runs-on: ubuntu-22.04

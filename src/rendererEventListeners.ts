@@ -1,7 +1,6 @@
 import type { Settings, FileItem } from './types';
 import type { ToastType } from './rendererToasts.js';
 import type { SettingsFormState } from './rendererSettingsUi.js';
-import { sanitizeSettings } from './settings.js';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { initSnapLayout } from './rendererSnapLayout.js';
 
@@ -180,21 +179,14 @@ export function createEventListenersController(config: EventListenersConfig) {
     });
     config.getIpcCleanupFunctions().push(cleanupClipboard);
 
-    const cleanupSettings = window.tauriAPI.onSettingsChanged((rawSettings) => {
-      const newSettings = sanitizeSettings(rawSettings);
+    const cleanupSettings = window.tauriAPI.onSettingsChanged((rawSettings, canonical) => {
       const localSettings = config.getCurrentSettings();
-      const currentTimestamp =
-        typeof localSettings._timestamp === 'number' && Number.isFinite(localSettings._timestamp)
-          ? localSettings._timestamp
-          : 0;
-      const newTimestamp =
-        typeof newSettings._timestamp === 'number' && Number.isFinite(newSettings._timestamp)
-          ? newSettings._timestamp
-          : 0;
-
-      if (newTimestamp > 0 && newTimestamp < currentTimestamp) {
-        return;
-      }
+      const newSettings = window.tauriAPI.reconcileSettingsSnapshot(
+        rawSettings,
+        localSettings,
+        canonical
+      );
+      if (newSettings === localSettings) return;
 
       config.setCurrentSettings(newSettings);
       config.applySettings(newSettings);

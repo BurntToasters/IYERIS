@@ -16,6 +16,17 @@ const THUMBNAIL_ROOT_MARGIN = '100px';
 const THUMBNAIL_CACHE_MAX = 100;
 const THUMBNAIL_CONCURRENT_LOADS = 4;
 const THUMBNAIL_QUEUE_MAX = 100;
+type ThumbnailQuality = 'low' | 'medium' | 'high';
+type ThumbnailCacheEntry = { url: string; path: string };
+type ThumbnailWaiter = {
+  fileItem: HTMLElement;
+  item: FileItem;
+  thumbnailType: string;
+  quality: ThumbnailQuality;
+  cacheKey: string;
+  requestId: number;
+};
+type ThumbnailInflight = { waiters: Map<HTMLElement, ThumbnailWaiter> };
 
 type ThumbnailDeps = {
   getCurrentSettings: () => Settings;
@@ -26,10 +37,12 @@ type ThumbnailDeps = {
 };
 
 export function createThumbnailController(deps: ThumbnailDeps) {
-  const thumbnailCache = new Map<string, string>();
+  const thumbnailCache = new Map<string, ThumbnailCacheEntry>();
   let activeThumbnailLoads = 0;
   const pendingThumbnailLoads: Array<() => void> = [];
-  const inflightThumbnails = new Set<string>();
+  const inflightThumbnails = new Map<string, ThumbnailInflight>();
+  const rowRequests = new WeakMap<HTMLElement, { cacheKey: string; requestId: number }>();
+  let nextRequestId = 0;
 
   const thumbnailObservers = new Map<string, IntersectionObserver>();
 
@@ -147,12 +160,100 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     }
   }
 
-  const THUMBNAIL_QUALITY_MAP: Record<string, number> = { low: 0.5, medium: 0.7, high: 0.9 };
-  function getThumbnailQuality(): number {
-    return THUMBNAIL_QUALITY_MAP[deps.getCurrentSettings().thumbnailQuality || 'medium'] ?? 0.7;
+  const THUMBNAIL_QUALITY_MAP: Record<ThumbnailQuality, number> = {
+    low: 0.5,
+    medium: 0.7,
+    high: 0.9,
+  };
+  function getThumbnailQualityName(): ThumbnailQuality {
+    const quality = deps.getCurrentSettings().thumbnailQuality;
+    return quality === 'low' || quality === 'high' ? quality : 'medium';
   }
 
-  function generateVideoThumbnail(videoUrl: string): Promise<string> {
+  function getThumbnailCacheKey(
+    item: FileItem,
+    thumbnailType: string,
+    quality: ThumbnailQuality
+  ): string {
+    const fingerprint = getThumbnailFingerprint(item);
+    return JSON.stringify([
+      item.path,
+      fingerprint.mtimeMs,
+      fingerprint.size,
+      quality,
+      thumbnailType,
+    ]);
+  }
+
+  function getThumbnailFingerprint(item: FileItem): { mtimeMs: number; size: number } {
+    const modified =
+      item.modified instanceof Date ? item.modified.getTime() : Number(item.modified);
+    const size = Number(item.size);
+    return {
+      mtimeMs: Number.isFinite(modified) && modified >= 0 ? Math.trunc(modified) : 0,
+      size: Number.isFinite(size) && size >= 0 ? Math.trunc(size) : 0,
+    };
+  }
+
+  function getThumbnailVariant(thumbnailType: string, quality: ThumbnailQuality): string {
+    return `v1:${quality}:${thumbnailType}`;
+  }
+
+  function getThumbnailTypeForPath(path: string): string {
+    const fileItems = document.querySelectorAll<HTMLElement>('.file-item[data-path]');
+    for (const fileItem of fileItems) {
+      if (fileItem.dataset.path === path) return fileItem.dataset.thumbnailType || 'image';
+    }
+    return 'image';
+  }
+
+  function requestIdForRow(fileItem: HTMLElement, cacheKey: string): number {
+    const existing = rowRequests.get(fileItem);
+    if (existing?.cacheKey === cacheKey) return existing.requestId;
+    const requestId = ++nextRequestId;
+    rowRequests.set(fileItem, { cacheKey, requestId });
+    return requestId;
+  }
+
+  function isCurrentWaiter(waiter: ThumbnailWaiter): boolean {
+    const { fileItem, item, thumbnailType, quality, cacheKey, requestId } = waiter;
+    if (!document.body.contains(fileItem)) return false;
+    if (fileItem.dataset.path && fileItem.dataset.path !== item.path) return false;
+    if (rowRequests.get(fileItem)?.requestId !== requestId) return false;
+    if ((fileItem.dataset.thumbnailType || 'image') !== thumbnailType) return false;
+    if (getThumbnailQualityName() !== quality) return false;
+
+    const currentItem = deps.getFileByPath(item.path);
+    return !currentItem || getThumbnailCacheKey(currentItem, thumbnailType, quality) === cacheKey;
+  }
+
+  function renderForCurrentWaiters(
+    inflight: ThumbnailInflight,
+    cacheKey: string,
+    thumbnailType: string,
+    quality: ThumbnailQuality,
+    thumbnailUrl: string
+  ): void {
+    const currentWaiters = Array.from(inflight.waiters.values()).filter(isCurrentWaiter);
+    if (currentWaiters.length === 0) return;
+
+    const cacheItem = currentWaiters[0]?.item;
+    if (cacheItem) cacheThumbnail(cacheKey, thumbnailUrl, cacheItem.path);
+    for (const waiter of currentWaiters) {
+      const iconDiv = waiter.fileItem.querySelector('.file-icon');
+      if (iconDiv) {
+        renderThumbnailImage(
+          iconDiv as HTMLElement,
+          thumbnailUrl,
+          waiter.item,
+          waiter.fileItem,
+          () => isCurrentWaiter(waiter)
+        );
+      }
+    }
+  }
+
+  function generateVideoThumbnail(videoUrl: string, quality: number): Promise<string> {
     return new Promise((resolve, reject) => {
       const video = document.createElement('video');
       video.crossOrigin = 'anonymous';
@@ -209,7 +310,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
             ctx.imageSmoothingEnabled = true;
             ctx.imageSmoothingQuality = 'high';
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-            const dataUrl = canvas.toDataURL('image/jpeg', getThumbnailQuality());
+            const dataUrl = canvas.toDataURL('image/jpeg', quality);
             finish(() => resolve(dataUrl));
           } else {
             finish(() => reject(new Error('Could not get canvas context')));
@@ -230,7 +331,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     });
   }
 
-  async function generateAudioWaveform(audioUrl: string): Promise<string> {
+  async function generateAudioWaveform(audioUrl: string, quality: number): Promise<string> {
     return new Promise((resolve, reject) => {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       const canvas = document.createElement('canvas');
@@ -323,7 +424,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           clearTimeout(timeout);
           activeMediaCleanups.delete(abort);
           audioContext.close();
-          resolve(canvas.toDataURL('image/jpeg', getThumbnailQuality()));
+          resolve(canvas.toDataURL('image/jpeg', quality));
         })
         .catch((error) => {
           if (settled) return;
@@ -336,10 +437,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     });
   }
 
-  function generatePdfThumbnail(pdfUrl: string): Promise<string> {
-    const q = deps.getCurrentSettings().thumbnailQuality;
-    const quality: 'low' | 'medium' | 'high' =
-      q === 'low' ? 'low' : q === 'high' ? 'high' : 'medium';
+  function generatePdfThumbnail(pdfUrl: string, quality: ThumbnailQuality): Promise<string> {
     return generatePdfThumbnailPdfJs(pdfUrl, quality);
   }
 
@@ -354,31 +452,49 @@ export function createThumbnailController(deps: ThumbnailDeps) {
   }
 
   function loadThumbnail(fileItem: HTMLElement, item: FileItem) {
-    const cached = thumbnailCache.get(item.path);
+    const thumbnailType = fileItem.dataset.thumbnailType || 'image';
+    const quality = getThumbnailQualityName();
+    const cacheKey = getThumbnailCacheKey(item, thumbnailType, quality);
+    const requestId = requestIdForRow(fileItem, cacheKey);
+    const waiter: ThumbnailWaiter = {
+      fileItem,
+      item,
+      thumbnailType,
+      quality,
+      cacheKey,
+      requestId,
+    };
+
+    const cached = thumbnailCache.get(cacheKey);
     if (cached) {
-      thumbnailCache.delete(item.path);
-      thumbnailCache.set(item.path, cached);
+      thumbnailCache.delete(cacheKey);
+      thumbnailCache.set(cacheKey, cached);
       const iconDiv = fileItem.querySelector('.file-icon');
-      if (iconDiv) {
-        renderThumbnailImage(iconDiv as HTMLElement, cached, item, fileItem);
+      if (iconDiv && isCurrentWaiter(waiter)) {
+        renderThumbnailImage(iconDiv as HTMLElement, cached.url, item, fileItem, () =>
+          isCurrentWaiter(waiter)
+        );
       }
       return;
     }
 
-    if (inflightThumbnails.has(item.path)) return;
-    inflightThumbnails.add(item.path);
+    const existingInflight = inflightThumbnails.get(cacheKey);
+    if (existingInflight) {
+      existingInflight.waiters.set(fileItem, waiter);
+      return;
+    }
 
-    const thumbnailType = fileItem.dataset.thumbnailType || 'image';
+    const inflight: ThumbnailInflight = { waiters: new Map([[fileItem, waiter]]) };
+    inflightThumbnails.set(cacheKey, inflight);
+    const qualityValue = THUMBNAIL_QUALITY_MAP[quality];
+    const variant = getThumbnailVariant(thumbnailType, quality);
 
     const scheduled = enqueueThumbnailLoad(async () => {
       try {
-        if (!document.body.contains(fileItem)) {
-          inflightThumbnails.delete(item.path);
-          return;
-        }
+        if (![...inflight.waiters.values()].some(isCurrentWaiter)) return;
 
-        const iconDiv = fileItem.querySelector('.file-icon');
-
+        const firstWaiter = [...inflight.waiters.values()].find(isCurrentWaiter);
+        const iconDiv = firstWaiter?.fileItem.querySelector('.file-icon');
         if (iconDiv) {
           // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
           iconDiv.innerHTML = `<div class="spinner" style="width: 30px; height: 30px; border-width: 2px;"></div>`;
@@ -392,10 +508,12 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           item.size >
             (currentSettings.maxThumbnailSizeMB || DEFAULT_MAX_THUMBNAIL_SIZE_MB) * 1024 * 1024
         ) {
-          if (iconDiv) {
-            iconDiv.innerHTML = deps.getFileIcon(item.name);
+          for (const current of inflight.waiters.values()) {
+            if (!isCurrentWaiter(current)) continue;
+            const currentIcon = current.fileItem.querySelector('.file-icon');
+            if (currentIcon) currentIcon.innerHTML = deps.getFileIcon(current.item.name);
+            current.fileItem.classList.remove('has-thumbnail');
           }
-          fileItem.classList.remove('has-thumbnail');
           return;
         }
 
@@ -404,37 +522,48 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           item.size >
             (currentSettings.maxPreviewSizeMB || DEFAULT_MAX_PREVIEW_SIZE_MB) * 1024 * 1024
         ) {
-          if (iconDiv) {
-            iconDiv.innerHTML = deps.getFileIcon(item.name);
+          for (const current of inflight.waiters.values()) {
+            if (!isCurrentWaiter(current)) continue;
+            const currentIcon = current.fileItem.querySelector('.file-icon');
+            if (currentIcon) currentIcon.innerHTML = deps.getFileIcon(current.item.name);
+            current.fileItem.classList.remove('has-thumbnail');
           }
-          fileItem.classList.remove('has-thumbnail');
           return;
         }
 
-        const thumbMtime = item.modified instanceof Date ? item.modified.getTime() : item.modified;
+        const fingerprint = getThumbnailFingerprint(item);
+        const thumbMtime = fingerprint.mtimeMs;
+        const thumbSize = fingerprint.size;
         const diskCacheResult = await window.tauriAPI.getCachedThumbnail(
           item.path,
           thumbMtime,
-          item.size
+          thumbSize,
+          variant
         );
         if (diskCacheResult.success) {
-          if (!document.body.contains(fileItem)) return;
-          cacheThumbnail(item.path, diskCacheResult.dataUrl);
-          if (iconDiv) {
-            renderThumbnailImage(iconDiv as HTMLElement, diskCacheResult.dataUrl, item, fileItem);
-          }
+          renderForCurrentWaiters(
+            inflight,
+            cacheKey,
+            thumbnailType,
+            quality,
+            diskCacheResult.dataUrl
+          );
           return;
         }
 
         const fileUrl = encodeFileUrl(item.path);
 
-        if (!document.body.contains(fileItem)) {
+        if (![...inflight.waiters.values()].some(isCurrentWaiter)) {
           return;
         }
 
         // Defensive: no heavy media decode in bg. Keep has-thumbnail so resume re-drives.
         if (MEDIA_THUMBNAIL_TYPES.has(thumbnailType) && !isForeground()) {
-          if (iconDiv) iconDiv.innerHTML = deps.getFileIcon(item.name);
+          for (const current of inflight.waiters.values()) {
+            if (!isCurrentWaiter(current)) continue;
+            const currentIcon = current.fileItem.querySelector('.file-icon');
+            if (currentIcon) currentIcon.innerHTML = deps.getFileIcon(current.item.name);
+          }
           return;
         }
 
@@ -446,15 +575,19 @@ export function createThumbnailController(deps: ThumbnailDeps) {
             thumbnailUrl = await generateOfficeThumbnail(item.path);
             shouldCacheToDisk = true;
           } catch {
-            if (iconDiv) iconDiv.innerHTML = deps.getFileIcon(item.name);
-            fileItem.classList.remove('has-thumbnail');
+            for (const current of inflight.waiters.values()) {
+              if (!isCurrentWaiter(current)) continue;
+              const currentIcon = current.fileItem.querySelector('.file-icon');
+              if (currentIcon) currentIcon.innerHTML = deps.getFileIcon(current.item.name);
+              current.fileItem.classList.remove('has-thumbnail');
+            }
             return;
           }
         } else {
           const thumbnailGenerators: Record<string, (url: string) => Promise<string>> = {
-            video: generateVideoThumbnail,
-            audio: generateAudioWaveform,
-            pdf: generatePdfThumbnail,
+            video: (url) => generateVideoThumbnail(url, qualityValue),
+            audio: (url) => generateAudioWaveform(url, qualityValue),
+            pdf: (url) => generatePdfThumbnail(url, quality),
           };
           const generator = thumbnailGenerators[thumbnailType];
           if (generator) {
@@ -462,65 +595,61 @@ export function createThumbnailController(deps: ThumbnailDeps) {
               thumbnailUrl = await generator(fileUrl);
               shouldCacheToDisk = true;
             } catch {
-              if (iconDiv) iconDiv.innerHTML = deps.getFileIcon(item.name);
-              fileItem.classList.remove('has-thumbnail');
+              for (const current of inflight.waiters.values()) {
+                if (!isCurrentWaiter(current)) continue;
+                const currentIcon = current.fileItem.querySelector('.file-icon');
+                if (currentIcon) currentIcon.innerHTML = deps.getFileIcon(current.item.name);
+                current.fileItem.classList.remove('has-thumbnail');
+              }
               return;
             }
           }
         }
 
-        if (!document.body.contains(fileItem)) {
-          return;
-        }
+        if (![...inflight.waiters.values()].some(isCurrentWaiter)) return;
+        renderForCurrentWaiters(inflight, cacheKey, thumbnailType, quality, thumbnailUrl);
 
-        if (iconDiv) {
-          cacheThumbnail(item.path, thumbnailUrl);
-          renderThumbnailImage(iconDiv as HTMLElement, thumbnailUrl, item, fileItem);
-
-          if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
-            window.tauriAPI
-              .saveCachedThumbnail(
-                item.path,
-                thumbnailUrl,
-                item.modified instanceof Date ? item.modified.getTime() : item.modified,
-                item.size
-              )
-              .catch(ignoreError);
-          }
+        if (shouldCacheToDisk && thumbnailUrl.startsWith('data:')) {
+          window.tauriAPI
+            .saveCachedThumbnail(item.path, thumbnailUrl, thumbMtime, thumbSize, variant)
+            .catch(ignoreError);
         }
       } catch {
-        if (!document.body.contains(fileItem)) {
-          return;
+        for (const current of inflight.waiters.values()) {
+          if (!isCurrentWaiter(current)) continue;
+          const iconDiv = current.fileItem.querySelector('.file-icon');
+          if (iconDiv) iconDiv.innerHTML = deps.getFileIcon(current.item.name);
+          current.fileItem.classList.remove('has-thumbnail');
         }
-        const iconDiv = fileItem.querySelector('.file-icon');
-        if (iconDiv) {
-          iconDiv.innerHTML = deps.getFileIcon(item.name);
-        }
-        fileItem.classList.remove('has-thumbnail');
       } finally {
-        inflightThumbnails.delete(item.path);
+        if (inflightThumbnails.get(cacheKey) === inflight) {
+          inflightThumbnails.delete(cacheKey);
+        }
       }
     });
     if (!scheduled) {
-      inflightThumbnails.delete(item.path);
+      if (inflightThumbnails.get(cacheKey) === inflight) {
+        inflightThumbnails.delete(cacheKey);
+      }
     }
   }
 
-  function cacheThumbnail(path: string, url: string): void {
-    if (thumbnailCache.has(path)) {
-      thumbnailCache.delete(path);
+  function cacheThumbnail(cacheKey: string, url: string, path: string): void {
+    if (thumbnailCache.has(cacheKey)) {
+      thumbnailCache.delete(cacheKey);
     } else if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
       const firstKey = thumbnailCache.keys().next().value;
       if (firstKey) thumbnailCache.delete(firstKey);
     }
-    thumbnailCache.set(path, url);
+    thumbnailCache.set(cacheKey, { url, path });
   }
 
   function renderThumbnailImage(
     iconDiv: HTMLElement,
     thumbnailUrl: string,
     item: FileItem,
-    fileItem: HTMLElement
+    fileItem: HTMLElement,
+    isStillCurrent: () => boolean
   ): void {
     iconDiv.replaceChildren();
     const img = document.createElement('img');
@@ -534,6 +663,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     img.addEventListener(
       'load',
       () => {
+        if (!isStillCurrent() || iconDiv.querySelector('img.file-thumbnail') !== img) return;
         img.style.transition = 'opacity 0.2s ease';
         img.style.opacity = '1';
       },
@@ -548,9 +678,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     }
 
     img.addEventListener('error', () => {
-      if (!document.body.contains(fileItem)) {
-        return;
-      }
+      if (!isStillCurrent() || iconDiv.querySelector('img.file-thumbnail') !== img) return;
       iconDiv.innerHTML = deps.getFileIcon(item.name);
       fileItem.classList.remove('has-thumbnail');
     });
@@ -578,7 +706,15 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     pauseThumbnails,
     resumeThumbnails,
     destroy: cleanupActivity,
-    getThumbnailForPath: (path: string) => thumbnailCache.get(path),
+    getThumbnailForPath: (path: string, item?: FileItem) => {
+      const quality = getThumbnailQualityName();
+      if (item) {
+        const key = getThumbnailCacheKey(item, getThumbnailTypeForPath(path), quality);
+        return thumbnailCache.get(key)?.url;
+      }
+      const entries = Array.from(thumbnailCache.values());
+      return entries.reverse().find((entry) => entry.path === path)?.url;
+    },
     clearThumbnailCache: () => {
       thumbnailCache.clear();
       inflightThumbnails.clear();

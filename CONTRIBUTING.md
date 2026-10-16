@@ -23,7 +23,6 @@ src/
   folderDir.ts      Folder tree manager (renderer-only)
   index.html        Application HTML shell
   css/              Stylesheets (one file per component)
-  tests/            Test files mirroring source structure
 
 src-tauri/
   src/main.rs       Tauri app builder, plugin init, invoke handler registration
@@ -57,13 +56,11 @@ type NavigationDeps = {
 
 export function createNavigationController(deps: NavigationDeps) {
   // All external dependencies come through deps
-  return {
-    /* exported methods */
-  };
+  return {/* exported methods */};
 }
 ```
 
-This makes every module independently testable — tests create mock `deps` objects without any module-level mocking.
+Dependency injection keeps renderer behavior explicit and lets the browser smoke exercise the real controllers with a small native-IPC boundary stub.
 
 #### Rust Command Registration
 
@@ -84,20 +81,26 @@ Single TypeScript compilation via Vite (frontend only). Rust backend is compiled
 
 Build pipeline: `npm run build` = copy vendor assets → Vite build to `dist/`
 
-### Testing
+### Verification and Regression Coverage
 
-- **Framework**: Vitest with jsdom environment available per-file
-- **Convention**: `foo.test.ts` for base tests, `foo.extended.test.ts` for additional coverage, plus descriptive suffixes (e.g., `breadcrumbs`, `filters.scope`)
-- **Pattern**: Tests mirror the DI pattern — create mock deps, instantiate controller, test methods
+Prefer end-to-end coverage for behavior users see. `npm run test:e2e` runs the renderer controllers in an installed Chromium browser and records suite results in `coverage-headless/browser-smoke-artifact.json`; bounded browser diagnostics go to `coverage-headless/browser-smoke-diagnostics.log`. The browser page stubs Tauri IPC, so these checks cover renderer behavior and do not replace native Rust regression coverage.
+
+The smoke runner discovers an installed Chrome, Chromium, Edge, or Helium executable. Set `IYERIS_SMOKE_BROWSER` to an existing Chromium-compatible executable to select one explicitly; an invalid explicit path fails with an actionable error instead of falling back. The runner does not download or install a browser, and it uses a disposable profile under the system temporary directory.
+
+Use deterministic fixtures in a unique temporary directory and clean them up. Keep fixture reads and writes away from user files, application settings, browser profiles, and other persistent local state. Browser smoke artifacts contain test outputs and bounded browser diagnostics, not user configuration or application data.
+
+Keep native regression coverage for Rust behavior such as filesystem traversal, archive encryption, and cache persistence. Use real temporary filesystem fixtures where practical, and retain failure-mode coverage when updating native contracts. `npm run test:all` runs the project quality gate, including the headless checks, renderer browser smoke, and Rust checks; `npm run test:e2e` runs the browser smoke directly.
+
+Follow the repository's E2E-first testing policy. Do not add unit tests after writing production code. If a behavior must be tested in isolation, list its plausible failure modes first and author all required isolated regression tests before changing production code. Do not add agents as co-authors to commits or pull requests.
 
 ### Quality Checks
 
 ```bash
-npm run test:all    # Lint + format + vitest + typecheck
-npm run lint        # ESLint
-npm run format      # Prettier
-npm run typecheck   # tsc --noEmit
-npm test            # Vitest only
+npm run test:all       # Complete quality gate, including browser and Rust checks
+npm run test:e2e       # Renderer browser E2E and repeatable JSON artifact
+npm run lint:prod      # Production TypeScript lint
+npm run format:check   # Formatting check
+npm run typecheck      # TypeScript check
 ```
 
 ### CSS Architecture

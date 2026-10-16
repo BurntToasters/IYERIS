@@ -108,6 +108,123 @@ export const RawGitStatusSchema = z.object({
 });
 export type RawGitStatus = z.infer<typeof RawGitStatusSchema>;
 
+export const RawSettingsSchema = z
+  .record(z.string(), z.unknown())
+  .refine(
+    (settings) =>
+      settings._revision === undefined ||
+      (typeof settings._revision === 'number' &&
+        Number.isSafeInteger(settings._revision) &&
+        settings._revision >= 0),
+    'settings revision must be a non-negative safe integer'
+  );
+
+export const RawSettingsSaveSchema = z.object({
+  status: z.enum(['saved', 'conflict']),
+  settings: RawSettingsSchema,
+  conflictKeys: z.array(z.string()).optional(),
+  changedKeys: z.array(z.string()).optional(),
+});
+
+export const RawDiagnosticsExportSchema = z.discriminatedUnion('status', [
+  z.object({ status: z.literal('saved'), path: z.string().min(1) }),
+  z.object({ status: z.literal('cancelled') }),
+]);
+
+export const RawUndoStateSchema = z.object({
+  canUndo: z.boolean(),
+  canRedo: z.boolean(),
+});
+
+export const RawIndexStatusSchema = z.object({
+  isBuilding: z.boolean(),
+  entryCount: z.number().int().nonnegative(),
+  lastBuilt: z.string().nullable().optional(),
+  truncated: z.boolean().optional(),
+  truncationReasons: z.array(z.string()).optional(),
+  indexedRoots: z.array(z.string()).optional(),
+});
+
+export const RawHomeSettingsSchema = z
+  .object({
+    _revision: z.number().int().nonnegative().safe().optional(),
+    showQuickAccess: z.boolean().optional(),
+    showRecents: z.boolean().optional(),
+    showBookmarks: z.boolean().optional(),
+    showDrives: z.boolean().optional(),
+    showDiskUsage: z.boolean().optional(),
+    hiddenQuickAccessItems: z.array(z.string()).optional(),
+    quickAccessOrder: z.array(z.string()).optional(),
+    sectionOrder: z.array(z.string()).optional(),
+    pinnedRecents: z.array(z.string()).optional(),
+    compactCards: z.boolean().optional(),
+    sidebarQuickAccessOrder: z.array(z.string()).optional(),
+    hiddenSidebarQuickAccessItems: z.array(z.string()).optional(),
+  })
+  .passthrough();
+
+export const RawHomeSettingsSaveSchema = z.object({
+  status: z.enum(['saved', 'conflict']),
+  settings: RawHomeSettingsSchema,
+  conflictKeys: z.array(z.string()).optional(),
+  changedKeys: z.array(z.string()).optional(),
+});
+
+export const RawClipboardOperationSchema = z.object({
+  operation: z.enum(['copy', 'cut']),
+  paths: z.array(z.string()),
+});
+
+export const RawArchiveProgressSchema = z.object({
+  operationId: z.string().optional(),
+  current: z.number().finite(),
+  total: z.number().finite(),
+  name: z.string(),
+});
+
+export const RawFileOperationProgressSchema = z.object({
+  operationId: z.string().optional(),
+  operation: z.enum(['copy', 'move']),
+  current: z.number().finite(),
+  total: z.number().finite(),
+  name: z.string(),
+});
+
+export const RawDirectoryChangedSchema = z.object({
+  dirPath: z.string(),
+  eventId: z.number().finite().optional(),
+  eventKind: z.string().optional(),
+  eventPaths: z.array(z.string()).optional(),
+});
+
+export const RawWatchedDirectoryRemovedSchema = z.object({ dirPath: z.string() });
+
+export const RawDirectoryContentsProgressSchema = z.object({
+  dirPath: z.string(),
+  items: z.array(z.unknown()).optional(),
+  loaded: z.number().finite(),
+  operationId: z.string().optional(),
+});
+
+export const RawDirectoryTruncatedSchema = z.object({
+  dirPath: z.string(),
+  count: z.number().int().nonnegative(),
+});
+
+export const RawFolderSizeProgressSchema = z.object({
+  operationId: z.string(),
+  size: z.number().finite().nonnegative(),
+  files: z.number().int().nonnegative(),
+});
+
+export const RawChecksumProgressSchema = z.object({
+  operationId: z.string(),
+  percent: z.number().finite().min(0).max(100),
+  algorithm: z.string(),
+});
+
+export const RawOpenWithAppSchema = z.object({ id: z.string(), name: z.string() });
+
 export function validateIpc<T>(schema: z.ZodType<T>, raw: unknown, label: string): T | null {
   const result = schema.safeParse(raw);
   if (result.success) return result.data;

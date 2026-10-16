@@ -22,6 +22,7 @@ const MAX_DESKTOP_ENTRY_BYTES: u64 = 512 * 1024;
 const MAX_MIME_CACHE_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_LICENSE_BYTES: u64 = 16 * 1024 * 1024;
 const MAX_SETTINGS_SUMMARY_BYTES: u64 = 8 * 1024 * 1024;
+const MAX_DIAGNOSTICS_BYTES: u64 = 1024 * 1024;
 const MAX_SHARED_ITEMS: usize = 10_000;
 const MAX_SHARED_PATH_BYTES: usize = 8 * 1024 * 1024;
 #[cfg(any(target_os = "windows", target_os = "linux", test))]
@@ -991,38 +992,180 @@ fn open_logs_folder_sync(app: tauri::AppHandle) -> Result<(), String> {
     open::that(&log_dir).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub async fn export_diagnostics(app: tauri::AppHandle) -> Result<String, String> {
-    tokio::task::spawn_blocking(move || export_diagnostics_sync(app))
-        .await
-        .map_err(|error| error.to_string())?
+fn diagnostics_settings_allowlist(raw: &serde_json::Value) -> serde_json::Value {
+    const BOOLEAN_FLAGS: &[&str] = &[
+        "useSystemTheme",
+        "showDangerousOptions",
+        "showHiddenFiles",
+        "enableSearchHistory",
+        "enableIndexer",
+        "minimizeToTray",
+        "startOnLogin",
+        "autoCheckUpdates",
+        "showRecentFiles",
+        "showFolderTree",
+        "useLegacyTreeSpacing",
+        "enableTabs",
+        "globalContentSearch",
+        "globalClipboard",
+        "enableSyntaxHighlighting",
+        "enableGitStatus",
+        "gitIncludeUntracked",
+        "showFileHoverCard",
+        "showFileCheckboxes",
+        "reduceMotion",
+        "highContrast",
+        "largeText",
+        "boldText",
+        "visibleFocus",
+        "reduceTransparency",
+        "liquidGlassMode",
+        "themedIcons",
+        "disableHardwareAcceleration",
+        "useSystemFontSize",
+        "confirmFileOperations",
+        "autoPlayVideos",
+        "compactFileInfo",
+        "showFileExtensions",
+        "dualPaneEnabled",
+        "nativeMenuEnabled",
+        "operationPanelCollapsed",
+        "utilityDrawerCollapsed",
+        "enableAutoChecksum",
+    ];
+    const LIMITS: &[&str] = &[
+        "maxThumbnailSizeMB",
+        "maxPreviewSizeMB",
+        "maxSearchHistoryItems",
+        "maxDirectoryHistoryItems",
+        "iconSize",
+        "navTransitionDuration",
+        "operationAnimationDuration",
+    ];
+
+    let mut safe = serde_json::Map::new();
+    let Some(settings) = raw.as_object() else {
+        return serde_json::Value::Object(safe);
+    };
+    let theme = [
+        "dark",
+        "light",
+        "default",
+        "custom",
+        "nord",
+        "catppuccin",
+        "dracula",
+        "solarized",
+        "github",
+    ];
+    let view_modes = ["grid", "list", "column"];
+    for (key, allowed) in [("theme", &theme[..]), ("viewMode", &view_modes[..])] {
+        if let Some(value) = settings
+            .get(key)
+            .filter(|value| value.as_str().is_some_and(|item| allowed.contains(&item)))
+        {
+            safe.insert(key.to_string(), value.clone());
+        }
+    }
+    for key in BOOLEAN_FLAGS {
+        if let Some(value) = settings.get(*key).filter(|value| value.is_boolean()) {
+            safe.insert((*key).to_string(), value.clone());
+        }
+    }
+    for key in LIMITS {
+        if let Some(value) = settings
+            .get(*key)
+            .filter(|value| value.as_u64().is_some() || value.as_i64().is_some())
+        {
+            safe.insert((*key).to_string(), value.clone());
+        }
+    }
+    serde_json::Value::Object(safe)
 }
 
-fn export_diagnostics_sync(app: tauri::AppHandle) -> Result<String, String> {
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagnosticsExportResult {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+}
+
+fn diagnostics_export_result(path: Option<std::path::PathBuf>) -> DiagnosticsExportResult {
+    match path {
+        Some(path) => DiagnosticsExportResult {
+            status: "saved".to_string(),
+            path: Some(path.to_string_lossy().to_string()),
+        },
+        None => DiagnosticsExportResult {
+            status: "cancelled".to_string(),
+            path: None,
+        },
+    }
+}
+
+fn write_diagnostics_file(path: &Path, content: &str) -> Result<(), String> {
+    if content.len() as u64 > MAX_DIAGNOSTICS_BYTES {
+        return Err("Diagnostics file exceeds size limit".to_string());
+    }
+    serde_json::from_str::<serde_json::Value>(content)
+        .map_err(|_| "Diagnostics payload is not valid JSON".to_string())?;
+    match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err("Refusing to overwrite a symbolic-link diagnostics path".to_string());
+        }
+        Ok(metadata) if !metadata.is_file() => {
+            return Err("Diagnostics path is not a regular file".to_string());
+        }
+        Ok(_) => {}
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(_) => return Err("Cannot inspect selected diagnostics destination".to_string()),
+    }
+
+    let (temp_path, mut file) = crate::create_secure_temp_file(path, "diagnostics")
+        .map_err(|_| "Cannot prepare selected diagnostics destination".to_string())?;
+    let write_result = (|| -> Result<(), String> {
+        use std::io::Write;
+        file.write_all(content.as_bytes())
+            .map_err(|_| "Cannot write diagnostics file".to_string())?;
+        file.sync_all()
+            .map_err(|_| "Cannot flush diagnostics file".to_string())?;
+        Ok(())
+    })();
+    drop(file);
+    if let Err(error) = write_result {
+        let _ = fs::remove_file(&temp_path);
+        return Err(error);
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = fs::set_permissions(&temp_path, fs::Permissions::from_mode(0o600));
+    }
+
+    crate::atomic_replace_file(&temp_path, path).inspect_err(|_| {
+        let _ = fs::remove_file(&temp_path);
+    })
+}
+
+fn export_diagnostics_content(app: &tauri::AppHandle) -> Result<String, String> {
     let settings_summary = match app.path().app_data_dir() {
         Ok(dir) => {
             let path = dir.join("settings.json");
             match read_text_limited(&path, MAX_SETTINGS_SUMMARY_BYTES) {
                 Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
-                    Ok(mut val) => {
-                        if let Some(obj) = val.as_object_mut() {
-                            obj.remove("bookmarks");
-                            obj.remove("tabState");
-                            obj.remove("recentFiles");
-                            obj.remove("searchHistory");
-                            obj.remove("directoryHistory");
-                        }
-                        val
-                    }
-                    Err(_) => serde_json::json!("parse error"),
+                    Ok(value) => diagnostics_settings_allowlist(&value),
+                    Err(_) => serde_json::json!({}),
                 },
-                Err(_) => serde_json::json!("not found"),
+                Err(_) => serde_json::json!({}),
             }
         }
-        Err(_) => serde_json::json!("unavailable"),
+        Err(_) => serde_json::json!({}),
     };
 
-    let (indexer_building, indexer_entries, indexer_last_built) = crate::indexer::get_status();
+    let (indexer_building, indexer_entries, indexer_last_built, _indexer_metadata) =
+        crate::indexer::get_status();
 
     let info = serde_json::json!({
         "version": app.package_info().version.to_string(),
@@ -1037,7 +1180,37 @@ fn export_diagnostics_sync(app: tauri::AppHandle) -> Result<String, String> {
         },
         "settings": settings_summary,
     });
-    serde_json::to_string_pretty(&info).map_err(|e| e.to_string())
+    let content =
+        serde_json::to_string_pretty(&info).map_err(|_| "Cannot encode diagnostics".to_string())?;
+    if content.len() as u64 > MAX_DIAGNOSTICS_BYTES {
+        return Err("Diagnostics file exceeds size limit".to_string());
+    }
+    Ok(content)
+}
+
+#[tauri::command]
+pub async fn export_diagnostics(app: tauri::AppHandle) -> Result<DiagnosticsExportResult, String> {
+    tokio::task::spawn_blocking(move || {
+        use tauri_plugin_dialog::DialogExt;
+
+        let content = export_diagnostics_content(&app)?;
+        let selected = app
+            .dialog()
+            .file()
+            .set_file_name("iyeris-diagnostics.json")
+            .add_filter("JSON", &["json"])
+            .blocking_save_file();
+        let Some(selected) = selected else {
+            return Ok(diagnostics_export_result(None));
+        };
+        let path = selected
+            .into_path()
+            .map_err(|_| "Selected diagnostics destination is invalid".to_string())?;
+        write_diagnostics_file(&path, &content)?;
+        Ok(diagnostics_export_result(Some(path)))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]
@@ -1691,6 +1864,74 @@ mod tests {
         assert!(super::validate_native_integration_exe_path("/opt/IYERIS\"s/app").is_err());
         assert!(super::validate_native_integration_exe_path("/opt/IYERIS;app").is_err());
         assert!(super::validate_native_integration_exe_path("/opt/IYERIS%f/app").is_err());
+    }
+
+    #[test]
+    fn diagnostics_settings_allowlist_excludes_private_and_unknown_fields() {
+        let private_marker = "private-value-must-not-leak";
+        let raw = serde_json::json!({
+            "theme": "dark",
+            "viewMode": "list",
+            "enableIndexer": true,
+            "maxSearchHistoryItems": 12,
+            "startupPath": private_marker,
+            "savedSearches": [{ "query": private_marker, "scopePath": private_marker }],
+            "recentTransferDestinations": [private_marker],
+            "folderIcons": { private_marker: private_marker },
+            "searchHistory": [private_marker],
+            "directoryHistory": [private_marker],
+            "bookmarks": [private_marker],
+            "arbitraryFutureField": private_marker
+        });
+
+        let safe = super::diagnostics_settings_allowlist(&raw);
+        let serialized = serde_json::to_string(&safe).expect("safe settings should serialize");
+        assert_eq!(safe["theme"], "dark");
+        assert_eq!(safe["viewMode"], "list");
+        assert_eq!(safe["enableIndexer"], true);
+        assert_eq!(safe["maxSearchHistoryItems"], 12);
+        assert!(!serialized.contains(private_marker));
+        assert!(safe.get("savedSearches").is_none());
+        assert!(safe.get("arbitraryFutureField").is_none());
+    }
+
+    #[test]
+    fn diagnostics_export_writes_real_json_and_returns_the_chosen_path() {
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let path = directory.path().join("diagnostics.json");
+        let content = r#"{"version":"3.0","settings":{"theme":"dark"}}"#;
+
+        super::write_diagnostics_file(&path, content).expect("diagnostics should be written");
+        let actual = std::fs::read_to_string(&path).expect("chosen output should exist");
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&actual).unwrap(),
+            serde_json::json!({ "version": "3.0", "settings": { "theme": "dark" } })
+        );
+        let result = super::diagnostics_export_result(Some(path.clone()));
+        assert_eq!(result.status, "saved");
+        assert_eq!(result.path.as_deref(), path.to_str());
+    }
+
+    #[test]
+    fn diagnostics_export_cancellation_is_distinct_from_failure() {
+        let result = super::diagnostics_export_result(None);
+        assert_eq!(result.status, "cancelled");
+        assert!(result.path.is_none());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn diagnostics_export_refuses_to_clobber_symlink_destinations() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temporary directory should be created");
+        let target = directory.path().join("target.json");
+        let link = directory.path().join("diagnostics.json");
+        std::fs::write(&target, "keep target").expect("target should be written");
+        symlink(&target, &link).expect("symlink should be created");
+
+        assert!(super::write_diagnostics_file(&link, "{} ").is_err());
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "keep target");
     }
 }
 

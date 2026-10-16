@@ -269,6 +269,42 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     applyHomeSettings(currentHomeSettings);
   }
 
+  async function saveHomeSettingsWithConflictResolution(settings: HomeSettings) {
+    const initial = await window.tauriAPI.saveHomeSettings(settings);
+    if (initial.success || !initial.settings || !initial.conflictKeys?.length) return initial;
+
+    const latest = normalizeHomeSettings(initial.settings);
+    const merged = normalizeHomeSettings(
+      window.tauriAPI.reconcileHomeSettingsSnapshot(initial.settings, settings)
+    );
+    currentHomeSettings = latest;
+    applyHomeSettings(currentHomeSettings);
+    if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
+      tempHomeSettings = merged;
+      syncHomeSettingsModal();
+    }
+
+    const keepLocal = await showConfirm(
+      `Another window changed ${initial.conflictKeys.join(', ')}. Choose Yes to keep your values and save again, or No to use the latest values for those settings.`,
+      'Home settings changed',
+      'warning'
+    );
+    const resolved = normalizeHomeSettings(
+      window.tauriAPI.resolveHomeSettingsConflict(
+        merged,
+        initial.conflictKeys,
+        keepLocal ? 'keepLocal' : 'useLatest'
+      )
+    );
+    currentHomeSettings = resolved;
+    applyHomeSettings(currentHomeSettings);
+    if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
+      tempHomeSettings = resolved;
+      syncHomeSettingsModal();
+    }
+    return window.tauriAPI.saveHomeSettings(resolved);
+  }
+
   function createHomeItem(options: {
     label: string;
     icon: string;
@@ -486,8 +522,11 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       ...currentHomeSettings,
       pinnedRecents: Array.from(pinned),
     });
-    const result = await window.tauriAPI.saveHomeSettings(currentHomeSettings);
+    const result = await saveHomeSettingsWithConflictResolution(currentHomeSettings);
     if (result.success) {
+      currentHomeSettings = normalizeHomeSettings(
+        window.tauriAPI.reconcileHomeSettingsSnapshot(result.settings, currentHomeSettings)
+      );
       renderHomeRecents();
       if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
         tempHomeSettings = normalizeHomeSettings(currentHomeSettings);
@@ -925,12 +964,28 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
 
   async function saveHomeSettings(): Promise<void> {
     tempHomeSettings = normalizeHomeSettings(tempHomeSettings);
-    const result = await window.tauriAPI.saveHomeSettings(tempHomeSettings);
+    const submitted = normalizeHomeSettings({ ...tempHomeSettings });
+    const result = await saveHomeSettingsWithConflictResolution(submitted);
     if (result.success) {
-      currentHomeSettings = { ...tempHomeSettings };
+      currentHomeSettings = normalizeHomeSettings(
+        window.tauriAPI.reconcileHomeSettingsSnapshot(result.settings, currentHomeSettings)
+      );
+      tempHomeSettings = normalizeHomeSettings(
+        window.tauriAPI.reconcileHomeSettingsSnapshot(result.settings, tempHomeSettings)
+      );
       applyHomeSettings(currentHomeSettings);
-      await closeHomeSettingsModal(true);
-      showToast('Home settings saved!', 'Home', 'success');
+      if (homeSettingsEqual(tempHomeSettings, currentHomeSettings)) {
+        await closeHomeSettingsModal(true);
+        showToast('Home settings saved!', 'Home', 'success');
+      } else {
+        homeSettingsHasUnsavedChanges = true;
+        syncHomeSettingsModal();
+        showToast(
+          'Saved earlier edits. Newer Home settings edits still need saving.',
+          'Home',
+          'info'
+        );
+      }
     } else {
       showToast('Failed to save home settings: ' + result.error, 'Error', 'error');
     }
@@ -993,16 +1048,32 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       el.addEventListener('change', onToggleChange);
     }
 
-    const cleanupHomeSettingsListener = window.tauriAPI.onHomeSettingsChanged((settings) => {
-      const incoming = normalizeHomeSettings(settings);
-      if (homeSettingsEqual(incoming, currentHomeSettings)) return;
-      currentHomeSettings = incoming;
-      applyHomeSettings(currentHomeSettings);
-      if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
-        tempHomeSettings = normalizeHomeSettings(currentHomeSettings);
-        syncHomeSettingsModal();
+    const cleanupHomeSettingsListener = window.tauriAPI.onHomeSettingsChanged(
+      (settings, canonical) => {
+        const isEditing = homeSettingsModal && homeSettingsModal.style.display === 'flex';
+        const incoming = normalizeHomeSettings(settings);
+        if (isEditing) {
+          const nextTemp = normalizeHomeSettings(
+            window.tauriAPI.reconcileHomeSettingsSnapshot(settings, tempHomeSettings, canonical)
+          );
+          if (!homeSettingsEqual(incoming, currentHomeSettings)) {
+            currentHomeSettings = incoming;
+            applyHomeSettings(currentHomeSettings);
+          }
+          if (!homeSettingsEqual(nextTemp, tempHomeSettings)) {
+            tempHomeSettings = nextTemp;
+            syncHomeSettingsModal();
+          }
+          return;
+        }
+        const reconciled = normalizeHomeSettings(
+          window.tauriAPI.reconcileHomeSettingsSnapshot(settings, currentHomeSettings, canonical)
+        );
+        if (homeSettingsEqual(reconciled, currentHomeSettings)) return;
+        currentHomeSettings = reconciled;
+        applyHomeSettings(currentHomeSettings);
       }
-    });
+    );
 
     const cleanup = () => {
       homeCustomizeBtn?.removeEventListener('click', onCustomizeClick);
