@@ -455,8 +455,19 @@ fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
             }
         }
         if disable_hw_accel {
+            // Preserve any WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS set externally; only append --disable-gpu.
+            let existing =
+                std::env::var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS").unwrap_or_default();
+            let existing = existing.trim();
+            let args = if existing.is_empty() {
+                "--disable-gpu".to_string()
+            } else if existing.split_whitespace().any(|a| a == "--disable-gpu") {
+                existing.to_string()
+            } else {
+                format!("{existing} --disable-gpu")
+            };
             unsafe {
-                std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-gpu");
+                std::env::set_var("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", args);
             }
         }
     }
