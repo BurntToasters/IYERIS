@@ -319,4 +319,105 @@ describe('tauri-api regressions', () => {
       expect(result.results[1]?.isHidden).toBe(true);
     });
   });
+
+  describe('settings deletion patches', () => {
+    const customTheme = {
+      name: 'Audit theme',
+      accentColor: '#112233',
+      bgPrimary: '#111111',
+      bgSecondary: '#222222',
+      textPrimary: '#eeeeee',
+      textSecondary: '#cccccc',
+      glassBg: 'rgba(0, 0, 0, 0.5)',
+      glassBorder: 'rgba(255, 255, 255, 0.2)',
+      iconHue: '#112233',
+    };
+
+    function installSettingsBackend(baseline: Record<string, unknown>) {
+      mockInvoke.mockImplementation(async (command: string) => {
+        if (command === 'get_settings') return JSON.stringify(baseline);
+        if (command === 'save_settings') return { status: 'saved', settings: baseline };
+        return null;
+      });
+    }
+
+    async function saveAfterSettingsMutation(
+      mutate: (settings: Record<string, unknown>) => void
+    ): Promise<{ patch: unknown; baseValues: unknown; expectedRevision: number }> {
+      installSettingsBackend({ _revision: 7, theme: 'dark', customTheme });
+      await import('../tauri-api');
+      const loaded = await window.tauriAPI.getSettings();
+      expect(loaded.success).toBe(true);
+      if (!loaded.success) throw new Error('settings did not load');
+      const next: Record<string, unknown> = { ...loaded.settings };
+      mutate(next);
+      await expect(
+        window.tauriAPI.saveSettings(
+          next as unknown as Parameters<typeof window.tauriAPI.saveSettings>[0]
+        )
+      ).resolves.toEqual(expect.objectContaining({ success: true }));
+      const call = mockInvoke.mock.calls.find(([command]) => command === 'save_settings');
+      const args = call?.[1] as
+        { patch: string; baseValues: string; expectedRevision: number } | undefined;
+      expect(args).toBeDefined();
+      return {
+        patch: JSON.parse(args!.patch) as unknown,
+        baseValues: JSON.parse(args!.baseValues) as unknown,
+        expectedRevision: args!.expectedRevision,
+      };
+    }
+
+    it('sends a null patch when an optional settings key is explicitly undefined', async () => {
+      const { patch, baseValues, expectedRevision } = await saveAfterSettingsMutation(
+        (settings) => {
+          settings.customTheme = undefined;
+        }
+      );
+
+      expect(patch).toEqual({ customTheme: null });
+      expect(baseValues).toEqual({ customTheme });
+      expect(expectedRevision).toBe(7);
+    });
+
+    it('sends a null patch when an optional settings key is absent from the new settings', async () => {
+      const { patch, baseValues, expectedRevision } = await saveAfterSettingsMutation(
+        (settings) => {
+          delete settings.customTheme;
+        }
+      );
+
+      expect(patch).toEqual({ customTheme: null });
+      expect(baseValues).toEqual({ customTheme });
+      expect(expectedRevision).toBe(7);
+    });
+
+    it('sends a null home-settings patch when a baseline key is absent', async () => {
+      const baseline = { _revision: 2, showQuickAccess: true, compactCards: true };
+      mockInvoke.mockImplementation(async (command: string) => {
+        if (command === 'get_home_settings') return JSON.stringify(baseline);
+        if (command === 'save_home_settings') return { status: 'saved', settings: baseline };
+        return null;
+      });
+      await import('../tauri-api');
+      const loaded = await window.tauriAPI.getHomeSettings();
+      expect(loaded.success).toBe(true);
+      if (!loaded.success) throw new Error('home settings did not load');
+      const next: Record<string, unknown> = { ...loaded.settings };
+      delete next.compactCards;
+
+      await expect(
+        window.tauriAPI.saveHomeSettings(
+          next as unknown as Parameters<typeof window.tauriAPI.saveHomeSettings>[0]
+        )
+      ).resolves.toEqual(expect.objectContaining({ success: true }));
+
+      const call = mockInvoke.mock.calls.find(([command]) => command === 'save_home_settings');
+      const args = call?.[1] as
+        { patch: string; baseValues: string; expectedRevision: number } | undefined;
+      expect(args).toBeDefined();
+      expect(JSON.parse(args!.patch)).toEqual({ compactCards: null });
+      expect(JSON.parse(args!.baseValues)).toEqual({ compactCards: true });
+      expect(args!.expectedRevision).toBe(2);
+    });
+  });
 });

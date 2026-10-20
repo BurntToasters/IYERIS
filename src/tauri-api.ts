@@ -251,6 +251,43 @@ function latestCanonicalHomeSettingsForSave(
     : settings;
 }
 
+const SETTINGS_PATCH_RESERVED_KEYS = new Set(['_revision', '_timestamp']);
+const HOME_SETTINGS_PATCH_RESERVED_KEYS = new Set(['_revision']);
+
+// Undefined values disappear from JSON.stringify, so a removed optional key
+// would never reach the backend. Build the patch from the union of the new
+// settings and the baseline view, and encode removals as explicit nulls with
+// the baseline value for conflict detection.
+function buildSettingsPatch(
+  settings: object,
+  baselineRaw: Record<string, unknown>,
+  baselineView: object,
+  reservedKeys: ReadonlySet<string>
+): { patch: Record<string, unknown>; baseValues: Record<string, unknown> } {
+  const settingsRecord = settings as Record<string, unknown>;
+  const baselineRecord = baselineView as Record<string, unknown>;
+  const patch: Record<string, unknown> = {};
+  const baseValues: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(settingsRecord), ...Object.keys(baselineRecord)]);
+  for (const key of keys) {
+    if (reservedKeys.has(key)) continue;
+    const hasNewValue = Object.prototype.hasOwnProperty.call(settingsRecord, key);
+    const newValue = settingsRecord[key];
+    const baselineValue = baselineRecord[key];
+    if (!hasNewValue || newValue === undefined) {
+      if (baselineValue === undefined) continue;
+      patch[key] = null;
+    } else {
+      if (settingsValueEqual(newValue, baselineValue)) continue;
+      patch[key] = newValue;
+    }
+    if (Object.prototype.hasOwnProperty.call(baselineRaw, key)) {
+      baseValues[key] = baselineRaw[key];
+    }
+  }
+  return { patch, baseValues };
+}
+
 async function saveHomeSettingsThroughBridge(
   settings: HomeSettings
 ): Promise<HomeSettingsSaveResponse> {
@@ -279,22 +316,12 @@ async function saveHomeSettingsThroughBridge(
     return { success: false, error: 'Could not establish current home settings before saving' };
   }
 
-  const patch: Record<string, unknown> = {};
-  const baseValues: Record<string, unknown> = {};
-  for (const key of Object.keys(settings)) {
-    if (key === '_revision') continue;
-    if (
-      !settingsValueEqual(
-        settings[key as keyof HomeSettings],
-        baselineView[key as keyof HomeSettings]
-      )
-    ) {
-      patch[key] = settings[key as keyof HomeSettings];
-      if (Object.prototype.hasOwnProperty.call(baselineRaw, key)) {
-        baseValues[key] = baselineRaw[key];
-      }
-    }
-  }
+  const { patch, baseValues } = buildSettingsPatch(
+    settings,
+    baselineRaw,
+    baselineView,
+    HOME_SETTINGS_PATCH_RESERVED_KEYS
+  );
 
   try {
     const raw = await invoke<unknown>('save_home_settings', {
@@ -377,17 +404,12 @@ async function saveSettingsThroughBridge(
     }
   }
 
-  const patch: Record<string, unknown> = {};
-  const baseValues: Record<string, unknown> = {};
-  for (const key of Object.keys(settings)) {
-    if (key === '_revision' || key === '_timestamp') continue;
-    if (!settingsValueEqual(settings[key as keyof Settings], baselineView[key as keyof Settings])) {
-      patch[key] = settings[key as keyof Settings];
-      if (Object.prototype.hasOwnProperty.call(baselineRaw, key)) {
-        baseValues[key] = baselineRaw[key];
-      }
-    }
-  }
+  const { patch, baseValues } = buildSettingsPatch(
+    settings,
+    baselineRaw,
+    baselineView,
+    SETTINGS_PATCH_RESERVED_KEYS
+  );
 
   try {
     const raw = await invoke<unknown>('save_settings', {

@@ -34,7 +34,10 @@ interface DragDropConfig {
     name: string,
     options?: { cancellable?: boolean; total?: number; retry?: () => void }
   ) => void;
-  updateOperation?: (id: string, update: { currentFile?: string; status?: 'active' }) => void;
+  updateOperation?: (
+    id: string,
+    update: { currentFile?: string; status?: 'active'; cancellable?: boolean }
+  ) => void;
   completeOperation?: (id: string, status: 'done' | 'failed', error?: string) => void;
 }
 
@@ -49,7 +52,7 @@ export function createDragDropController(config: DragDropConfig) {
 
   function updateQueued(
     operationId: string | undefined,
-    update: { currentFile?: string; status?: 'active' }
+    update: { currentFile?: string; status?: 'active'; cancellable?: boolean }
   ): void {
     if (operationId) config.updateOperation?.(operationId, update);
   }
@@ -398,6 +401,7 @@ export function createDragDropController(config: DragDropConfig) {
             : false;
           if (confirmed) {
             updateQueued(operationId, {
+              cancellable: false,
               currentFile: 'Waiting for elevated permissions...',
               status: 'active',
             });

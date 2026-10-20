@@ -14,10 +14,11 @@ const MEDIA_THUMBNAIL_TYPES = new Set(['video', 'audio', 'pdf', 'office']);
 
 const THUMBNAIL_ROOT_MARGIN = '100px';
 const THUMBNAIL_CACHE_MAX = 100;
+const THUMBNAIL_CACHE_MAX_BYTES = 128 * 1024 * 1024;
 const THUMBNAIL_CONCURRENT_LOADS = 4;
 const THUMBNAIL_QUEUE_MAX = 100;
 type ThumbnailQuality = 'low' | 'medium' | 'high';
-type ThumbnailCacheEntry = { url: string; path: string };
+type ThumbnailCacheEntry = { url: string; path: string; bytes: number };
 type ThumbnailWaiter = {
   fileItem: HTMLElement;
   item: FileItem;
@@ -38,6 +39,7 @@ type ThumbnailDeps = {
 
 export function createThumbnailController(deps: ThumbnailDeps) {
   const thumbnailCache = new Map<string, ThumbnailCacheEntry>();
+  let thumbnailCacheBytes = 0;
   let activeThumbnailLoads = 0;
   const pendingThumbnailLoads: Array<() => void> = [];
   const inflightThumbnails = new Map<string, ThumbnailInflight>();
@@ -634,14 +636,27 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     }
   }
 
+  function removeThumbnailCacheEntry(cacheKey: string): void {
+    const entry = thumbnailCache.get(cacheKey);
+    if (!entry) return;
+    thumbnailCache.delete(cacheKey);
+    thumbnailCacheBytes = Math.max(0, thumbnailCacheBytes - entry.bytes);
+  }
+
   function cacheThumbnail(cacheKey: string, url: string, path: string): void {
-    if (thumbnailCache.has(cacheKey)) {
-      thumbnailCache.delete(cacheKey);
-    } else if (thumbnailCache.size >= THUMBNAIL_CACHE_MAX) {
-      const firstKey = thumbnailCache.keys().next().value;
-      if (firstKey) thumbnailCache.delete(firstKey);
+    removeThumbnailCacheEntry(cacheKey);
+    // Data URLs are UTF-16 in memory; length * 2 is a conservative estimate.
+    const bytes = url.length * 2;
+    thumbnailCache.set(cacheKey, { url, path, bytes });
+    thumbnailCacheBytes += bytes;
+    while (
+      thumbnailCache.size > 0 &&
+      (thumbnailCache.size > THUMBNAIL_CACHE_MAX || thumbnailCacheBytes > THUMBNAIL_CACHE_MAX_BYTES)
+    ) {
+      const oldestKey = thumbnailCache.keys().next().value;
+      if (oldestKey === undefined) break;
+      removeThumbnailCacheEntry(oldestKey);
     }
-    thumbnailCache.set(cacheKey, { url, path });
   }
 
   function renderThumbnailImage(
@@ -717,6 +732,7 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     },
     clearThumbnailCache: () => {
       thumbnailCache.clear();
+      thumbnailCacheBytes = 0;
       inflightThumbnails.clear();
     },
     clearPendingThumbnailLoads: () => {

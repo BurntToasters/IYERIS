@@ -49,7 +49,13 @@ type ClipboardDeps = {
   ) => void;
   updateOperation?: (
     id: string,
-    update: { current?: number; total?: number; currentFile?: string; status?: 'active' }
+    update: {
+      current?: number;
+      total?: number;
+      currentFile?: string;
+      status?: 'active';
+      cancellable?: boolean;
+    }
   ) => void;
   completeOperation?: (id: string, status: 'done' | 'failed', error?: string) => void;
   refresh: () => void;
@@ -120,7 +126,7 @@ export function createClipboardController(deps: ClipboardDeps) {
 
   function updateQueued(
     operationId: string | undefined,
-    update: { currentFile?: string; status?: 'active' }
+    update: { currentFile?: string; status?: 'active'; cancellable?: boolean }
   ): void {
     // Delegate to the operation-queue dep (must NOT call itself — infinite recursion).
     if (operationId) deps.updateOperation?.(operationId, update);
@@ -256,6 +262,7 @@ export function createClipboardController(deps: ClipboardDeps) {
         );
         if (confirmed) {
           updateQueued(operationId, {
+            cancellable: false,
             currentFile: 'Waiting for elevated permissions...',
             status: 'active',
           });
@@ -310,6 +317,7 @@ export function createClipboardController(deps: ClipboardDeps) {
         );
         if (confirmed) {
           updateQueued(operationId, {
+            cancellable: false,
             currentFile: 'Waiting for elevated permissions...',
             status: 'active',
           });
@@ -563,6 +571,7 @@ export function createClipboardController(deps: ClipboardDeps) {
           );
           if (confirmed) {
             updateQueued(operationId, {
+              cancellable: false,
               currentFile: 'Waiting for elevated permissions...',
               status: 'active',
             });
@@ -659,6 +668,7 @@ export function createClipboardController(deps: ClipboardDeps) {
           );
           if (confirmed) {
             updateQueued(operationId, {
+              cancellable: false,
               currentFile: 'Waiting for elevated permissions...',
               status: 'active',
             });
@@ -790,6 +800,7 @@ export function createClipboardController(deps: ClipboardDeps) {
           );
           if (confirmed) {
             updateQueued(operationId, {
+              cancellable: false,
               currentFile: 'Waiting for elevated permissions...',
               status: 'active',
             });

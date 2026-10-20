@@ -9,6 +9,7 @@ type QueueUpdate = {
   total?: number;
   currentFile?: string;
   error?: string;
+  cancellable?: boolean;
 };
 
 type QueueDeps = {

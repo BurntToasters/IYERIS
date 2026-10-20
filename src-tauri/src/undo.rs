@@ -126,6 +126,8 @@ pub struct RenameActionData {
     pub new_path: String,
     pub old_name: String,
     pub new_name: String,
+    #[serde(default)]
+    pub fingerprint: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -443,21 +445,27 @@ pub(crate) fn path_identity(path: &Path) -> Result<String, String> {
     Ok(blake3::hash(&metadata_identity(&metadata)).to_hex().to_string())
 }
 
+/// Full content fingerprint retained for focused fingerprint tests.
+#[cfg(test)]
 pub(crate) fn copy_fingerprint(path: &Path, cancelled: &impl Fn() -> bool) -> Result<String, String> {
-    fingerprint_tree(path, cancelled, true)
+    fingerprint_tree(path, cancelled, true, true)
 }
 
-pub(crate) fn content_fingerprint(
-    path: &Path,
-    cancelled: &impl Fn() -> bool,
-) -> Result<String, String> {
-    fingerprint_tree(path, cancelled, false)
+/// Metadata-only tree fingerprint used by undo/redo and transfer recovery.
+///
+/// It covers inode identity, names, size, mtime, permissions, and symlink
+/// targets without reading file bodies. This keeps large copy/move operations
+/// from hashing every byte a second time while still detecting edits,
+/// replacements, and tree changes in normal use.
+pub(crate) fn path_fingerprint(path: &Path, cancelled: &impl Fn() -> bool) -> Result<String, String> {
+    fingerprint_tree(path, cancelled, true, false)
 }
 
 fn fingerprint_tree(
     path: &Path,
     cancelled: &impl Fn() -> bool,
     include_identity: bool,
+    include_content: bool,
 ) -> Result<String, String> {
     fn visit(
         path: &Path,
@@ -465,11 +473,11 @@ fn fingerprint_tree(
         depth: usize,
         cancelled: &impl Fn() -> bool,
         include_identity: bool,
+        include_content: bool,
     ) -> Result<(), String> {
         if cancelled() {
             return Err("Operation cancelled".to_string());
         }
-        use std::io::Read;
         if depth > 256 {
             return Err("Copy tree exceeds undo depth limit".to_string());
         }
@@ -510,7 +518,14 @@ fn fingerprint_tree(
                 let bytes = name.as_encoded_bytes();
                 hash.update(&(bytes.len() as u64).to_le_bytes());
                 hash.update(bytes);
-                visit(&entry.path(), hash, depth + 1, cancelled, include_identity)?;
+                visit(
+                    &entry.path(),
+                    hash,
+                    depth + 1,
+                    cancelled,
+                    include_identity,
+                    include_content,
+                )?;
             }
             let after = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
             if !same_entry_identity(&metadata, &after) || metadata_modified(&after) != modified {
@@ -519,33 +534,36 @@ fn fingerprint_tree(
         } else {
             hash.update(b"file");
             hash.update(&metadata.len().to_le_bytes());
-            let mut file = crate::file_operations::open_regular_read(path)?;
-            let mut buffer = vec![0; 1024 * 1024];
-            let mut remaining = metadata.len();
-            loop {
-                if cancelled() {
-                    return Err("Operation cancelled".to_string());
+            if include_content {
+                use std::io::Read;
+                let mut file = crate::file_operations::open_regular_read(path)?;
+                let mut buffer = vec![0; 1024 * 1024];
+                let mut remaining = metadata.len();
+                loop {
+                    if cancelled() {
+                        return Err("Operation cancelled".to_string());
+                    }
+                    let limit = (buffer.len() as u64).min(remaining.saturating_add(1)) as usize;
+                    let count = file
+                        .read(&mut buffer[..limit])
+                        .map_err(|error| error.to_string())?;
+                    if count as u64 > remaining {
+                        return Err("Copy changed while recording undo".to_string());
+                    }
+                    remaining -= count as u64;
+                    if count == 0 {
+                        break;
+                    }
+                    hash.update(&buffer[..count]);
                 }
-                let limit = (buffer.len() as u64).min(remaining.saturating_add(1)) as usize;
-                let count = file
-                    .read(&mut buffer[..limit])
-                    .map_err(|error| error.to_string())?;
-                if count as u64 > remaining {
+                let after = file.metadata().map_err(|error| error.to_string())?;
+                if remaining != 0
+                    || after.len() != metadata.len()
+                    || metadata_modified(&after) != modified
+                    || !same_entry_identity(&metadata, &after)
+                {
                     return Err("Copy changed while recording undo".to_string());
                 }
-                remaining -= count as u64;
-                if count == 0 {
-                    break;
-                }
-                hash.update(&buffer[..count]);
-            }
-            let after = file.metadata().map_err(|error| error.to_string())?;
-            if remaining != 0
-                || after.len() != metadata.len()
-                || metadata_modified(&after) != modified
-                || !same_entry_identity(&metadata, &after)
-            {
-                return Err("Copy changed while recording undo".to_string());
             }
             let path_after = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
             if !same_entry_identity(&metadata, &path_after)
@@ -557,12 +575,19 @@ fn fingerprint_tree(
         Ok(())
     }
     let mut hash = blake3::Hasher::new();
-    visit(path, &mut hash, 0, cancelled, include_identity)?;
+    visit(
+        path,
+        &mut hash,
+        0,
+        cancelled,
+        include_identity,
+        include_content,
+    )?;
     Ok(hash.finalize().to_hex().to_string())
 }
 
 fn verify_moved_item(path: &Path, expected: &str) -> Result<(), String> {
-    if content_fingerprint(path, &|| false)? != expected {
+    if path_fingerprint(path, &|| false)? != expected {
         return Err(format!(
             "Cannot undo/redo move: item changed at {}",
             path.display()
@@ -580,15 +605,17 @@ pub(crate) fn record_copy_entry(
     Ok(CopyEntry {
         source_path: source.to_string_lossy().to_string(),
         dest_path: destination.to_string_lossy().to_string(),
-        fingerprint: copy_fingerprint(staged, cancelled)?,
+        fingerprint: path_fingerprint(staged, cancelled)?,
         retained: None,
     })
 }
 
+#[cfg(test)]
 pub(crate) fn push_recorded_copy_action(entries: Vec<CopyEntry>) -> Result<(), String> {
     push_recorded_copy_action_with_backups(entries, Vec::new())
 }
 
+#[cfg(test)]
 pub(crate) fn push_recorded_copy_action_with_backups(
     entries: Vec<CopyEntry>,
     overwrite_backups: Vec<OverwriteBackupEntry>,
@@ -624,7 +651,7 @@ pub fn push_copy_action(paths: &[(PathBuf, PathBuf)]) -> Result<(), String> {
 }
 
 pub(crate) fn verify_copy(path: &Path, expected: &str) -> Result<(), String> {
-    if copy_fingerprint(path, &|| false)? != expected {
+    if path_fingerprint(path, &|| false)? != expected {
         return Err(format!(
             "Cannot undo/redo copy: item changed at {}",
             path.display()
@@ -901,45 +928,19 @@ pub fn push_create_action(path: &Path, is_directory: bool) -> Result<(), String>
 pub fn push_rename_action(old_path: &Path, new_path: &Path) -> Result<(), String> {
     let old_path = old_path.to_string_lossy().to_string();
     let new_path = new_path.to_string_lossy().to_string();
+    // Record the entry identity after the rename. A missing fingerprint is
+    // tolerated for legacy actions, but a successful read prevents undo from
+    // moving a replacement that appeared at the new path later.
+    let fingerprint = path_fingerprint(Path::new(&new_path), &|| false).ok();
     push_undo_action(
         UndoAction::Rename(RenameActionData {
             old_name: to_file_name(&old_path),
             new_name: to_file_name(&new_path),
             old_path,
             new_path,
+            fingerprint,
         }),
         true,
-    )
-}
-
-pub fn push_move_action(
-    source_paths: Vec<String>,
-    original_paths: Vec<String>,
-    dest_path: String,
-) -> Result<(), String> {
-    push_move_action_with_backups(
-        source_paths,
-        original_paths,
-        dest_path,
-        Vec::new(),
-        None,
-    )
-}
-
-pub(crate) fn push_move_action_with_backups(
-    source_paths: Vec<String>,
-    original_paths: Vec<String>,
-    dest_path: String,
-    overwrite_backups: Vec<OverwriteBackupEntry>,
-    item_fingerprints: Option<Vec<String>>,
-) -> Result<(), String> {
-    push_move_action_with_recovery(
-        source_paths,
-        original_paths,
-        dest_path,
-        overwrite_backups,
-        item_fingerprints,
-        None,
     )
 }
 
@@ -1152,7 +1153,12 @@ fn move_path(source: &Path, dest: &Path) -> Result<(), String> {
     crate::file_operations::move_path_with_fallback(source, dest)
 }
 
-fn execute_rename_action(from_path: &str, to_path: &str, direction: &str) -> Result<(), String> {
+fn execute_rename_action(
+    from_path: &str,
+    to_path: &str,
+    direction: &str,
+    expected_fingerprint: Option<&str>,
+) -> Result<(), String> {
     let from_raw = match crate::validate_existing_path(from_path, "Item") {
         Ok(path) => path,
         Err(_) => {
@@ -1172,7 +1178,14 @@ fn execute_rename_action(from_path: &str, to_path: &str, direction: &str) -> Res
             direction
         ));
     }
-    if path_entry_exists(&to) {
+    if let Some(expected) = expected_fingerprint {
+        verify_moved_item(&from, expected)?;
+    }
+    // Case-only renames resolve to the same entry on case-insensitive
+    // filesystems. Treat that as a rename, not as an occupied destination.
+    if path_entry_exists(&to)
+        && !crate::file_operations::same_dir_entry(&from, &to)
+    {
         return Err(format!(
             "Cannot {}: A file already exists at the {} location",
             direction,
@@ -1183,7 +1196,7 @@ fn execute_rename_action(from_path: &str, to_path: &str, direction: &str) -> Res
             }
         ));
     }
-    move_path(&from, &to)
+    crate::file_operations::rename_no_replace(&from, &to)
 }
 
 fn move_undo_targets(action: &MoveActionData) -> Option<Vec<String>> {
@@ -1205,14 +1218,6 @@ fn move_undo_targets(action: &MoveActionData) -> Option<Vec<String>> {
             })
             .collect(),
     )
-}
-
-fn verify_optional_fingerprint(path: &Path, expected: Option<&str>) -> Result<(), String> {
-    if let Some(expected) = expected {
-        verify_copy(path, expected)
-    } else {
-        Ok(())
-    }
 }
 
 fn path_present(path: &Path, label: &str) -> Result<bool, String> {
@@ -1373,7 +1378,7 @@ fn execute_move_overwrite_undo_with(
     for (index, (source, target)) in move_current.iter().enumerate() {
         if let Err(error) = move_item(source, target) {
             let mut recovery_errors = Vec::new();
-            for (backup_path, (destination, fingerprint)) in backup_map.iter() {
+            for (destination, (backup_path, fingerprint)) in backup_map.iter() {
                 if path_entry_exists(destination)
                     && verify_copy(destination, fingerprint).is_ok()
                     && !path_entry_exists(backup_path)
@@ -1411,7 +1416,7 @@ fn execute_move_overwrite_undo_with(
         moved_indices.push(index);
     }
 
-    for (backup_path, (destination, fingerprint)) in &backup_map {
+    for (destination, (backup_path, fingerprint)) in &backup_map {
         if !path_entry_exists(backup_path) {
             continue;
         }
@@ -1427,7 +1432,7 @@ fn execute_move_overwrite_undo_with(
         if let Err(error) = move_item(backup_path, destination) {
             let mut recovery_errors = Vec::new();
             for restored in restored_backups.iter().rev() {
-                if let Some((backup_path, (destination, _))) = backup_map.iter().find(|(_, (destination, _))| *destination == *restored) {
+                if let Some((destination, (backup_path, _))) = backup_map.iter().find(|(destination, _)| *destination == *restored) {
                     if let Err(recovery) = move_item(destination, backup_path) {
                         recovery_errors.push(format!(
                             "backup rollback {} -> {} failed: {}; item remains at {}",
@@ -2097,7 +2102,12 @@ fn undo_action_sync() -> Result<UndoRedoState, String> {
             push_redo_action(UndoAction::Copy(data))?;
         }
         UndoAction::Rename(data) => {
-            if let Err(err) = execute_rename_action(&data.new_path, &data.old_path, "undo") {
+            if let Err(err) = execute_rename_action(
+                &data.new_path,
+                &data.old_path,
+                "undo",
+                data.fingerprint.as_deref(),
+            ) {
                 push_undo_action(UndoAction::Rename(data), false)?;
                 return Err(err);
             }
@@ -2168,7 +2178,12 @@ fn redo_action_sync() -> Result<UndoRedoState, String> {
             push_undo_action(UndoAction::Copy(data), false)?;
         }
         UndoAction::Rename(data) => {
-            if let Err(err) = execute_rename_action(&data.old_path, &data.new_path, "redo") {
+            if let Err(err) = execute_rename_action(
+                &data.old_path,
+                &data.new_path,
+                "redo",
+                data.fingerprint.as_deref(),
+            ) {
                 push_redo_action(UndoAction::Rename(data))?;
                 return Err(err);
             }
@@ -2340,10 +2355,19 @@ mod tests {
         fs::write(&source, b"original").unwrap();
         crate::file_operations::copy_entry_exclusive(&source, &destination, &|| false).unwrap();
         push_copy_action(&[(source, destination.clone())]).unwrap();
+        let original_times = fs::metadata(&destination).unwrap();
         fs::write(&destination, b"edited").unwrap();
         assert!(undo_action_sync().is_err());
         assert_eq!(fs::read(&destination).unwrap(), b"edited");
         fs::write(&destination, b"original").unwrap();
+        let restored = fs::File::options().write(true).open(&destination).unwrap();
+        restored
+            .set_times(
+                fs::FileTimes::new()
+                    .set_modified(original_times.modified().unwrap())
+                    .set_accessed(original_times.accessed().unwrap()),
+            )
+            .unwrap();
         undo_action_sync().unwrap();
         fs::write(&destination, b"new occupant").unwrap();
         assert!(redo_action_sync().is_err());
@@ -2368,7 +2392,7 @@ mod tests {
         let backup = OverwriteBackupEntry {
             original_path: destination.to_string_lossy().into_owned(),
             backup_path: backup_path.to_string_lossy().into_owned(),
-            fingerprint: copy_fingerprint(&backup_path, &|| false).unwrap(),
+            fingerprint: path_fingerprint(&backup_path, &|| false).unwrap(),
         };
         push_undo_action(
             UndoAction::Copy(CopyActionData {
@@ -2410,7 +2434,7 @@ mod tests {
         let backup = OverwriteBackupEntry {
             original_path: destination.to_string_lossy().into_owned(),
             backup_path: backup_path.to_string_lossy().into_owned(),
-            fingerprint: copy_fingerprint(&backup_path, &|| false).unwrap(),
+            fingerprint: path_fingerprint(&backup_path, &|| false).unwrap(),
         };
         push_undo_action(
             UndoAction::Copy(CopyActionData {
@@ -2450,9 +2474,9 @@ mod tests {
         let backup = OverwriteBackupEntry {
             original_path: destination.to_string_lossy().into_owned(),
             backup_path: backup_path.to_string_lossy().into_owned(),
-            fingerprint: copy_fingerprint(&backup_path, &|| false).unwrap(),
+            fingerprint: path_fingerprint(&backup_path, &|| false).unwrap(),
         };
-        let moved_fingerprint = content_fingerprint(&destination, &|| false).unwrap();
+        let moved_fingerprint = path_fingerprint(&destination, &|| false).unwrap();
         push_undo_action(
             UndoAction::Move(MoveActionData {
                 source_paths: vec![destination.to_string_lossy().into_owned()],

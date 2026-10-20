@@ -286,7 +286,12 @@ describe('thumbnail load path', () => {
       expect(thumbnailOf(fileItem)?.getAttribute('src')).toBe('data:image/png;base64,disk');
     });
     expect(controller.getThumbnailForPath('/a.png')).toBe('data:image/png;base64,disk');
-    expect(api.getCachedThumbnail).toHaveBeenCalledWith('/a.png', 1_700_000_000_000, 1024);
+    expect(api.getCachedThumbnail).toHaveBeenCalledWith(
+      '/a.png',
+      1_700_000_000_000,
+      1024,
+      'v1:medium:image'
+    );
   });
 
   it('serves a second render from memory without touching the disk cache again', async () => {
@@ -319,7 +324,12 @@ describe('thumbnail load path', () => {
     controller.loadThumbnail(fileItem, makeItem('/a.png', { modified }));
 
     await vi.waitFor(() => {
-      expect(api.getCachedThumbnail).toHaveBeenCalledWith('/a.png', modified.getTime(), 1024);
+      expect(api.getCachedThumbnail).toHaveBeenCalledWith(
+        '/a.png',
+        modified.getTime(),
+        1024,
+        'v1:medium:image'
+      );
     });
   });
 
@@ -351,7 +361,8 @@ describe('thumbnail load path', () => {
       '/docs/report.docx',
       'data:image/png;base64,office',
       1_700_000_000_000,
-      1024
+      1024,
+      'v1:medium:office'
     );
   });
 
@@ -627,6 +638,28 @@ describe('thumbnail cache', () => {
     const surviving = paths.filter((p) => controller.getThumbnailForPath(p) !== undefined);
     expect(surviving).toHaveLength(99);
     expect(controller.getThumbnailForPath('/f99.png')).toBeDefined();
+  }, 20_000);
+
+  it('evicts the oldest entry once the byte budget is exceeded', async () => {
+    // Each entry is ~68 MiB by the cache's UTF-16 estimate, so two of them
+    // exceed the 128 MiB budget even though the entry-count ceiling is not hit.
+    const largeUrl = `data:image/png;base64,${'x'.repeat(34 * 1024 * 1024)}`;
+    installTauriApi({
+      getCachedThumbnail: vi.fn(async () => ({ success: true, dataUrl: largeUrl })),
+    });
+    const { controller } = makeController();
+
+    const first = addFileItem('/huge-a.png');
+    controller.loadThumbnail(first, makeItem('/huge-a.png'));
+    await vi.waitFor(() => expect(controller.getThumbnailForPath('/huge-a.png')).toBeDefined());
+
+    const second = addFileItem('/huge-b.png');
+    controller.loadThumbnail(second, makeItem('/huge-b.png'));
+    await vi.waitFor(() => expect(controller.getThumbnailForPath('/huge-b.png')).toBeDefined());
+
+    // The older entry had to go to keep the in-memory cache under budget.
+    expect(controller.getThumbnailForPath('/huge-a.png')).toBeUndefined();
+    expect(controller.getThumbnailForPath('/huge-b.png')).toBe(largeUrl);
   }, 20_000);
 });
 

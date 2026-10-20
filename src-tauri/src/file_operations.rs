@@ -931,10 +931,10 @@ fn copy_entry_checked_with_recovery<T>(
     };
     let staged = workspace.join("content");
     let result = (|| {
-        crate::recovery::record_paths(
+        crate::recovery::record_paths_buffered(
             recovery_record_id,
             crate::recovery::RecoveryPaths {
-                staging: vec![workspace.clone(), staged.clone()],
+                staging: vec![workspace.clone()],
                 ..crate::recovery::RecoveryPaths::default()
             },
         )?;
@@ -953,13 +953,6 @@ fn copy_entry_checked_with_recovery<T>(
         if cancelled() {
             return Err("Operation cancelled".to_string());
         }
-        crate::recovery::record_paths(
-            recovery_record_id,
-            crate::recovery::RecoveryPaths {
-                staging: vec![staged.clone()],
-                ..crate::recovery::RecoveryPaths::default()
-            },
-        )?;
         rename_exclusive(&staged, destination).map_err(|error| error.to_string())?;
         Ok(recorded)
     })();
@@ -1153,7 +1146,7 @@ pub async fn move_items(
 
         let item_fingerprints = match moved_paths
             .iter()
-            .map(|path| undo::content_fingerprint(Path::new(path), &|| false))
+            .map(|path| undo::path_fingerprint(Path::new(path), &|| false))
             .collect::<Result<Vec<_>, _>>()
         {
             Ok(fingerprints) => fingerprints,
@@ -1271,7 +1264,7 @@ fn path_entry_exists(path: &Path) -> bool {
 
 const NAME_COLLISION_MESSAGE: &str = "A file or folder with that name already exists";
 
-fn same_dir_entry(left: &Path, right: &Path) -> bool {
+pub(crate) fn same_dir_entry(left: &Path, right: &Path) -> bool {
     #[cfg(unix)]
     {
         let Ok(left_meta) = fs::symlink_metadata(left) else {
@@ -1405,7 +1398,7 @@ pub(crate) fn rename_exclusive(from: &Path, to: &Path) -> std::io::Result<()> {
     fs::rename(from, to)
 }
 
-fn rename_no_replace(from: &Path, to: &Path) -> Result<(), String> {
+pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> Result<(), String> {
     if from == to || same_dir_entry(from, to) {
         return fs::rename(from, to).map_err(map_rename_io_error);
     }
@@ -1826,6 +1819,7 @@ pub(crate) fn move_path_with_fallback_cancellable_and_recovery(
     )
 }
 
+#[cfg(test)]
 fn copy_then_remove_source(
     source: &Path,
     target: &Path,
@@ -1935,7 +1929,7 @@ fn ensure_overwrite_backup(
         Ok(_) => {}
     }
 
-    let fingerprint = undo::copy_fingerprint(&operation.dest_path, &|| false)?;
+    let fingerprint = undo::path_fingerprint(&operation.dest_path, &|| false)?;
     let backup_path = create_backup_path(&operation.dest_path)?;
     crate::recovery::record_paths(
         recovery_record_id,
@@ -2028,7 +2022,7 @@ fn restore_overwrite_backups(backups: &HashMap<String, OverwriteBackup>) -> Vec<
         if let Err(error) = rename_exclusive(&backup.backup_path, &backup.dest_path) {
             errors.push(format!(
                 "Restore failed: {}. Original retained at {}",
-                error.to_string(),
+                error,
                 backup.backup_path.display()
             ));
         }
@@ -2044,6 +2038,7 @@ fn with_recovery_errors(error: String, recovery_errors: Vec<String>) -> String {
     }
 }
 
+#[cfg(test)]
 fn rollback_published_copies(entries: &[undo::CopyEntry]) -> Vec<String> {
     rollback_published_copies_with_recovery(entries, None)
 }
@@ -3393,7 +3388,7 @@ mod tests {
             OverwriteBackup {
                 dest_path: destination.clone(),
                 backup_path: backup.clone(),
-                fingerprint: undo::copy_fingerprint(&backup, &|| false).unwrap(),
+                fingerprint: undo::path_fingerprint(&backup, &|| false).unwrap(),
             },
         )]);
         let errors = restore_overwrite_backups(&backups);

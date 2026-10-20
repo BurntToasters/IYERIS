@@ -1,3 +1,28 @@
+//! Privileged file operations.
+//!
+//! ## Cancellation
+//!
+//! None of the commands in this module are cancellable. They run through an OS
+//! privilege prompt (UAC, `osascript`, or `pkexec`) and hand the actual mutation
+//! to a separate privileged process. The unprivileged parent cannot safely stop
+//! that process, and killing it can leave a half-applied copy/move behind.
+//! These commands therefore do not accept an operation id and must never be
+//! registered in the cancellation registry (`ACTIVE_FILE_OPERATIONS`) or wired
+//! to `cancel_file_operation`. The frontend marks them non-cancellable to match.
+//!
+//! ## Atomicity
+//!
+//! Each item in an elevated transfer gets its own rollback copy. When an
+//! overwrite replaces an existing destination, the previous entry is renamed to
+//! a hidden `.iyeris-elevated-backup-*` sibling first; it is restored if that
+//! item fails and removed after that item succeeds. Directory replacement uses
+//! the same per-item backup through `replace_directory_transaction`.
+//!
+//! Batch operations are deliberately **not transactional across items**. Item
+//! N is published before item N+1 starts, so a failure leaves earlier items
+//! applied. Error text says so explicitly; callers must not report batch
+//! atomicity or automatic whole-batch rollback.
+
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use std::process::Command;
 
@@ -163,6 +188,437 @@ fn resolve_elevated_paths_before_exec(
         None => None,
     };
     Ok((source, dest))
+}
+
+/// Owner that elevated copies must end up with: whoever owns the destination
+/// parent. Derived only after the destination parent has been resolved and
+/// canonicalized, so a symlink swap cannot redirect the chown.
+#[cfg(unix)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct DestinationOwner {
+    uid: u32,
+    gid: u32,
+}
+
+#[cfg(unix)]
+impl DestinationOwner {
+    fn spec(&self) -> String {
+        format!("{}:{}", self.uid, self.gid)
+    }
+}
+
+#[cfg(target_os = "macos")]
+const ELEVATED_CHOWN: &str = "/usr/sbin/chown";
+#[cfg(target_os = "linux")]
+const ELEVATED_CHOWN: &str = "/bin/chown";
+
+/// Guarantees distinct rollback names even when the platform clock has coarse
+/// resolution and multiple items are planned in the same tick.
+#[cfg(unix)]
+static ELEVATED_BACKUP_SEQUENCE: std::sync::atomic::AtomicU64 =
+    std::sync::atomic::AtomicU64::new(0);
+
+#[cfg(unix)]
+fn destination_parent_owner(destination: &str) -> Result<DestinationOwner, String> {
+    destination_parent_owner_path(std::path::Path::new(destination))
+}
+
+#[cfg(unix)]
+fn destination_parent_owner_path(
+    destination: &std::path::Path,
+) -> Result<DestinationOwner, String> {
+    use std::os::unix::fs::MetadataExt;
+
+    let parent = destination.parent().ok_or_else(|| {
+        format!(
+            "Destination has no parent directory: {}",
+            destination.display()
+        )
+    })?;
+    let metadata = std::fs::symlink_metadata(parent).map_err(|error| {
+        format!(
+            "Cannot determine destination parent ownership before elevation: {}",
+            error
+        )
+    })?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err(
+            "Destination parent is not a real directory — refusing elevated operation".to_string(),
+        );
+    }
+    Ok(DestinationOwner {
+        uid: metadata.uid(),
+        gid: metadata.gid(),
+    })
+}
+
+/// Reserve a hidden sibling path for one item's rollback copy. The path is only
+/// claimed by the privileged rename; checking here catches the (unlikely)
+/// collision without requiring write access to the parent from userland.
+#[cfg(unix)]
+fn elevated_backup_candidate(
+    destination: &std::path::Path,
+    attempt: u32,
+) -> Result<std::path::PathBuf, String> {
+    let parent = destination.parent().ok_or_else(|| {
+        format!(
+            "Destination has no parent directory: {}",
+            destination.display()
+        )
+    })?;
+    let sequence = ELEVATED_BACKUP_SEQUENCE.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos()
+        .saturating_add(u128::from(sequence))
+        .saturating_add(u128::from(attempt));
+    Ok(parent.join(format!(
+        ".iyeris-elevated-backup-{}-{}",
+        std::process::id(),
+        stamp
+    )))
+}
+
+#[cfg(unix)]
+fn elevated_rollback_path(destination: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    for attempt in 0..128u32 {
+        let candidate = elevated_backup_candidate(destination, attempt)?;
+        match std::fs::symlink_metadata(&candidate) {
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(candidate),
+            Ok(_) => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Cannot inspect rollback backup path {}: {}",
+                    candidate.display(),
+                    error
+                ))
+            }
+        }
+    }
+    Err("Could not reserve a unique elevated rollback path".to_string())
+}
+
+/// Move the existing destination aside before replacement. Runs in the
+/// privileged process, so it works in directories the user cannot write.
+#[cfg(unix)]
+fn reserve_elevated_backup(destination: &std::path::Path) -> Result<std::path::PathBuf, String> {
+    use crate::file_operations::rename_exclusive;
+
+    for attempt in 0..128u32 {
+        let candidate = elevated_backup_candidate(destination, attempt)?;
+        match rename_exclusive(destination, &candidate) {
+            Ok(()) => return Ok(candidate),
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => {
+                return Err(format!(
+                    "Cannot stage the previous destination at {}: {}",
+                    candidate.display(),
+                    error
+                ))
+            }
+        }
+    }
+    Err("Could not reserve a unique elevated rollback path".to_string())
+}
+
+/// Fixed shell programs. Untrusted source/destination/owner values are always
+/// positional arguments (`$1`, `$2`, ...), never interpolated into the script.
+/// That keeps Linux's `pkexec /bin/sh -c` path injection-free while still
+/// allowing one privilege prompt for the copy plus the ownership fix.
+#[cfg(unix)]
+fn elevated_copy_overwrite_script() -> String {
+    r#"set -u
+src=$1
+dst=$2
+owner=$3
+backup=$4
+backed_up=0
+if [ -e "$dst" ] || [ -L "$dst" ]; then
+    /bin/mv -n -- "$dst" "$backup" || { echo "elevated copy: cannot stage the existing destination" >&2; exit 1; }
+    if [ -e "$dst" ] || [ -L "$dst" ]; then
+        echo "elevated copy: existing destination could not be staged" >&2
+        exit 1
+    fi
+    backed_up=1
+fi
+if /bin/cp -RPp -- "$src" "$dst" && %CHOWN% -R -h "$owner" "$dst"; then
+    if [ "$backed_up" -eq 1 ]; then
+        /bin/rm -rf -- "$backup" || { echo "elevated copy completed but the rollback backup could not be removed" >&2; exit 1; }
+    fi
+    exit 0
+else
+    status=$?
+fi
+/bin/rm -rf -- "$dst"
+if [ "$backed_up" -eq 1 ]; then
+    /bin/mv -- "$backup" "$dst" || { echo "elevated copy failed and the previous destination could not be restored" >&2; exit 1; }
+fi
+exit "$status"
+"#
+    .replace("%CHOWN%", ELEVATED_CHOWN)
+}
+
+#[cfg(unix)]
+fn elevated_copy_exclusive_script() -> String {
+    r#"set -u
+src=$1
+dst=$2
+owner=$3
+if [ -e "$dst" ] || [ -L "$dst" ]; then
+    echo "elevated copy: destination is occupied" >&2
+    exit 1
+fi
+/bin/cp -RPpn -- "$src" "$dst" || exit $?
+%CHOWN% -R -h "$owner" "$dst"
+"#
+    .replace("%CHOWN%", ELEVATED_CHOWN)
+}
+
+#[cfg(unix)]
+fn elevated_move_overwrite_script() -> String {
+    r#"set -u
+src=$1
+dst=$2
+backup=$3
+backed_up=0
+if [ -e "$dst" ] || [ -L "$dst" ]; then
+    /bin/mv -n -- "$dst" "$backup" || { echo "elevated move: cannot stage the existing destination" >&2; exit 1; }
+    if [ -e "$dst" ] || [ -L "$dst" ]; then
+        echo "elevated move: existing destination could not be staged" >&2
+        exit 1
+    fi
+    backed_up=1
+fi
+if /bin/mv -f -- "$src" "$dst"; then
+    if [ "$backed_up" -eq 1 ]; then
+        /bin/rm -rf -- "$backup" || { echo "elevated move completed but the rollback backup could not be removed" >&2; exit 1; }
+    fi
+    exit 0
+else
+    status=$?
+fi
+/bin/rm -rf -- "$dst"
+if [ "$backed_up" -eq 1 ]; then
+    /bin/mv -- "$backup" "$dst" || { echo "elevated move failed and the previous destination could not be restored" >&2; exit 1; }
+fi
+exit "$status"
+"#
+    .to_string()
+}
+
+#[cfg(unix)]
+fn elevated_move_exclusive_script() -> String {
+    r#"set -u
+src=$1
+dst=$2
+if [ -e "$dst" ] || [ -L "$dst" ]; then
+    echo "elevated move: destination is occupied" >&2
+    exit 1
+fi
+/bin/mv -n -- "$src" "$dst" || exit $?
+if [ -e "$src" ] || [ -L "$src" ]; then
+    echo "elevated move: destination is occupied; source was not moved" >&2
+    exit 1
+fi
+"#
+    .to_string()
+}
+
+#[cfg(unix)]
+fn elevated_batch_copy_script() -> String {
+    r#"set -u
+owner=$1
+dst=$2
+shift 2
+if [ "$#" -eq 0 ]; then
+    echo "elevated copy: no sources supplied" >&2
+    exit 1
+fi
+for src do
+    /bin/cp -RPpn -- "$src" "$dst" || exit $?
+    name=${src##*/}
+    %CHOWN% -R -h "$owner" "$dst/$name"
+done
+"#
+    .replace("%CHOWN%", ELEVATED_CHOWN)
+}
+
+#[cfg(unix)]
+fn elevated_batch_move_script() -> String {
+    r#"set -u
+dst=$1
+shift
+if [ "$#" -eq 0 ]; then
+    echo "elevated move: no sources supplied" >&2
+    exit 1
+fi
+/bin/mv -n -- "$@" "$dst"
+"#
+    .to_string()
+}
+
+#[cfg(unix)]
+fn elevated_transfer_invocation(
+    op: &str,
+    overwrite: bool,
+    source: &str,
+    destination: &str,
+    owner: &str,
+    backup: Option<&str>,
+) -> Result<(String, Vec<String>), String> {
+    let source = source.to_string();
+    let destination = destination.to_string();
+    let owner = owner.to_string();
+    match (op, overwrite) {
+        ("copy", true) => {
+            let backup = backup
+                .ok_or_else(|| "Overwrite copy requires a rollback backup path".to_string())?;
+            Ok((
+                elevated_copy_overwrite_script(),
+                vec![source, destination, owner, backup.to_string()],
+            ))
+        }
+        ("copy", false) => Ok((
+            elevated_copy_exclusive_script(),
+            vec![source, destination, owner],
+        )),
+        ("move", true) => {
+            let backup = backup
+                .ok_or_else(|| "Overwrite move requires a rollback backup path".to_string())?;
+            Ok((
+                elevated_move_overwrite_script(),
+                vec![source, destination, backup.to_string()],
+            ))
+        }
+        ("move", false) => Ok((elevated_move_exclusive_script(), vec![source, destination])),
+        _ => Err(format!("Unknown elevated transfer operation: {}", op)),
+    }
+}
+
+#[cfg(unix)]
+fn elevated_batch_transfer_invocation(
+    op: &str,
+    sources: &[String],
+    destination: &str,
+    owner: &str,
+) -> Result<(String, Vec<String>), String> {
+    if sources.is_empty() {
+        return Err("Elevated batch transfer has no sources".to_string());
+    }
+    match op {
+        "copy" => {
+            let mut args = Vec::with_capacity(sources.len() + 2);
+            args.push(owner.to_string());
+            args.push(destination.to_string());
+            args.extend(sources.iter().cloned());
+            Ok((elevated_batch_copy_script(), args))
+        }
+        "move" => {
+            let mut args = Vec::with_capacity(sources.len() + 1);
+            args.push(destination.to_string());
+            args.extend(sources.iter().cloned());
+            Ok((elevated_batch_move_script(), args))
+        }
+        _ => Err(format!("Unknown elevated transfer operation: {}", op)),
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn run_macos_elevated_script(script: &str, args: &[String]) -> Result<(), String> {
+    let mut line = format!("/bin/sh -c '{}' iyeris-elevated", shell_escape(script));
+    for arg in args {
+        line.push_str(&format!(" '{}'", shell_escape(arg)));
+    }
+    let osa = osa_escape(&line);
+    let output = Command::new("osascript")
+        .args([
+            "-e",
+            &format!("do shell script \"{}\" with administrator privileges", osa),
+        ])
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(format!(
+            "Elevated operation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn run_linux_elevated_script(script: &str, args: &[String]) -> Result<(), String> {
+    // The script is a fixed literal; all untrusted paths/owners follow `$0`
+    // as positional arguments. stdin is not used, so `sh -c` cannot read a
+    // second, attacker-supplied program from the terminal.
+    let mut pkexec_args: Vec<String> = vec![
+        "--".to_string(),
+        "/bin/sh".to_string(),
+        "-c".to_string(),
+        script.to_string(),
+        "iyeris-elevated".to_string(),
+    ];
+    pkexec_args.extend(args.iter().cloned());
+    let output = Command::new("pkexec")
+        .args(&pkexec_args)
+        .output()
+        .map_err(|error| error.to_string())?;
+    if !output.status.success() {
+        return Err(format!(
+            "Elevated operation failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+    Ok(())
+}
+
+/// Recursively apply the destination parent owner without ever following a
+/// symlink. `lchown` changes the link entry itself; recursion only descends
+/// into entries whose `symlink_metadata` says they are directories.
+#[cfg(unix)]
+fn chown_tree_symlink_safe(root: &std::path::Path, owner: DestinationOwner) -> Result<(), String> {
+    use std::os::unix::fs::lchown;
+
+    fn visit(path: &std::path::Path, owner: DestinationOwner) -> Result<(), String> {
+        let metadata = std::fs::symlink_metadata(path).map_err(|error| {
+            format!(
+                "Cannot inspect {} while updating ownership: {}",
+                path.display(),
+                error
+            )
+        })?;
+        lchown(path, Some(owner.uid), Some(owner.gid)).map_err(|error| {
+            format!(
+                "Cannot update ownership of {} to {}: {}",
+                path.display(),
+                owner.spec(),
+                error
+            )
+        })?;
+        if metadata.is_dir() && !metadata.file_type().is_symlink() {
+            let entries = std::fs::read_dir(path).map_err(|error| {
+                format!(
+                    "Cannot read {} while updating ownership: {}",
+                    path.display(),
+                    error
+                )
+            })?;
+            for entry in entries {
+                let entry = entry.map_err(|error| {
+                    format!(
+                        "Cannot read an entry in {} while updating ownership: {}",
+                        path.display(),
+                        error
+                    )
+                })?;
+                visit(&entry.path(), owner)?;
+            }
+        }
+        Ok(())
+    }
+
+    visit(root, owner)
 }
 
 /// Run privileged Windows file operations through the native Shell API.
@@ -510,12 +966,29 @@ async fn run_elevated_file_op(
                 }
             }
         }
+        // Ownership is derived only after the destination parent has been
+        // resolved/canonicalized above. A failed metadata lookup refuses the
+        // operation rather than chowning to a guessed or stale owner.
+        //
+        // This function intentionally has no operation id and is never entered
+        // into the cancellation registry: the privileged child cannot be
+        // cancelled safely once the OS prompt has been accepted.
         #[cfg(any(target_os = "macos", target_os = "linux"))]
-        let dest_str = match op.as_str() {
-            "copy" | "move" => Some(
-                dest.as_deref()
-                    .ok_or_else(|| format!("Destination required for {}", op))?,
-            ),
+        let transfer = match op.as_str() {
+            "copy" | "move" => {
+                let destination = dest
+                    .as_deref()
+                    .ok_or_else(|| format!("Destination required for {}", op))?;
+                let owner = destination_parent_owner(destination)?;
+                // Even if the destination is currently absent, pass a backup
+                // path so a concurrent create still gets per-item rollback.
+                let backup = if overwrite {
+                    Some(elevated_rollback_path(std::path::Path::new(destination))?)
+                } else {
+                    None
+                };
+                Some((destination.to_string(), owner, backup))
+            }
             _ => None,
         };
 
@@ -526,74 +999,81 @@ async fn run_elevated_file_op(
 
         #[cfg(target_os = "macos")]
         {
-            // Paths are validated and quoted once for AppleScript's shell.
-            // -P preserves the final symlink entry; canonical path strings do
-            // not pin parent directories against concurrent replacement.
-            let line = match op.as_str() {
-                "copy" => format!(
-                    "/bin/cp -RP{} -- '{}' '{}'",
-                    if overwrite { "" } else { "n" },
-                    shell_escape(&source),
-                    shell_escape(dest_str.unwrap_or_default())
-                ),
-                "move" => format!(
-                    "/bin/mv {} -- '{}' '{}'",
-                    if overwrite { "-f" } else { "-n" },
-                    shell_escape(&source),
-                    shell_escape(dest_str.unwrap_or_default())
-                ),
-                "delete" => format!("/bin/rm -rf -- '{}'", shell_escape(&source)),
+            match op.as_str() {
+                "copy" | "move" => {
+                    let (destination, owner, backup) = transfer
+                        .as_ref()
+                        .ok_or_else(|| format!("Destination required for {}", op))?;
+                    let backup = backup
+                        .as_ref()
+                        .map(|path| path.to_string_lossy().into_owned());
+                    let (script, args) = elevated_transfer_invocation(
+                        &op,
+                        overwrite,
+                        &source,
+                        destination,
+                        &owner.spec(),
+                        backup.as_deref(),
+                    )?;
+                    run_macos_elevated_script(&script, &args)?;
+                }
+                "delete" => {
+                    let line = format!("/bin/rm -rf -- '{}'", shell_escape(&source));
+                    let osa = osa_escape(&line);
+                    let output = Command::new("osascript")
+                        .args([
+                            "-e",
+                            &format!("do shell script \"{}\" with administrator privileges", osa),
+                        ])
+                        .output()
+                        .map_err(|e| e.to_string())?;
+                    if !output.status.success() {
+                        return Err(format!(
+                            "Elevated operation failed: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        ));
+                    }
+                }
                 _ => return Err(format!("Unknown operation: {}", op)),
-            };
-
-            let osa = osa_escape(&line);
-            let output = Command::new("osascript")
-                .args([
-                    "-e",
-                    &format!("do shell script \"{}\" with administrator privileges", osa),
-                ])
-                .output()
-                .map_err(|e| e.to_string())?;
-
-            if !output.status.success() {
-                return Err(format!(
-                    "Elevated operation failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
             }
         }
 
         #[cfg(target_os = "linux")]
         {
-            // C2: pass `--` so a path starting with `-` is never interpreted
-            // as a flag by the privileged cp/mv/rm. Combined with the
-            // validate_elevated_path check at the entry, this is belt + suspenders.
-            let (cmd, leading_args): (&str, &[&str]) = match op.as_str() {
-                "copy" if overwrite => ("cp", &["-RPT", "--"]),
-                "copy" => ("cp", &["-RPTn", "--"]),
-                "move" if overwrite => ("mv", &["-T", "--"]),
-                "move" => ("mv", &["-Tn", "--"]),
-                "delete" => ("rm", &["-rf", "--"]),
+            match op.as_str() {
+                "copy" | "move" => {
+                    let (destination, owner, backup) = transfer
+                        .as_ref()
+                        .ok_or_else(|| format!("Destination required for {}", op))?;
+                    let backup = backup
+                        .as_ref()
+                        .map(|path| path.to_string_lossy().into_owned());
+                    let (script, args) = elevated_transfer_invocation(
+                        &op,
+                        overwrite,
+                        &source,
+                        destination,
+                        &owner.spec(),
+                        backup.as_deref(),
+                    )?;
+                    run_linux_elevated_script(&script, &args)?;
+                }
+                "delete" => {
+                    // Keep `--` so a path beginning with `-` is never parsed
+                    // as a flag by the privileged rm.
+                    let pkexec_args = ["--", "rm", "-rf", "--", source.as_str()];
+                    let output = Command::new("pkexec")
+                        .args(pkexec_args)
+                        .output()
+                        .map_err(|e| e.to_string())?;
+                    if !output.status.success() {
+                        return Err(format!(
+                            "Elevated operation failed: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        ));
+                    }
+                }
                 _ => return Err(format!("Unknown operation: {}", op)),
-            };
-
-            let mut pkexec_args: Vec<&str> = vec!["--", cmd];
-            pkexec_args.extend_from_slice(leading_args);
-            pkexec_args.push(&source);
-            if let Some(d) = dest_str {
-                pkexec_args.push(d);
-            }
-
-            let output = Command::new("pkexec")
-                .args(&pkexec_args)
-                .output()
-                .map_err(|e| e.to_string())?;
-
-            if !output.status.success() {
-                return Err(format!(
-                    "Elevated operation failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
             }
         }
 
@@ -631,14 +1111,30 @@ async fn run_elevated_transfer_batch(
     };
     // Every item keeps its resolved name and overwrite choice. The privileged
     // executor rechecks collisions immediately before launching the native tool.
-    for item in planned {
+    // Items are committed one at a time; this is deliberately not a batch
+    // transaction, and none of the item operations are cancellable.
+    let total = planned.len();
+    for (index, item) in planned.into_iter().enumerate() {
         run_elevated_file_op(
             operation,
             &item.source_path.to_string_lossy(),
             Some(&item.dest_path.to_string_lossy()),
             item.overwrite,
         )
-        .await?;
+        .await
+        .map_err(|error| {
+            format!(
+                "Elevated {} failed for item {}/{} ({} -> {}): {}. \
+                 Batch operations are not transactional: the {} item(s) completed before this failure remain applied.",
+                operation,
+                index + 1,
+                total,
+                item.source_path.display(),
+                item.dest_path.display(),
+                error,
+                index
+            )
+        })?;
     }
     Ok(())
 }
@@ -693,6 +1189,11 @@ pub async fn elevated_delete_batch(item_paths: Vec<String>) -> Result<(), String
     Ok(())
 }
 
+/// Batch privileged primitive used by elevated batch delete. Like the other
+/// elevated commands it is not cancellable, and it is not transactional across
+/// items: `delete` stops at the first failing rm, leaving earlier removals
+/// applied. The item-by-item copy/move batch path lives in
+/// `run_elevated_transfer_batch`, which gives every item its own rollback copy.
 async fn run_elevated_batch_op(
     op: &str,
     items: Vec<(String, Option<String>)>,
@@ -717,6 +1218,33 @@ async fn run_elevated_batch_op(
             )?);
         }
 
+        #[cfg(unix)]
+        let batch_destination = if matches!(op.as_str(), "copy" | "move") {
+            let destination = resolved_items
+                .first()
+                .and_then(|(_, destination)| destination.as_deref())
+                .ok_or_else(|| format!("Destination required for {}", op))?;
+            if resolved_items
+                .iter()
+                .any(|(_, candidate)| candidate.as_deref() != Some(destination))
+            {
+                return Err("Batch operation contains inconsistent destinations".to_string());
+            }
+            Some(destination.to_string())
+        } else {
+            None
+        };
+
+        #[cfg(unix)]
+        let batch_owner = match (op.as_str(), batch_destination.as_deref()) {
+            ("copy", Some(destination)) => Some(destination_parent_owner(destination)?),
+            ("move", Some(destination)) => {
+                destination_parent_owner(destination)?;
+                None
+            }
+            _ => None,
+        };
+
         #[cfg(target_os = "windows")]
         {
             run_windows_file_operations(&op, &resolved_items, true, false)?;
@@ -724,80 +1252,86 @@ async fn run_elevated_batch_op(
 
         #[cfg(target_os = "macos")]
         {
-            let mut lines = Vec::new();
-            for (src, dst) in &resolved_items {
-                let line = match op.as_str() {
-                    "copy" => format!(
-                        "/bin/cp -RP -- '{}' '{}'",
-                        shell_escape(src),
-                        shell_escape(dst.as_deref().unwrap_or(""))
-                    ),
-                    "move" => format!(
-                        "/bin/mv -- '{}' '{}'",
-                        shell_escape(src),
-                        shell_escape(dst.as_deref().unwrap_or(""))
-                    ),
-                    "delete" => format!("/bin/rm -rf -- '{}'", shell_escape(src)),
-                    _ => return Err(format!("Unknown operation: {}", op)),
-                };
-                lines.push(line);
-            }
-            let script_content = lines.join(" && ");
-            let osa = osa_escape(&script_content);
-            let output = Command::new("osascript")
-                .args([
-                    "-e",
-                    &format!("do shell script \"{}\" with administrator privileges", osa),
-                ])
-                .output()
-                .map_err(|e| e.to_string())?;
-            if !output.status.success() {
-                return Err(format!(
-                    "Elevated operation failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
+            match op.as_str() {
+                "copy" | "move" => {
+                    let destination = batch_destination
+                        .as_deref()
+                        .ok_or_else(|| format!("Destination required for {}", op))?;
+                    let sources: Vec<String> = resolved_items
+                        .iter()
+                        .map(|(source, _)| source.clone())
+                        .collect();
+                    let owner = batch_owner
+                        .as_ref()
+                        .map(DestinationOwner::spec)
+                        .unwrap_or_default();
+                    let (script, args) =
+                        elevated_batch_transfer_invocation(&op, &sources, destination, &owner)?;
+                    run_macos_elevated_script(&script, &args)?;
+                }
+                "delete" => {
+                    let mut lines = Vec::new();
+                    for (src, _) in &resolved_items {
+                        lines.push(format!("/bin/rm -rf -- '{}'", shell_escape(src)));
+                    }
+                    let script_content = lines.join(" && ");
+                    let osa = osa_escape(&script_content);
+                    let output = Command::new("osascript")
+                        .args([
+                            "-e",
+                            &format!("do shell script \"{}\" with administrator privileges", osa),
+                        ])
+                        .output()
+                        .map_err(|e| e.to_string())?;
+                    if !output.status.success() {
+                        return Err(format!(
+                            "Elevated operation failed: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        ));
+                    }
+                }
+                _ => return Err(format!("Unknown operation: {}", op)),
             }
         }
 
         #[cfg(target_os = "linux")]
         {
-            // cp/mv accept multiple sources followed by one destination; rm
-            // accepts multiple paths. Build argv directly so elevation never
-            // interprets a generated shell program.
-            let (command, leading_args): (&str, &[&str]) = match op.as_str() {
-                "copy" => ("cp", &["-RP", "--"]),
-                "move" => ("mv", &["--"]),
-                "delete" => ("rm", &["-rf", "--"]),
-                _ => return Err(format!("Unknown operation: {}", op)),
-            };
-            let mut args = vec!["--", command];
-            args.extend_from_slice(leading_args);
-            for (source, _) in &resolved_items {
-                args.push(source.as_str());
-            }
-            if matches!(op.as_str(), "copy" | "move") {
-                let destination = resolved_items
-                    .first()
-                    .and_then(|(_, destination)| destination.as_deref())
-                    .ok_or_else(|| format!("Destination required for {}", op))?;
-                if resolved_items
-                    .iter()
-                    .any(|(_, candidate)| candidate.as_deref() != Some(destination))
-                {
-                    return Err("Batch operation contains inconsistent destinations".to_string());
+            match op.as_str() {
+                "copy" | "move" => {
+                    let destination = batch_destination
+                        .as_deref()
+                        .ok_or_else(|| format!("Destination required for {}", op))?;
+                    let sources: Vec<String> = resolved_items
+                        .iter()
+                        .map(|(source, _)| source.clone())
+                        .collect();
+                    let owner = batch_owner
+                        .as_ref()
+                        .map(DestinationOwner::spec)
+                        .unwrap_or_default();
+                    let (script, args) =
+                        elevated_batch_transfer_invocation(&op, &sources, destination, &owner)?;
+                    run_linux_elevated_script(&script, &args)?;
                 }
-                args.push(destination);
-            }
-
-            let output = Command::new("pkexec")
-                .args(args)
-                .output()
-                .map_err(|e| e.to_string())?;
-            if !output.status.success() {
-                return Err(format!(
-                    "Elevated operation failed: {}",
-                    String::from_utf8_lossy(&output.stderr)
-                ));
+                "delete" => {
+                    // rm accepts multiple paths. Build argv directly so
+                    // elevation never interprets a generated shell program.
+                    let mut args = vec!["--", "rm", "-rf", "--"];
+                    for (source, _) in &resolved_items {
+                        args.push(source.as_str());
+                    }
+                    let output = Command::new("pkexec")
+                        .args(args)
+                        .output()
+                        .map_err(|e| e.to_string())?;
+                    if !output.status.success() {
+                        return Err(format!(
+                            "Elevated operation failed: {}",
+                            String::from_utf8_lossy(&output.stderr)
+                        ));
+                    }
+                }
+                _ => return Err(format!("Unknown operation: {}", op)),
             }
         }
 
@@ -874,6 +1408,264 @@ mod tests {
         assert_eq!(osa_escape(r#"with"quote"#), r#"with\"quote"#);
         assert_eq!(osa_escape(r"with\back"), r"with\\back");
     }
+
+    #[cfg(unix)]
+    fn owner_of(path: &std::path::Path) -> DestinationOwner {
+        use std::os::unix::fs::MetadataExt;
+        let metadata = std::fs::metadata(path).unwrap();
+        DestinationOwner {
+            uid: metadata.uid(),
+            gid: metadata.gid(),
+        }
+    }
+
+    #[cfg(unix)]
+    fn run_transfer_script(
+        op: &str,
+        overwrite: bool,
+        source: &std::path::Path,
+        destination: &std::path::Path,
+        owner: &DestinationOwner,
+        backup: Option<&std::path::Path>,
+    ) -> std::process::Output {
+        let source = source.to_string_lossy().into_owned();
+        let destination = destination.to_string_lossy().into_owned();
+        let backup = backup.map(|path| path.to_string_lossy().into_owned());
+        let (script, args) = elevated_transfer_invocation(
+            op,
+            overwrite,
+            &source,
+            &destination,
+            &owner.spec(),
+            backup.as_deref(),
+        )
+        .unwrap();
+        std::process::Command::new("/bin/sh")
+            .arg("-c")
+            .arg(script)
+            .arg("iyeris-elevated-test")
+            .args(args)
+            .output()
+            .unwrap()
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn destination_owner_is_derived_from_resolved_parent() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("child");
+        let owner = destination_parent_owner(destination.to_str().unwrap()).unwrap();
+        assert_eq!(owner, owner_of(temp.path()));
+        assert_eq!(owner.spec(), format!("{}:{}", owner.uid, owner.gid));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn destination_owner_rejects_missing_parent_metadata() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("missing").join("child");
+        assert!(destination_parent_owner(destination.to_str().unwrap()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rollback_backup_is_a_hidden_sibling_without_collisions() {
+        let temp = tempfile::tempdir().unwrap();
+        let destination = temp.path().join("target");
+        let first = elevated_rollback_path(&destination).unwrap();
+        let second = elevated_rollback_path(&destination).unwrap();
+        assert_eq!(first.parent(), Some(temp.path()));
+        assert!(first
+            .file_name()
+            .unwrap()
+            .to_string_lossy()
+            .starts_with(".iyeris-elevated-backup-"));
+        assert_ne!(first, second);
+        assert!(!first.exists());
+        assert!(!second.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn transfer_invocation_preserves_ownership_and_passes_paths_as_arguments() {
+        let (copy_overwrite, args) = elevated_transfer_invocation(
+            "copy",
+            true,
+            "/source",
+            "/destination",
+            "501:20",
+            Some("/backup"),
+        )
+        .unwrap();
+        assert!(copy_overwrite.contains("/bin/cp -RPp"));
+        assert!(copy_overwrite.contains(&format!("{ELEVATED_CHOWN} -R -h")));
+        assert!(!copy_overwrite.contains("/source"));
+        assert_eq!(args, ["/source", "/destination", "501:20", "/backup"]);
+
+        let (copy_exclusive, args) =
+            elevated_transfer_invocation("copy", false, "/source", "/destination", "501:20", None)
+                .unwrap();
+        assert!(copy_exclusive.contains("/bin/cp -RPpn"));
+        assert_eq!(args, ["/source", "/destination", "501:20"]);
+
+        let (move_overwrite, args) = elevated_transfer_invocation(
+            "move",
+            true,
+            "/source",
+            "/destination",
+            "501:20",
+            Some("/backup"),
+        )
+        .unwrap();
+        assert!(move_overwrite.contains("/bin/mv -f"));
+        assert_eq!(args, ["/source", "/destination", "/backup"]);
+
+        let (move_exclusive, args) =
+            elevated_transfer_invocation("move", false, "/source", "/destination", "501:20", None)
+                .unwrap();
+        assert!(move_exclusive.contains("/bin/mv -n"));
+        assert_eq!(args, ["/source", "/destination"]);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn overwrite_copy_replaces_destination_and_removes_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let destination = temp.path().join("destination");
+        std::fs::write(&source, b"new contents").unwrap();
+        std::fs::write(&destination, b"old contents").unwrap();
+        let owner = owner_of(temp.path());
+        let backup = elevated_rollback_path(&destination).unwrap();
+
+        let output =
+            run_transfer_script("copy", true, &source, &destination, &owner, Some(&backup));
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(std::fs::read(&destination).unwrap(), b"new contents");
+        assert!(!backup.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn overwrite_copy_restores_destination_when_copy_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("missing-source");
+        let destination = temp.path().join("destination");
+        std::fs::write(&destination, b"old contents").unwrap();
+        let owner = owner_of(temp.path());
+        let backup = elevated_rollback_path(&destination).unwrap();
+
+        let output =
+            run_transfer_script("copy", true, &source, &destination, &owner, Some(&backup));
+        assert!(!output.status.success());
+        assert_eq!(std::fs::read(&destination).unwrap(), b"old contents");
+        assert!(!backup.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn overwrite_copy_restores_destination_when_ownership_fix_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        let current = owner_of(temp.path());
+        if current.uid == 0 {
+            // Root can chown to any uid, so this failure cannot be induced.
+            return;
+        }
+        let source = temp.path().join("source");
+        let destination = temp.path().join("destination");
+        std::fs::write(&source, b"new contents").unwrap();
+        std::fs::write(&destination, b"old contents").unwrap();
+        let bad_owner = DestinationOwner {
+            uid: if current.uid == 999_999 {
+                999_998
+            } else {
+                999_999
+            },
+            gid: current.gid,
+        };
+        let backup = elevated_rollback_path(&destination).unwrap();
+
+        let output = run_transfer_script(
+            "copy",
+            true,
+            &source,
+            &destination,
+            &bad_owner,
+            Some(&backup),
+        );
+        assert!(!output.status.success());
+        assert_eq!(std::fs::read(&destination).unwrap(), b"old contents");
+        assert!(!backup.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn overwrite_move_restores_destination_when_move_fails() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("missing-source");
+        let destination = temp.path().join("destination");
+        std::fs::write(&destination, b"old contents").unwrap();
+        let owner = owner_of(temp.path());
+        let backup = elevated_rollback_path(&destination).unwrap();
+
+        let output =
+            run_transfer_script("move", true, &source, &destination, &owner, Some(&backup));
+        assert!(!output.status.success());
+        assert_eq!(std::fs::read(&destination).unwrap(), b"old contents");
+        assert!(!backup.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn overwrite_move_replaces_destination_and_removes_backup() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let destination = temp.path().join("destination");
+        std::fs::write(&source, b"new contents").unwrap();
+        std::fs::write(&destination, b"old contents").unwrap();
+        let owner = owner_of(temp.path());
+        let backup = elevated_rollback_path(&destination).unwrap();
+
+        let output =
+            run_transfer_script("move", true, &source, &destination, &owner, Some(&backup));
+        assert!(output.status.success(), "{output:?}");
+        assert_eq!(std::fs::read(&destination).unwrap(), b"new contents");
+        assert!(!source.exists());
+        assert!(!backup.exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ownership_walk_does_not_follow_symlinks() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path().join("tree");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::create_dir(root.join("nested")).unwrap();
+        std::fs::write(root.join("nested").join("file"), b"x").unwrap();
+        std::os::unix::fs::symlink(root.join("missing-target"), root.join("dangling")).unwrap();
+        let owner = owner_of(temp.path());
+
+        chown_tree_symlink_safe(&root, owner).unwrap();
+        assert!(std::fs::symlink_metadata(root.join("dangling"))
+            .unwrap()
+            .file_type()
+            .is_symlink());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn replacement_publishes_parent_owned_destination() {
+        let temp = tempfile::tempdir().unwrap();
+        let source = temp.path().join("source");
+        let destination = temp.path().join("destination");
+        std::fs::create_dir(&source).unwrap();
+        std::fs::create_dir(&destination).unwrap();
+        std::fs::write(source.join("new"), b"new contents").unwrap();
+        std::fs::write(destination.join("old"), b"old contents").unwrap();
+
+        replace_directory_transaction("copy", &source, &destination).unwrap();
+        assert_eq!(owner_of(&destination), owner_of(temp.path()));
+    }
 }
 
 /// A narrowly scoped CLI mode, handled before Tauri initializes any UI/plugins.
@@ -902,13 +1694,19 @@ fn replace_directory_transaction(
     source: &std::path::Path,
     destination: &std::path::Path,
 ) -> Result<(), String> {
-    use crate::file_operations::{copy_entry_exclusive, rename_exclusive, reserve_staging_rename};
+    use crate::file_operations::{
+        copy_entry_exclusive, remove_existing_path, rename_exclusive, reserve_staging_rename,
+    };
     if !matches!(operation, "copy" | "move") {
         return Err("Invalid transfer operation".to_string());
     }
     if source == destination || destination.starts_with(source) || source.starts_with(destination) {
         return Err("Cannot replace overlapping directories".to_string());
     }
+    // Resolve ownership before touching the destination and fail closed: a
+    // metadata error must not fall back to copying root-owned output in place.
+    #[cfg(unix)]
+    let destination_owner = destination_parent_owner_path(destination)?;
     let parent = destination.parent().ok_or("Destination has no parent")?;
     let workspace = tempfile::Builder::new()
         .prefix(".iyeris-elevated-")
@@ -927,7 +1725,16 @@ fn replace_directory_transaction(
         copy_entry_exclusive(source, &staged, &|| false)?;
         let backup = match std::fs::symlink_metadata(destination) {
             Ok(metadata) if metadata.is_dir() && !metadata.file_type().is_symlink() => {
-                Some(reserve_staging_rename(destination)?)
+                // One hidden sibling backup per item. The source is already
+                // staged, so this is the only destination backup taken.
+                #[cfg(unix)]
+                {
+                    Some(reserve_elevated_backup(destination)?)
+                }
+                #[cfg(not(unix))]
+                {
+                    Some(reserve_staging_rename(destination)?)
+                }
             }
             Ok(_) => return Err("Replacement destination changed type".to_string()),
             Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
@@ -944,6 +1751,34 @@ fn replace_directory_transaction(
             }
             return Err(error.to_string());
         }
+        #[cfg(unix)]
+        if let Err(error) = chown_tree_symlink_safe(destination, destination_owner) {
+            match remove_existing_path(destination) {
+                Ok(()) => {
+                    if let Some(backup) = &backup {
+                        if let Err(recovery) = rename_exclusive(backup, destination) {
+                            return Err(format!(
+                                "{error}; recovery failed: {recovery}; previous destination retained at {}",
+                                backup.display()
+                            ));
+                        }
+                        return Err(format!("{error}; the previous destination was restored"));
+                    }
+                    return Err(format!(
+                        "{error}; the new destination was removed because ownership could not be fixed"
+                    ));
+                }
+                Err(rollback) => {
+                    return Err(format!(
+                        "{error}; ownership rollback failed: {rollback}; previous destination retained at {}",
+                        backup
+                            .as_ref()
+                            .map(|path| path.display().to_string())
+                            .unwrap_or_else(|| "none".to_string())
+                    ));
+                }
+            }
+        }
         if operation == "move" {
             let metadata = std::fs::symlink_metadata(source).map_err(|error| error.to_string())?;
             let cleanup = if metadata.is_dir() && !metadata.file_type().is_symlink() {
@@ -952,11 +1787,19 @@ fn replace_directory_transaction(
                 std::fs::remove_file(source)
             };
             if let Err(error) = cleanup {
-                return Err(format!("Move copy retained at {}; source cleanup incomplete: {}; previous destination retained at {:?}", destination.display(), error, backup));
+                return Err(format!(
+                    "Move copy retained at {}; source cleanup incomplete: {}; previous destination retained at {}",
+                    destination.display(),
+                    error,
+                    backup
+                        .as_ref()
+                        .map(|path| path.display().to_string())
+                        .unwrap_or_else(|| "none".to_string())
+                ));
             }
         }
         if let Some(backup) = backup {
-            std::fs::remove_dir_all(&backup).map_err(|error| {
+            remove_existing_path(&backup).map_err(|error| {
                 format!(
                     "Transfer completed; previous destination remains at {}: {}",
                     backup.display(),

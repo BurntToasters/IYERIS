@@ -7,17 +7,18 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-pub const MAX_JOURNAL_BYTES: usize = 4 * 1024 * 1024;
+pub const MAX_JOURNAL_BYTES: usize = 16 * 1024 * 1024;
 const MAX_RECORDS: usize = 512;
-const MAX_PATHS_PER_RECORD: usize = 10_000;
+const MAX_PATHS_PER_RECORD: usize = 20_000;
 const MAX_PATH_BYTES: usize = 32 * 1024;
-const MAX_RECORD_PATH_BYTES: usize = 2 * 1024 * 1024;
+const MAX_RECORD_PATH_BYTES: usize = 8 * 1024 * 1024;
+const BUFFERED_FLUSH_EVERY: usize = 64;
 const MAX_ERRORS_PER_RECORD: usize = 64;
 const MAX_ERROR_BYTES: usize = 4096;
 
 static RECORD_COUNTER: AtomicU64 = AtomicU64::new(1);
-static GLOBAL_JOURNAL: LazyLock<Mutex<Option<Result<Arc<RecoveryJournal>, String>>>> =
-    LazyLock::new(|| Mutex::new(None));
+type GlobalJournal = Mutex<Option<Result<Arc<RecoveryJournal>, String>>>;
+static GLOBAL_JOURNAL: LazyLock<GlobalJournal> = LazyLock::new(|| Mutex::new(None));
 #[cfg(test)]
 static TEST_JOURNAL: LazyLock<Result<(tempfile::TempDir, Arc<RecoveryJournal>), String>> =
     LazyLock::new(|| {
@@ -58,6 +59,11 @@ struct JournalFile {
 
 struct JournalState {
     records: Vec<RecoveryRecord>,
+    // Staging workspaces are low-risk cleanup data. Buffer those updates so a
+    // batch copy does not fsync the whole journal once per item. Source and
+    // backup paths are still persisted immediately because losing them could
+    // strand user data.
+    buffered_updates: usize,
 }
 
 pub struct RecoveryJournal {
@@ -70,9 +76,12 @@ impl RecoveryJournal {
         let parent = path
             .parent()
             .ok_or_else(|| "Recovery journal has no parent directory".to_string())?;
-        crate::ensure_real_directory_tree(parent, "Recovery state")?;
-        crate::ensure_no_symlink_components(parent, "Recovery state")?;
-        let records = match fs::symlink_metadata(path) {
+        let file_name = path
+            .file_name()
+            .ok_or_else(|| "Recovery journal has no file name".to_string())?;
+        let parent = crate::ensure_app_state_directory(parent, "Recovery state")?;
+        let path = parent.join(file_name);
+        let records = match fs::symlink_metadata(&path) {
             Ok(metadata) => {
                 if metadata.file_type().is_symlink() || !metadata.is_file() {
                     return Err("Recovery journal is not a regular file".to_string());
@@ -80,7 +89,7 @@ impl RecoveryJournal {
                 if metadata.len() > MAX_JOURNAL_BYTES as u64 {
                     return Err("Recovery journal exceeds its size limit".to_string());
                 }
-                let bytes = fs::read(path).map_err(|error| error.to_string())?;
+                let bytes = fs::read(&path).map_err(|error| error.to_string())?;
                 if bytes.len() > MAX_JOURNAL_BYTES {
                     return Err("Recovery journal exceeds its size limit".to_string());
                 }
@@ -95,8 +104,11 @@ impl RecoveryJournal {
             Err(error) => return Err(error.to_string()),
         };
         Ok(Self {
-            path: path.to_path_buf(),
-            state: Mutex::new(JournalState { records }),
+            path,
+            state: Mutex::new(JournalState {
+                records,
+                buffered_updates: 0,
+            }),
         })
     }
 
@@ -157,6 +169,7 @@ impl RecoveryJournal {
         validate_record(record)?;
         self.persist(&records)?;
         state.records = records;
+        state.buffered_updates = 0;
         Ok(())
     }
 
@@ -203,6 +216,7 @@ impl RecoveryJournal {
         records.push(record);
         self.persist(&records)?;
         state.records = records;
+        state.buffered_updates = 0;
         Ok(id)
     }
 
@@ -216,6 +230,41 @@ impl RecoveryJournal {
             }
             Ok(())
         })
+    }
+
+    /// Buffer copy-workspace paths without an immediate journal fsync.
+    ///
+    /// Only use this for paths whose loss affects cleanup, never for source or
+    /// backup entries that hold the only reference to user data.
+    pub fn record_paths_buffered(&self, id: &str, paths: RecoveryPaths) -> Result<(), String> {
+        let mut state = self.state();
+        {
+            let record = state
+                .records
+                .iter_mut()
+                .find(|record| record.id == id)
+                .ok_or_else(|| "Recovery record was not found".to_string())?;
+            merge_paths(&mut record.staging_paths, &paths.staging)?;
+            merge_paths(&mut record.backup_paths, &paths.backups)?;
+            merge_paths(&mut record.retained_paths, &paths.retained)?;
+            if matches!(record.status.as_str(), "complete" | "acknowledged") {
+                record.status = "inProgress".to_string();
+            }
+            record.updated_at_ms = current_time_ms();
+            validate_record(record)?;
+        }
+        state.buffered_updates = state.buffered_updates.saturating_add(1);
+        if state.buffered_updates >= BUFFERED_FLUSH_EVERY {
+            let records = state.records.clone();
+            match self.persist(&records) {
+                Ok(()) => state.buffered_updates = 0,
+                Err(error) => {
+                    state.buffered_updates = 1;
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn record_error(&self, id: &str, error: &str) -> Result<(), String> {
@@ -430,11 +479,11 @@ fn validate_records(records: Vec<RecoveryRecord>) -> Result<Vec<RecoveryRecord>,
 
 pub fn initialize_app_data(app_data: &Path) -> Result<(), String> {
     let result = (|| {
-        crate::ensure_real_directory_tree(app_data, "Application data")?;
-        crate::ensure_no_symlink_components(app_data, "Application data")?;
-        let directory = app_data.join("transfer-recovery");
-        crate::ensure_real_directory_tree(&directory, "Transfer recovery")?;
-        crate::ensure_no_symlink_components(&directory, "Transfer recovery")?;
+        let app_data = crate::ensure_app_state_directory(app_data, "Application data")?;
+        let directory = crate::ensure_app_state_directory(
+            &app_data.join("transfer-recovery"),
+            "Transfer recovery",
+        )?;
         let journal = Arc::new(RecoveryJournal::open(&directory.join("journal.json"))?);
         Ok(journal)
     })();
@@ -462,13 +511,15 @@ fn global_journal() -> Result<Arc<RecoveryJournal>, String> {
     }
     #[cfg(test)]
     {
-        return TEST_JOURNAL
+        TEST_JOURNAL
             .as_ref()
             .map(|(_, journal)| Arc::clone(journal))
-            .map_err(Clone::clone);
+            .map_err(Clone::clone)
     }
     #[cfg(not(test))]
-    Err("Transfer recovery journal has not been initialized".to_string())
+    {
+        Err("Transfer recovery journal has not been initialized".to_string())
+    }
 }
 
 pub(crate) fn begin_operation(
@@ -485,6 +536,11 @@ pub(crate) fn begin_operation(
 pub(crate) fn record_paths(id: Option<&str>, paths: RecoveryPaths) -> Result<(), String> {
     let Some(id) = id else { return Ok(()) };
     global_journal()?.record_paths(id, paths)
+}
+
+pub(crate) fn record_paths_buffered(id: Option<&str>, paths: RecoveryPaths) -> Result<(), String> {
+    let Some(id) = id else { return Ok(()) };
+    global_journal()?.record_paths_buffered(id, paths)
 }
 
 pub(crate) fn record_error(id: Option<&str>, error: &str) {
