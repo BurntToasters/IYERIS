@@ -21,7 +21,7 @@ test('manifest requires exact version, repository, tag and nonempty signatures',
     },
   };
   validateManifest(manifest, 'v3.0.5-beta.1', 'owner/repo');
-  assert.throws(() => validateManifest(manifest, 'v3.0.5-beta.2', 'owner/repo'));
+  assert.throws(() => validateManifest(manifest, 'v3.0.4-beta.1', 'owner/repo'));
   assert.throws(() => validateManifest(manifest, 'v3.0.5-beta.1', 'attacker/repo'));
   manifest.platforms.linux.signature = '';
   assert.throws(() => validateManifest(manifest, 'v3.0.5-beta.1', 'owner/repo'));
