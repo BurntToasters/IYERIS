@@ -127,6 +127,9 @@ function findBrowser() {
 
   const candidates = [
     '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+    '/Applications/Helium.app/Contents/MacOS/Helium',
+    '/Applications/Chromium.app/Contents/MacOS/Chromium',
+    '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
     '/usr/bin/google-chrome',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
