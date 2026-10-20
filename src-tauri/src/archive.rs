@@ -1377,7 +1377,18 @@ fn cleanup_failed_new_destination(dest: &Path, dest_preexisted: bool, succeeded:
         // cleanup scoped to the directory we created.
         if let Ok(metadata) = fs::symlink_metadata(dest) {
             if !metadata.file_type().is_symlink() && metadata.is_dir() {
-                let _ = fs::remove_dir_all(dest);
+                // Extraction now runs without the global mutation lock. A
+                // concurrent operation may have written into this directory,
+                // so never recursively delete it. Only remove it when empty;
+                // otherwise leave the tracked cleanup paths in place and let
+                // recovery/reporting handle the rest.
+                if let Err(error) = fs::remove_dir(dest) {
+                    log::warn!(
+                        "[Archive] failed extraction left non-empty destination {}: {}",
+                        dest.display(),
+                        error
+                    );
+                }
             }
         }
     }
