@@ -23,7 +23,9 @@ static GLOBAL_JOURNAL: LazyLock<GlobalJournal> = LazyLock::new(|| Mutex::new(Non
 static TEST_JOURNAL: LazyLock<Result<(tempfile::TempDir, Arc<RecoveryJournal>), String>> =
     LazyLock::new(|| {
         let directory = tempfile::tempdir().map_err(|error| error.to_string())?;
-        let journal = Arc::new(RecoveryJournal::open(&directory.path().join("journal.json"))?);
+        let journal = Arc::new(RecoveryJournal::open(
+            &directory.path().join("journal.json"),
+        )?);
         Ok((directory, journal))
     });
 
@@ -180,7 +182,10 @@ impl RecoveryJournal {
         sources: &[PathBuf],
         destinations: &[PathBuf],
     ) -> Result<String, String> {
-        if !matches!(kind, "copy" | "move" | "copy-undo" | "move-undo" | "recovery") {
+        if !matches!(
+            kind,
+            "copy" | "move" | "copy-undo" | "move-undo" | "recovery"
+        ) {
             return Err("Recovery operation kind is unsupported".to_string());
         }
         if operation_id.is_some_and(|id| id.len() > 256 || id.contains('\0')) {
@@ -211,7 +216,9 @@ impl RecoveryJournal {
                 || !terminal_record_has_no_retained_paths(record)
         });
         if records.len() >= MAX_RECORDS {
-            return Err("Recovery journal is full; acknowledge or finish old records first".to_string());
+            return Err(
+                "Recovery journal is full; acknowledge or finish old records first".to_string(),
+            );
         }
         records.push(record);
         self.persist(&records)?;
@@ -431,7 +438,9 @@ fn merge_paths(target: &mut Vec<String>, paths: &[PathBuf]) -> Result<(), String
 
 fn validate_paths(paths: &[String]) -> Result<(), String> {
     if paths.len() > MAX_PATHS_PER_RECORD
-        || paths.iter().any(|path| path.len() > MAX_PATH_BYTES || path.contains('\0'))
+        || paths
+            .iter()
+            .any(|path| path.len() > MAX_PATH_BYTES || path.contains('\0'))
         || paths.iter().map(String::len).sum::<usize>() > MAX_RECORD_PATH_BYTES
     {
         return Err("Recovery record paths exceed their limits".to_string());
@@ -449,9 +458,15 @@ fn validate_record(record: &RecoveryRecord) -> Result<(), String> {
         || record.id.contains('\0')
         || record.kind.len() > 64
         || record.status.len() > 64
-        || record.operation_id.as_ref().is_some_and(|id| id.len() > 256 || id.contains('\0'))
+        || record
+            .operation_id
+            .as_ref()
+            .is_some_and(|id| id.len() > 256 || id.contains('\0'))
         || record.errors.len() > MAX_ERRORS_PER_RECORD
-        || record.errors.iter().any(|error| error.len() > MAX_ERROR_BYTES)
+        || record
+            .errors
+            .iter()
+            .any(|error| error.len() > MAX_ERROR_BYTES)
     {
         return Err("Recovery record contains invalid metadata".to_string());
     }
@@ -545,8 +560,13 @@ pub(crate) fn record_paths_buffered(id: Option<&str>, paths: RecoveryPaths) -> R
 
 pub(crate) fn record_error(id: Option<&str>, error: &str) {
     let Some(id) = id else { return };
-    if let Err(journal_error) = global_journal().and_then(|journal| journal.record_error(id, error)) {
-        log::error!("[Recovery] could not persist operation error for {}: {}", id, journal_error);
+    if let Err(journal_error) = global_journal().and_then(|journal| journal.record_error(id, error))
+    {
+        log::error!(
+            "[Recovery] could not persist operation error for {}: {}",
+            id,
+            journal_error
+        );
     }
 }
 
@@ -561,7 +581,9 @@ pub(crate) fn complete(id: Option<&str>) -> Result<(), String> {
 }
 
 pub(crate) fn finish_records_referencing(paths: &[PathBuf], error: Option<&str>) {
-    let Ok(journal) = global_journal() else { return };
+    let Ok(journal) = global_journal() else {
+        return;
+    };
     for id in journal.records_referencing(paths) {
         let result = if let Some(error) = error {
             journal.record_error(&id, error)
@@ -569,13 +591,19 @@ pub(crate) fn finish_records_referencing(paths: &[PathBuf], error: Option<&str>)
             journal.complete_if_retained_paths_are_absent(&id)
         };
         if let Err(error) = result {
-            log::error!("[Recovery] could not update retained-path record {}: {}", id, error);
+            log::error!(
+                "[Recovery] could not update retained-path record {}: {}",
+                id,
+                error
+            );
         }
     }
 }
 
 pub(crate) fn record_unowned_retained_path(path: &Path, kind: &str) {
-    let Ok(journal) = global_journal() else { return };
+    let Ok(journal) = global_journal() else {
+        return;
+    };
     let path = path.to_path_buf();
     match journal.begin_operation("recovery", Some(kind), &[], &[]) {
         Ok(id) => {
@@ -589,10 +617,17 @@ pub(crate) fn record_unowned_retained_path(path: &Path, kind: &str) {
                 )
                 .and_then(|()| journal.record_error(&id, "Retained data requires manual review"));
             if let Err(error) = result {
-                log::error!("[Recovery] could not record retained path {}: {}", path.display(), error);
+                log::error!(
+                    "[Recovery] could not record retained path {}: {}",
+                    path.display(),
+                    error
+                );
             }
         }
-        Err(error) => log::error!("[Recovery] could not create retained-path record: {}", error),
+        Err(error) => log::error!(
+            "[Recovery] could not create retained-path record: {}",
+            error
+        ),
     }
 }
 

@@ -280,8 +280,13 @@ fn cleanup_owned_backup(backup: &OverwriteBackupEntry, recovery_record_id: Optio
                 quarantine.display()
             ))
         } else {
-            crate::file_operations::rename_exclusive(&quarantine, &retained)
-                .map_err(|restore| format!("restore failed: {}; retained at {}", restore, quarantine.display()))
+            crate::file_operations::rename_exclusive(&quarantine, &retained).map_err(|restore| {
+                format!(
+                    "restore failed: {}; retained at {}",
+                    restore,
+                    quarantine.display()
+                )
+            })
         };
         let recovery = match recovery {
             Ok(()) => format!("restored at {}", retained.display()),
@@ -442,12 +447,17 @@ fn same_entry_identity(left: &fs::Metadata, right: &fs::Metadata) -> bool {
 
 pub(crate) fn path_identity(path: &Path) -> Result<String, String> {
     let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
-    Ok(blake3::hash(&metadata_identity(&metadata)).to_hex().to_string())
+    Ok(blake3::hash(&metadata_identity(&metadata))
+        .to_hex()
+        .to_string())
 }
 
 /// Full content fingerprint retained for focused fingerprint tests.
 #[cfg(test)]
-pub(crate) fn copy_fingerprint(path: &Path, cancelled: &impl Fn() -> bool) -> Result<String, String> {
+pub(crate) fn copy_fingerprint(
+    path: &Path,
+    cancelled: &impl Fn() -> bool,
+) -> Result<String, String> {
     fingerprint_tree(path, cancelled, true, true)
 }
 
@@ -457,7 +467,10 @@ pub(crate) fn copy_fingerprint(path: &Path, cancelled: &impl Fn() -> bool) -> Re
 /// targets without reading file bodies. This keeps large copy/move operations
 /// from hashing every byte a second time while still detecting edits,
 /// replacements, and tree changes in normal use.
-pub(crate) fn path_fingerprint(path: &Path, cancelled: &impl Fn() -> bool) -> Result<String, String> {
+pub(crate) fn path_fingerprint(
+    path: &Path,
+    cancelled: &impl Fn() -> bool,
+) -> Result<String, String> {
     fingerprint_tree(path, cancelled, true, false)
 }
 
@@ -665,13 +678,20 @@ fn execute_copy_undo(data: &mut CopyActionData) -> Result<(), String> {
     let mut backup_paths = Vec::new();
     let mut backups_by_destination = HashMap::new();
     for backup in &data.overwrite_backups {
-        let original = canonical_entry_path(Path::new(&backup.original_path), "Overwrite destination")?;
+        let original =
+            canonical_entry_path(Path::new(&backup.original_path), "Overwrite destination")?;
         let retained = canonical_entry_path(Path::new(&backup.backup_path), "Overwrite backup")?;
         if backups_by_destination
-            .insert(original.clone(), (retained.clone(), backup.fingerprint.clone()))
+            .insert(
+                original.clone(),
+                (retained.clone(), backup.fingerprint.clone()),
+            )
             .is_some()
         {
-            return Err(format!("Duplicate overwrite backup for {}", original.display()));
+            return Err(format!(
+                "Duplicate overwrite backup for {}",
+                original.display()
+            ));
         }
     }
     let mut new_workspaces = (0..data.entries.len())
@@ -696,17 +716,23 @@ fn execute_copy_undo(data: &mut CopyActionData) -> Result<(), String> {
             .map(|path| path_present(path, "Retained copy"))
             .transpose()?
             .unwrap_or(false);
-        let destination_is_copy = destination_exists
-            && verify_copy(&destination, &entry.fingerprint).is_ok();
+        let destination_is_copy =
+            destination_exists && verify_copy(&destination, &entry.fingerprint).is_ok();
         if destination_exists && !destination_is_copy {
             if let Some((_, backup_fingerprint)) = backups_by_destination.get(&destination) {
                 verify_copy(&destination, backup_fingerprint)?;
             } else {
-                return Err(format!("Cannot undo copy: item changed at {}", destination.display()));
+                return Err(format!(
+                    "Cannot undo copy: item changed at {}",
+                    destination.display()
+                ));
             }
         }
         if retained_exists {
-            verify_copy(retained.as_ref().expect("retained path exists"), &entry.fingerprint)?;
+            verify_copy(
+                retained.as_ref().expect("retained path exists"),
+                &entry.fingerprint,
+            )?;
         }
         if destination_is_copy && retained_exists {
             return Err(format!(
@@ -729,7 +755,10 @@ fn execute_copy_undo(data: &mut CopyActionData) -> Result<(), String> {
             copy_indices.push(index);
             new_workspaces[index] = Some(workspace);
         } else if !retained_exists {
-            return Err(format!("Cannot undo copy: item is missing at {}", destination.display()));
+            return Err(format!(
+                "Cannot undo copy: item is missing at {}",
+                destination.display()
+            ));
         }
         if backups_by_destination.contains_key(&destination) {
             seen_backups.insert(destination.clone());
@@ -862,8 +891,10 @@ fn execute_copy_redo(data: &mut CopyActionData) -> Result<(), String> {
         verify_copy(&retained, &entry.fingerprint)?;
         let destination = canonical_entry_path(Path::new(&entry.dest_path), "Copy")?;
         if let Some(backup) = backups_by_destination.get(&destination) {
-            let original = canonical_entry_path(Path::new(&backup.original_path), "Overwrite destination")?;
-            let backup_path = canonical_entry_path(Path::new(&backup.backup_path), "Overwrite backup")?;
+            let original =
+                canonical_entry_path(Path::new(&backup.original_path), "Overwrite destination")?;
+            let backup_path =
+                canonical_entry_path(Path::new(&backup.backup_path), "Overwrite backup")?;
             verify_copy(&original, &backup.fingerprint)?;
             if path_entry_exists(&backup_path) {
                 return Err(format!(
@@ -873,7 +904,10 @@ fn execute_copy_redo(data: &mut CopyActionData) -> Result<(), String> {
             }
             backup_paths.push((original, backup_path));
         } else if path_entry_exists(&destination) {
-            return Err(format!("Cannot redo copy: destination occupied at {}", destination.display()));
+            return Err(format!(
+                "Cannot redo copy: destination occupied at {}",
+                destination.display()
+            ));
         }
         paths.push((retained, destination));
     }
@@ -1149,6 +1183,7 @@ fn canonical_batch_rename_paths(
         .collect()
 }
 
+#[cfg(test)]
 fn move_path(source: &Path, dest: &Path) -> Result<(), String> {
     crate::file_operations::move_path_with_fallback(source, dest)
 }
@@ -1183,9 +1218,7 @@ fn execute_rename_action(
     }
     // Case-only renames resolve to the same entry on case-insensitive
     // filesystems. Treat that as a rename, not as an occupied destination.
-    if path_entry_exists(&to)
-        && !crate::file_operations::same_dir_entry(&from, &to)
-    {
+    if path_entry_exists(&to) && !crate::file_operations::same_dir_entry(&from, &to) {
         return Err(format!(
             "Cannot {}: A file already exists at the {} location",
             direction,
@@ -1224,7 +1257,12 @@ fn path_present(path: &Path, label: &str) -> Result<bool, String> {
     match fs::symlink_metadata(path) {
         Ok(_) => Ok(true),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
-        Err(error) => Err(format!("Cannot inspect {} {}: {}", label, path.display(), error)),
+        Err(error) => Err(format!(
+            "Cannot inspect {} {}: {}",
+            label,
+            path.display(),
+            error
+        )),
     }
 }
 
@@ -1233,13 +1271,17 @@ fn overwrite_backup_map(
 ) -> Result<HashMap<PathBuf, (PathBuf, String)>, String> {
     let mut result = HashMap::new();
     for backup in backups {
-        let original = canonical_entry_path(Path::new(&backup.original_path), "Overwrite destination")?;
+        let original =
+            canonical_entry_path(Path::new(&backup.original_path), "Overwrite destination")?;
         let retained = canonical_entry_path(Path::new(&backup.backup_path), "Overwrite backup")?;
         if result
             .insert(original.clone(), (retained, backup.fingerprint.clone()))
             .is_some()
         {
-            return Err(format!("Duplicate overwrite backup for {}", original.display()));
+            return Err(format!(
+                "Duplicate overwrite backup for {}",
+                original.display()
+            ));
         }
     }
     Ok(result)
@@ -1286,7 +1328,8 @@ fn execute_move_overwrite_undo_with(
         _ => {
             return finish_move_overwrite_failure(
                 action,
-                "Cannot undo overwritten move: destination fingerprints are unavailable".to_string(),
+                "Cannot undo overwritten move: destination fingerprints are unavailable"
+                    .to_string(),
             )
         }
     };
@@ -1314,7 +1357,11 @@ fn execute_move_overwrite_undo_with(
             if let Err(error) = verify_moved_item(&targets[index], &fingerprints[index]) {
                 return finish_move_overwrite_failure(
                     action,
-                    format!("Original path occupied by another item: {}; {}", targets[index].display(), error),
+                    format!(
+                        "Original path occupied by another item: {}; {}",
+                        targets[index].display(),
+                        error
+                    ),
                 );
             }
         }
@@ -1324,13 +1371,21 @@ fn execute_move_overwrite_undo_with(
             (true, true) => {
                 return finish_move_overwrite_failure(
                     action,
-                    format!("Cannot undo move: item exists at both {} and {}", current[index].display(), targets[index].display()),
+                    format!(
+                        "Cannot undo move: item exists at both {} and {}",
+                        current[index].display(),
+                        targets[index].display()
+                    ),
                 )
             }
             (false, false) => {
                 return finish_move_overwrite_failure(
                     action,
-                    format!("Cannot undo move: item is missing from {} and {}", current[index].display(), targets[index].display()),
+                    format!(
+                        "Cannot undo move: item is missing from {} and {}",
+                        current[index].display(),
+                        targets[index].display()
+                    ),
                 )
             }
         }
@@ -1340,8 +1395,7 @@ fn execute_move_overwrite_undo_with(
                 Err(error) => return finish_move_overwrite_failure(action, error),
             };
             let backup_restored = match path_present(&current[index], "Overwrite destination") {
-                Ok(exists) => exists
-                    && verify_copy(&current[index], backup_fingerprint).is_ok(),
+                Ok(exists) => exists && verify_copy(&current[index], backup_fingerprint).is_ok(),
                 Err(error) => return finish_move_overwrite_failure(action, error),
             };
             if backup_staged {
@@ -1352,7 +1406,11 @@ fn execute_move_overwrite_undo_with(
             if !backup_staged && !backup_restored {
                 return finish_move_overwrite_failure(
                     action,
-                    format!("Cannot undo move: overwrite original is missing from {} and {}", backup_path.display(), current[index].display()),
+                    format!(
+                        "Cannot undo move: overwrite original is missing from {} and {}",
+                        backup_path.display(),
+                        current[index].display()
+                    ),
                 );
             }
             if backup_staged && current_exists {
@@ -1368,13 +1426,16 @@ fn execute_move_overwrite_undo_with(
         if !current.contains(backup_path) {
             return finish_move_overwrite_failure(
                 action,
-                format!("Overwrite backup does not belong to a moved destination: {}", backup_path.display()),
+                format!(
+                    "Overwrite backup does not belong to a moved destination: {}",
+                    backup_path.display()
+                ),
             );
         }
     }
 
     let mut moved_indices: Vec<usize> = Vec::new();
-    let mut restored_backups = Vec::new();
+    let mut restored_backups: Vec<PathBuf> = Vec::new();
     for (index, (source, target)) in move_current.iter().enumerate() {
         if let Err(error) = move_item(source, target) {
             let mut recovery_errors = Vec::new();
@@ -1426,13 +1487,19 @@ fn execute_move_overwrite_undo_with(
             }
             return finish_move_overwrite_failure(
                 action,
-                format!("Cannot restore overwrite original; destination occupied at {}", destination.display()),
+                format!(
+                    "Cannot restore overwrite original; destination occupied at {}",
+                    destination.display()
+                ),
             );
         }
         if let Err(error) = move_item(backup_path, destination) {
             let mut recovery_errors = Vec::new();
             for restored in restored_backups.iter().rev() {
-                if let Some((destination, (backup_path, _))) = backup_map.iter().find(|(destination, _)| *destination == *restored) {
+                if let Some((destination, (backup_path, _))) = backup_map
+                    .iter()
+                    .find(|(destination, _)| destination.as_path() == restored.as_path())
+                {
                     if let Err(recovery) = move_item(destination, backup_path) {
                         recovery_errors.push(format!(
                             "backup rollback {} -> {} failed: {}; item remains at {}",
@@ -1457,7 +1524,11 @@ fn execute_move_overwrite_undo_with(
                     }
                 }
             }
-            let mut message = format!("Overwrite restore failed: {}; original retained at {}", error, backup_path.display());
+            let mut message = format!(
+                "Overwrite restore failed: {}; original retained at {}",
+                error,
+                backup_path.display()
+            );
             for recovery in recovery_errors {
                 message.push_str("; ");
                 message.push_str(&recovery);
@@ -1474,8 +1545,8 @@ fn execute_move_overwrite_redo_with(
     move_item: &mut impl FnMut(&Path, &Path) -> Result<(), String>,
 ) -> Result<Vec<String>, String> {
     let redo_result = (|| -> Result<(), String> {
-        let targets = move_undo_targets(action)
-            .ok_or("Cannot redo: Original parent path not available")?;
+        let targets =
+            move_undo_targets(action).ok_or("Cannot redo: Original parent path not available")?;
         let sources = targets
             .iter()
             .map(|path| canonical_entry_path(Path::new(path), "Original item"))
@@ -1500,17 +1571,27 @@ fn execute_move_overwrite_redo_with(
                 if destination_exists {
                     if let Some((_, backup_fingerprint)) = backup_map.get(&destinations[index]) {
                         if verify_copy(&destinations[index], backup_fingerprint).is_err() {
-                            return Err(format!("Cannot redo move: destination occupied at {}", destinations[index].display()));
+                            return Err(format!(
+                                "Cannot redo move: destination occupied at {}",
+                                destinations[index].display()
+                            ));
                         }
                     } else {
-                        return Err(format!("Cannot redo move: destination occupied at {}", destinations[index].display()));
+                        return Err(format!(
+                            "Cannot redo move: destination occupied at {}",
+                            destinations[index].display()
+                        ));
                     }
                 }
                 moves.push((sources[index].clone(), destinations[index].clone()));
             } else if destination_exists {
                 verify_moved_item(&destinations[index], &fingerprints[index])?;
             } else {
-                return Err(format!("Cannot redo move: item missing from {} and {}", sources[index].display(), destinations[index].display()));
+                return Err(format!(
+                    "Cannot redo move: item missing from {} and {}",
+                    sources[index].display(),
+                    destinations[index].display()
+                ));
             }
         }
         let mut staged_backups = Vec::new();
@@ -1521,11 +1602,18 @@ fn execute_move_overwrite_redo_with(
                 && verify_copy(backup_path, fingerprint).is_ok();
             if dest_matches && !backup_matches {
                 if path_present(backup_path, "Overwrite backup")? {
-                    return Err(format!("Cannot redo move: backup path occupied at {}", backup_path.display()));
+                    return Err(format!(
+                        "Cannot redo move: backup path occupied at {}",
+                        backup_path.display()
+                    ));
                 }
                 staged_backups.push((destination.clone(), backup_path.clone()));
             } else if !backup_matches {
-                return Err(format!("Cannot redo move: overwrite original missing from {} and {}", destination.display(), backup_path.display()));
+                return Err(format!(
+                    "Cannot redo move: overwrite original missing from {} and {}",
+                    destination.display(),
+                    backup_path.display()
+                ));
             }
         }
 
@@ -1533,7 +1621,11 @@ fn execute_move_overwrite_redo_with(
         let mut completed_moves: Vec<(PathBuf, PathBuf)> = Vec::new();
         for (destination, backup_path) in &staged_backups {
             if let Err(error) = move_item(destination, backup_path) {
-                return Err(format!("Failed to retain overwrite original: {}; item remains at {}", error, destination.display()));
+                return Err(format!(
+                    "Failed to retain overwrite original: {}; item remains at {}",
+                    error,
+                    destination.display()
+                ));
             }
             completed_backups.push((destination.clone(), backup_path.clone()));
         }
@@ -1542,12 +1634,24 @@ fn execute_move_overwrite_redo_with(
                 let mut recovery_errors = Vec::new();
                 for (from, to) in completed_moves.iter().rev() {
                     if let Err(recovery) = move_item(to, from) {
-                        recovery_errors.push(format!("move rollback {} -> {} failed: {}; item remains at {}", to.display(), from.display(), recovery, to.display()));
+                        recovery_errors.push(format!(
+                            "move rollback {} -> {} failed: {}; item remains at {}",
+                            to.display(),
+                            from.display(),
+                            recovery,
+                            to.display()
+                        ));
                     }
                 }
                 for (original, backup) in completed_backups.iter().rev() {
                     if let Err(recovery) = move_item(backup, original) {
-                        recovery_errors.push(format!("backup rollback {} -> {} failed: {}; original remains at {}", backup.display(), original.display(), recovery, backup.display()));
+                        recovery_errors.push(format!(
+                            "backup rollback {} -> {} failed: {}; original remains at {}",
+                            backup.display(),
+                            original.display(),
+                            recovery,
+                            backup.display()
+                        ));
                     }
                 }
                 let mut message = format!("Partial overwrite redo failed: {}", error);
@@ -1604,15 +1708,22 @@ fn move_action_subset(
         original_parent: action.original_parent.clone(),
         dest_path: action.dest_path.clone(),
         item_fingerprints: action.item_fingerprints.as_ref().and_then(|fingerprints| {
-            (fingerprints.len() == action.source_paths.len())
-                .then(|| indices.iter().map(|index| fingerprints[*index].clone()).collect())
+            (fingerprints.len() == action.source_paths.len()).then(|| {
+                indices
+                    .iter()
+                    .map(|index| fingerprints[*index].clone())
+                    .collect()
+            })
         }),
         overwrite_backups: action
             .overwrite_backups
             .iter()
             .filter(|backup| {
                 indices.iter().any(|index| {
-                    action.source_paths.get(*index).is_some_and(|source| source == &backup.original_path)
+                    action
+                        .source_paths
+                        .get(*index)
+                        .is_some_and(|source| source == &backup.original_path)
                 })
             })
             .cloned()
@@ -1698,7 +1809,9 @@ fn execute_move_undo_with(
     if let Some(fingerprints) = action.item_fingerprints.as_ref() {
         if fingerprints.len() != sources.len() {
             push_undo_action(UndoAction::Move(action), false)?;
-            return Err("Cannot undo: Move fingerprints do not match the recorded items".to_string());
+            return Err(
+                "Cannot undo: Move fingerprints do not match the recorded items".to_string(),
+            );
         }
         for (source, fingerprint) in sources.iter().zip(fingerprints) {
             if let Err(error) = verify_moved_item(source, fingerprint) {
@@ -1838,7 +1951,9 @@ fn execute_move_redo_with(
                 original_paths
                     .iter()
                     .zip(&action.source_paths)
-                    .map(|(source, destination)| (PathBuf::from(source), PathBuf::from(destination))),
+                    .map(|(source, destination)| {
+                        (PathBuf::from(source), PathBuf::from(destination))
+                    }),
             );
         } else if let Some(original_parent) = &action.original_parent {
             source_target_pairs.extend(action.source_paths.iter().map(|destination| {
@@ -1852,7 +1967,10 @@ fn execute_move_redo_with(
     } else if let Some(original_parent) = &action.original_parent {
         source_target_pairs.extend(action.source_paths.iter().map(|source| {
             let file_name = to_file_name(source);
-            (Path::new(original_parent).join(&file_name), PathBuf::from(source))
+            (
+                Path::new(original_parent).join(&file_name),
+                PathBuf::from(source),
+            )
         }));
     } else {
         push_redo_action(UndoAction::Move(action.clone()))?;
@@ -2413,7 +2531,10 @@ mod tests {
         assert_eq!(fs::read(&backup_path).unwrap(), b"original");
 
         clear_undo_stack_for_path(destination.to_str().unwrap()).unwrap();
-        assert!(!backup_path.exists(), "discarding history releases its owned backup");
+        assert!(
+            !backup_path.exists(),
+            "discarding history releases its owned backup"
+        );
         clear_stacks();
     }
 
@@ -2450,7 +2571,10 @@ mod tests {
         assert!(undo_action_sync().is_err());
         assert_eq!(fs::read(&destination).unwrap(), b"user replacement");
         assert_eq!(fs::read(&backup_path).unwrap(), b"original");
-        assert_eq!(UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner()).len(), 1);
+        assert_eq!(
+            UNDO_STACK.lock().unwrap_or_else(|p| p.into_inner()).len(),
+            1
+        );
         clear_stacks();
     }
 
@@ -2504,14 +2628,11 @@ mod tests {
 
     #[test]
     fn legacy_copy_and_move_actions_without_overwrite_backups_still_deserialize() {
-        let copy: UndoAction = serde_json::from_str(
-            r#"{"type":"copy","data":{"entries":[]}}"#,
-        )
-        .unwrap();
-        let moved: UndoAction = serde_json::from_str(
-            r#"{"type":"move","data":{"sourcePaths":[],"destPath":"/tmp"}}"#,
-        )
-        .unwrap();
+        let copy: UndoAction =
+            serde_json::from_str(r#"{"type":"copy","data":{"entries":[]}}"#).unwrap();
+        let moved: UndoAction =
+            serde_json::from_str(r#"{"type":"move","data":{"sourcePaths":[],"destPath":"/tmp"}}"#)
+                .unwrap();
         assert!(matches!(copy, UndoAction::Copy(_)));
         assert!(matches!(moved, UndoAction::Move(_)));
     }

@@ -529,6 +529,7 @@ fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
 /// We now also:
 ///  * reject NUL bytes and non-whitespace control characters
 ///  * canonicalize and require the target to exist
+///
 /// Arguments arrive through argv rather than a shell, so shell-looking
 /// characters (and newlines, which are valid filenames) are allowed.
 fn first_open_path_arg(args: &[String]) -> Option<String> {
@@ -1227,7 +1228,12 @@ mod tests {
 
         let store = recovery::RecoveryJournal::open(&journal_path).unwrap();
         let record_id = store
-            .begin_operation("copy", Some("copy-op-1"), &[], &[destination.clone()])
+            .begin_operation(
+                "copy",
+                Some("copy-op-1"),
+                &[],
+                std::slice::from_ref(&destination),
+            )
             .unwrap();
         store
             .record_paths(

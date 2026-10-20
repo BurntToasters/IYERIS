@@ -824,12 +824,16 @@ pub async fn copy_items(
         let _lock = lock;
 
         if let Err(error) = operation {
-            let mut recovery_errors =
-                rollback_published_copies_with_recovery(&copy_entries, recovery_record_id.as_deref());
+            let mut recovery_errors = rollback_published_copies_with_recovery(
+                &copy_entries,
+                recovery_record_id.as_deref(),
+            );
             recovery_errors.extend(restore_overwrite_backups(&backups));
             if recovery_errors.is_empty() {
-                if let Err(journal_error) = crate::recovery::complete(recovery_record_id.as_deref()) {
-                    recovery_errors.push(format!("Recovery journal update failed: {}", journal_error));
+                if let Err(journal_error) = crate::recovery::complete(recovery_record_id.as_deref())
+                {
+                    recovery_errors
+                        .push(format!("Recovery journal update failed: {}", journal_error));
                 }
             }
             if !recovery_errors.is_empty() {
@@ -851,12 +855,18 @@ pub async fn copy_items(
                 recovery_record_id.as_deref(),
                 &format!("Copy completed, but undo could not be recorded: {}", error),
             );
-            return Err(format!("Copy completed, but undo could not be recorded: {}", error));
+            return Err(format!(
+                "Copy completed, but undo could not be recorded: {}",
+                error
+            ));
         }
         if !backup_entries.is_empty() {
             crate::recovery::mark_history_owned(
                 recovery_record_id.as_deref(),
-                &backups.values().map(|backup| backup.backup_path.clone()).collect::<Vec<_>>(),
+                &backups
+                    .values()
+                    .map(|backup| backup.backup_path.clone())
+                    .collect::<Vec<_>>(),
             )?;
         } else {
             crate::recovery::complete(recovery_record_id.as_deref())?;
@@ -1135,7 +1145,8 @@ pub async fn move_items(
         })();
 
         if let Err(error) = operation {
-            let mut recovery_errors = rollback_moves(&completed_moves, recovery_record_id.as_deref());
+            let mut recovery_errors =
+                rollback_moves(&completed_moves, recovery_record_id.as_deref());
             recovery_errors.extend(restore_overwrite_backups(&backups));
             crate::recovery::record_error(
                 recovery_record_id.as_deref(),
@@ -1151,7 +1162,8 @@ pub async fn move_items(
         {
             Ok(fingerprints) => fingerprints,
             Err(error) => {
-                let mut recovery_errors = rollback_moves(&completed_moves, recovery_record_id.as_deref());
+                let mut recovery_errors =
+                    rollback_moves(&completed_moves, recovery_record_id.as_deref());
                 recovery_errors.extend(restore_overwrite_backups(&backups));
                 crate::recovery::record_error(
                     recovery_record_id.as_deref(),
@@ -1173,12 +1185,18 @@ pub async fn move_items(
                 recovery_record_id.as_deref(),
                 &format!("Move completed, but undo could not be recorded: {}", error),
             );
-            return Err(format!("Move completed, but undo could not be recorded: {}", error));
+            return Err(format!(
+                "Move completed, but undo could not be recorded: {}",
+                error
+            ));
         }
         if !backup_entries.is_empty() {
             crate::recovery::mark_history_owned(
                 recovery_record_id.as_deref(),
-                &backups.values().map(|backup| backup.backup_path.clone()).collect::<Vec<_>>(),
+                &backups
+                    .values()
+                    .map(|backup| backup.backup_path.clone())
+                    .collect::<Vec<_>>(),
             )?;
         } else {
             crate::recovery::complete(recovery_record_id.as_deref())?;
@@ -1474,7 +1492,10 @@ pub(crate) fn rename_batch_transaction_with_recovery(
     let mut published = 0;
     let result = (|| {
         for (from, _) in &paths {
-            staged.push(reserve_staging_rename_with_recovery(from, recovery_record_id)?);
+            staged.push(reserve_staging_rename_with_recovery(
+                from,
+                recovery_record_id,
+            )?);
         }
         for ((_, to), temp) in paths.iter().zip(&staged) {
             rename_exclusive(temp, to).map_err(map_rename_io_error)?;
@@ -1764,10 +1785,12 @@ fn is_cross_device_error(err: &std::io::Error) -> bool {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
     move_path_with_fallback_cancellable(source, target, &|| false)
 }
 
+#[cfg(test)]
 fn move_path_with_fallback_cancellable(
     source: &Path,
     target: &Path,
@@ -2063,20 +2086,18 @@ fn rollback_published_copies_with_recovery(
             Ok(_) => {}
         }
 
-        let quarantine = match reserve_staging_rename_with_recovery(
-            &destination,
-            recovery_record_id,
-        ) {
-            Ok(path) => path,
-            Err(error) => {
-                errors.push(format!(
-                    "Cannot quarantine copied destination {}; retained for recovery: {}",
-                    destination.display(),
-                    error
-                ));
-                continue;
-            }
-        };
+        let quarantine =
+            match reserve_staging_rename_with_recovery(&destination, recovery_record_id) {
+                Ok(path) => path,
+                Err(error) => {
+                    errors.push(format!(
+                        "Cannot quarantine copied destination {}; retained for recovery: {}",
+                        destination.display(),
+                        error
+                    ));
+                    continue;
+                }
+            };
         if let Err(error) = undo::verify_copy(&quarantine, &entry.fingerprint) {
             let recovery = if path_entry_exists(&destination) {
                 Err(format!(
@@ -2084,8 +2105,13 @@ fn rollback_published_copies_with_recovery(
                     quarantine.display()
                 ))
             } else {
-                rename_exclusive(&quarantine, &destination)
-                    .map_err(|restore| format!("restore failed: {}; entry retained at {}", restore, quarantine.display()))
+                rename_exclusive(&quarantine, &destination).map_err(|restore| {
+                    format!(
+                        "restore failed: {}; entry retained at {}",
+                        restore,
+                        quarantine.display()
+                    )
+                })
             };
             let recovery = match recovery {
                 Ok(()) => format!("entry restored at {}", destination.display()),
@@ -3330,7 +3356,10 @@ mod tests {
             .expect("queued operation should observe cancellation promptly");
         assert!(cancelled);
         assert!(elapsed < Duration::from_millis(500));
-        assert!(try_mutation_lock().is_err(), "cancelled waiter must not acquire the lock");
+        assert!(
+            try_mutation_lock().is_err(),
+            "cancelled waiter must not acquire the lock"
+        );
         drop(held);
         worker.join().unwrap();
     }
