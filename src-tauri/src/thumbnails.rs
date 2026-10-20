@@ -37,11 +37,11 @@ fn cache_dir_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .app_cache_dir()
         .map_err(|e: tauri::Error| e.to_string())?
         .join("thumbnails");
-    Ok(dir)
+    crate::ensure_app_state_directory(&dir, "Thumbnail cache directory")
 }
 
 fn ensure_cache_dir(dir: &Path) -> Result<(), String> {
-    crate::ensure_real_directory_tree(dir, "Thumbnail cache directory")
+    crate::ensure_app_state_directory(dir, "Thumbnail cache directory").map(|_| ())
 }
 
 #[cfg(test)]

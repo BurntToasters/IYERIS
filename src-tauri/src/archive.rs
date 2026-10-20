@@ -747,10 +747,9 @@ pub async fn compress_files(
         };
     let temporary_output_for_worker = temporary_output.clone();
     let result = tokio::task::spawn_blocking(move || {
-        // Archive publication is a filesystem mutation too. Hold the same
-        // ordering lock as copy/move/undo through the final atomic rename so
-        // concurrent operations cannot overwrite one another unexpectedly.
-        let _mutation_lock = crate::file_operations::mutation_lock()?;
+        // Compression itself runs without the global mutation lock: it only
+        // writes the private staging file, so holding the lock would serialize
+        // unrelated copy/move/undo operations for the whole archive run.
         let worker_result = match fmt.as_str() {
             "zip" => compress_zip(
                 &validated_sources,
@@ -788,7 +787,7 @@ pub async fn compress_files(
                     Err("Operation cancelled".to_string())
                 } else {
                     // The temporary file is complete and still on the same
-                    // filesystem; publish it only after the writer finishes.
+                    // filesystem; flush it before publication.
                     let sync_result = fs::OpenOptions::new()
                         .read(true)
                         .write(true)
@@ -797,6 +796,12 @@ pub async fn compress_files(
                     if let Err(error) = sync_result {
                         Err(format!("Failed to flush archive output: {}", error))
                     } else {
+                        // Hold the ordering lock only for the final rename.
+                        // atomic_replace_archive_output re-checks the
+                        // destination under the lock, so a symlink or
+                        // non-regular file planted while compression ran is
+                        // still rejected.
+                        let _mutation_lock = crate::file_operations::mutation_lock()?;
                         atomic_replace_archive_output(&temporary_output_for_worker, &output)
                     }
                 }
@@ -823,7 +828,7 @@ fn atomic_replace_archive_output(temp: &Path, output: &Path) -> Result<(), Strin
 
 fn zip_entry_options<'a>(
     advanced_options: &'a AdvancedCompressOptions,
-) -> zip::write::FileOptions<'a, ()> {
+) -> Result<zip::write::FileOptions<'a, 'a, ()>, String> {
     let level = advanced_options.compression_level.map(|level| level.min(9));
     let method = match advanced_options.method.as_deref() {
         Some("BZip2") => zip::CompressionMethod::Bzip2,
@@ -832,18 +837,20 @@ fn zip_entry_options<'a>(
         _ => zip::CompressionMethod::Deflated,
     };
 
-    let mut options = zip::write::FileOptions::default()
+    let mut options: zip::write::FileOptions<'a, 'a, ()> = zip::write::FileOptions::default()
         .compression_method(method)
         .compression_level(level.map(i64::from));
 
     if let Some(password) = nonempty_archive_password(advanced_options.password.as_deref()) {
         options = match advanced_options.encryption_method.as_deref() {
-            Some("ZipCrypto") => options.with_deprecated_encryption(password.as_bytes()),
+            Some("ZipCrypto") => options
+                .with_deprecated_encryption(password.as_bytes())
+                .map_err(|error| format!("Invalid ZIP password: {}", error))?,
             _ => options.with_aes_encryption(zip::AesMode::Aes256, password),
         };
     }
 
-    options
+    Ok(options)
 }
 
 fn nonempty_archive_password(password: Option<&str>) -> Option<&str> {
@@ -888,7 +895,7 @@ fn compress_zip(
                     .to_string_lossy()
                     .to_string();
                 ensure_compress_entry_depth(&name)?;
-                let options = zip_entry_options(&advanced_options);
+                let options = zip_entry_options(&advanced_options)?;
                 zip.start_file(&name, options).map_err(|e| e.to_string())?;
                 let mut source_file = open_regular_read(&path)?;
                 copy_reader_cancellable(&mut source_file, &mut zip, cancellation)?;
@@ -941,7 +948,7 @@ fn add_dir_to_zip(
             .replace(std::path::MAIN_SEPARATOR, "/")
     );
     ensure_compress_entry_depth(&name)?;
-    zip.add_directory(name, zip_entry_options(advanced_options))
+    zip.add_directory(name, zip_entry_options(advanced_options)?)
         .map_err(|e| e.to_string())?;
     for entry in fs::read_dir(dir).map_err(|e| e.to_string())? {
         let entry = entry.map_err(|e| e.to_string())?;
@@ -966,7 +973,7 @@ fn add_dir_to_zip(
             add_dir_to_zip(zip, &path, base, advanced_options, op_id, cancellation)?;
         } else {
             ensure_compress_entry_depth(&name)?;
-            let options = zip_entry_options(advanced_options);
+            let options = zip_entry_options(advanced_options)?;
             zip.start_file(&name, options).map_err(|e| e.to_string())?;
             let mut source_file = open_regular_read(&path)?;
             copy_reader_cancellable(&mut source_file, zip, cancellation)?;
@@ -1256,22 +1263,28 @@ pub async fn extract_archive(
     let extract_op_id = op_id.clone();
     let extract_cancellation = cancellation.clone();
     let result = tokio::task::spawn_blocking(move || {
-        let _mutation_lock = crate::file_operations::mutation_lock()?;
-        // Prepare the destination under the same mutation lock as extraction.
-        // Otherwise another file operation could replace it while this task
-        // waits for the lock, reopening a symlink-redirection race.
         if is_cancelled(extract_cancellation.as_ref()) {
             return Err("Operation cancelled".to_string());
         }
-        let (dest, dest_preexisted) = prepare_extraction_destination(&requested_dest)?;
+        // Preparing the destination is the security-sensitive create-new step
+        // (it rejects symlinks and canonicalizes the path). Serialize just that
+        // step, then release the global mutation lock so a long extraction does
+        // not block unrelated copy/move/undo work.
+        let (dest, dest_preexisted) = {
+            let _mutation_lock = crate::file_operations::mutation_lock()?;
+            if is_cancelled(extract_cancellation.as_ref()) {
+                return Err("Operation cancelled".to_string());
+            }
+            prepare_extraction_destination(&requested_dest)?
+        };
         if is_cancelled(extract_cancellation.as_ref()) {
-            cleanup_failed_new_destination(&dest, dest_preexisted, false);
+            cleanup_failed_new_destination_locked(&dest, dest_preexisted, false)?;
             return Err("Operation cancelled".to_string());
         }
         let kind = match resolve_extract_kind(&archive) {
             Ok(kind) => kind,
             Err(error) => {
-                cleanup_failed_new_destination(&dest, dest_preexisted, false);
+                cleanup_failed_new_destination_locked(&dest, dest_preexisted, false)?;
                 return Err(error);
             }
         };
@@ -1326,18 +1339,28 @@ pub async fn extract_archive(
             ),
             ArchiveExtractKind::GzipSingle => {
                 if extract_password.is_some() {
-                    return Err("Password-protected .gz files are not supported".to_string());
+                    Err("Password-protected .gz files are not supported".to_string())
+                } else {
+                    extract_gzip_single(&archive, &dest, extract_cancellation.as_ref())
                 }
-                extract_gzip_single(&archive, &dest, extract_cancellation.as_ref())
             }
             ArchiveExtractKind::XzSingle => {
                 if extract_password.is_some() {
-                    return Err("Password-protected .xz files are not supported".to_string());
+                    Err("Password-protected .xz files are not supported".to_string())
+                } else {
+                    extract_xz_single(&archive, &dest, extract_cancellation.as_ref())
                 }
-                extract_xz_single(&archive, &dest, extract_cancellation.as_ref())
             }
         };
-        cleanup_failed_new_destination(&dest, dest_preexisted, extraction_result.is_ok());
+        if let Err(error) =
+            cleanup_failed_new_destination_locked(&dest, dest_preexisted, extraction_result.is_ok())
+        {
+            log::warn!(
+                "[Archive] failed to clean up failed extraction destination {}: {}",
+                dest.display(),
+                error
+            );
+        }
         extraction_result
     })
     .await;
@@ -1358,6 +1381,21 @@ fn cleanup_failed_new_destination(dest: &Path, dest_preexisted: bool, succeeded:
             }
         }
     }
+}
+
+/// Serialize only the final removal of a destination this extraction created.
+/// Extraction itself runs without the global mutation lock.
+fn cleanup_failed_new_destination_locked(
+    dest: &Path,
+    dest_preexisted: bool,
+    succeeded: bool,
+) -> Result<(), String> {
+    if succeeded || dest_preexisted {
+        return Ok(());
+    }
+    let _mutation_lock = crate::file_operations::mutation_lock()?;
+    cleanup_failed_new_destination(dest, dest_preexisted, succeeded);
+    Ok(())
 }
 
 fn extract_zip(
@@ -1391,8 +1429,9 @@ fn extract_zip(
                 Some(pwd) => zip.by_index_decrypt(i, pwd).map_err(|e| e.to_string())?,
                 None => zip.by_index(i).map_err(|e| e.to_string())?,
             };
-            ensure_archive_entry_name_size(entry.name())?;
-            let name = entry.name().to_string();
+            let entry_name = entry.name().map_err(|e| e.to_string())?;
+            ensure_archive_entry_name_size(&entry_name)?;
+            let name = entry_name.to_string();
             let out_path = safe_entry_path(&name, dest)?;
 
             let _ = webview.emit(
@@ -1907,7 +1946,8 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
 
                 for i in 0..zip.len().min(MAX_LIST_ENTRIES) {
                     let entry = zip.by_index(i).map_err(|e| e.to_string())?;
-                    account_list_entry_name(&mut name_bytes, entry.name())?;
+                    let entry_name = entry.name().map_err(|e| e.to_string())?;
+                    account_list_entry_name(&mut name_bytes, &entry_name)?;
                     entries.push(ArchiveEntry {
                         name: entry
                             .enclosed_name()
@@ -1918,7 +1958,7 @@ pub async fn list_archive_contents(archive_path: String) -> Result<Vec<ArchiveEn
                                     .to_string()
                             })
                             .unwrap_or_default(),
-                        path: entry.name().to_string(),
+                        path: entry_name.to_string(),
                         size: entry.size(),
                         is_directory: entry.is_dir(),
                         compressed_size: entry.compressed_size(),
@@ -2242,8 +2282,19 @@ fn find_zip_entry_case_insensitive<R: Read + std::io::Seek>(
                 continue;
             }
         };
-        if entry.name().eq_ignore_ascii_case(target) {
-            return Some(entry.name().to_string());
+        let entry_name = match entry.name() {
+            Ok(name) => name,
+            Err(error) => {
+                log::debug!(
+                    "Skipping undecodable ZIP entry {} while locating thumbnail: {}",
+                    index,
+                    error
+                );
+                continue;
+            }
+        };
+        if entry_name.eq_ignore_ascii_case(target) {
+            return Some(entry_name.to_string());
         }
     }
     None
@@ -2420,7 +2471,7 @@ mod tests {
         let archive_path = temp.path().join("whitespace.zip");
         let mut writer = zip::ZipWriter::new(fs::File::create(&archive_path).unwrap());
         writer
-            .start_file("payload.txt", zip_entry_options(&options))
+            .start_file("payload.txt", zip_entry_options(&options).unwrap())
             .unwrap();
         writer.write_all(b"round trip payload").unwrap();
         writer.finish().unwrap();
@@ -2488,7 +2539,7 @@ mod tests {
         let path = temp.path().join("empty-password.zip");
         let mut writer = zip::ZipWriter::new(fs::File::create(&path).unwrap());
         writer
-            .start_file("payload.txt", zip_entry_options(&options))
+            .start_file("payload.txt", zip_entry_options(&options).unwrap())
             .unwrap();
         writer.write_all(b"plain payload").unwrap();
         writer.finish().unwrap();

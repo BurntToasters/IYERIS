@@ -282,6 +282,45 @@ pub(crate) fn ensure_no_symlink_components(path: &Path, label: &str) -> Result<(
     Ok(())
 }
 
+/// Create an application-state directory tree and return its canonical path.
+///
+/// Unlike user-selected paths, app-state roots may legitimately be redirected
+/// by the OS (for example a home directory backed by a symlink, or a Windows
+/// junction for AppData). Those trusted ancestor links must be allowed, but the
+/// final state directory itself must be a real directory: accepting a
+/// symlink/reparse point there would let another local process redirect
+/// settings, index, or thumbnail writes after startup.
+pub(crate) fn ensure_app_state_directory(path: &Path, label: &str) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(path)
+        .map_err(|error| format!("Failed to create {} {}: {}", label, path.display(), error))?;
+    let metadata = std::fs::symlink_metadata(path)
+        .map_err(|error| format!("Cannot inspect {} {}: {}", label, path.display(), error))?;
+    if metadata.file_type().is_symlink()
+        || metadata_is_reparse_point(&metadata)
+        || !metadata.is_dir()
+    {
+        return Err(format!(
+            "{} is not a real directory: {}",
+            label,
+            path.display()
+        ));
+    }
+    path.canonicalize()
+        .map_err(|error| format!("Cannot resolve {} {}: {}", label, path.display(), error))
+}
+
+#[cfg(target_os = "windows")]
+fn metadata_is_reparse_point(metadata: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+    metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+}
+
+#[cfg(not(target_os = "windows"))]
+fn metadata_is_reparse_point(_metadata: &std::fs::Metadata) -> bool {
+    false
+}
+
 pub(crate) fn validate_path(raw: &str, label: &str) -> Result<PathBuf, String> {
     if raw.trim().is_empty() {
         return Err(format!("{} path is required", label));
@@ -430,12 +469,6 @@ fn read_early_setting_bool(key: &str) -> bool {
         .unwrap_or(false)
 }
 
-fn contains_disallowed_open_path_char(value: &str) -> bool {
-    value
-        .chars()
-        .any(|c| matches!(c, '$' | '`' | ';' | '|' | '&' | '<' | '>' | '\n' | '\r'))
-}
-
 fn has_minimized_launch_arg(args: &[String]) -> bool {
     args.iter().any(|a| a == "--minimized" || a == "--hidden")
 }
@@ -494,13 +527,10 @@ fn setup_environment(disable_hw_accel: bool, dev_mode: bool) {
 /// after additional sanity checks. Previously any absolute existing path was
 /// accepted; the frontend would then navigate the user to whatever showed up.
 /// We now also:
-///  * reject control characters and NUL bytes
-///  * skip paths with shell metacharacters (those are valid filenames in
-///    principle but a normal "Open in IYERIS" shell integration will never
-///    produce one — the cost of refusing is low and the upside is making
-///    automated targeting harder)
-///  * canonicalize and refuse symlink-via-parent traversal (same shape as
-///    the rename guard in file_operations)
+///  * reject NUL bytes and non-whitespace control characters
+///  * canonicalize and require the target to exist
+/// Arguments arrive through argv rather than a shell, so shell-looking
+/// characters (and newlines, which are valid filenames) are allowed.
 fn first_open_path_arg(args: &[String]) -> Option<String> {
     for arg in args.iter().skip(1) {
         if arg.starts_with("--") {
@@ -508,13 +538,9 @@ fn first_open_path_arg(args: &[String]) -> Option<String> {
         }
         if arg
             .chars()
-            .any(|c| c == '\0' || (c.is_control() && c != '\t'))
+            .any(|c| c == '\0' || (c.is_control() && !matches!(c, '\t' | '\n' | '\r')))
         {
             log::warn!("[SingleInstance] rejecting arg with control character");
-            continue;
-        }
-        if contains_disallowed_open_path_char(arg) {
-            log::warn!("[SingleInstance] rejecting arg with shell metacharacter");
             continue;
         }
         let path = std::path::Path::new(arg);
@@ -1294,11 +1320,76 @@ mod tests {
     }
 
     #[test]
-    fn first_open_path_arg_rejects_shell_metacharacters() {
+    fn first_open_path_arg_accepts_shell_looking_filenames() {
         let temp = tempfile::tempdir().expect("tempdir");
-        let suspicious = temp.path().join("bad$name.txt");
+        let suspicious = temp.path().join("bad $`;|&<>\nname.txt");
+        std::fs::write(&suspicious, "valid").expect("write temp file");
         let args = vec!["app".to_string(), suspicious.to_string_lossy().to_string()];
+        assert_eq!(
+            first_open_path_arg(&args),
+            Some(
+                suspicious
+                    .canonicalize()
+                    .expect("canonical path")
+                    .to_string_lossy()
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn first_open_path_arg_rejects_control_characters() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let control = temp.path().join("bad\u{1}name.txt");
+        let args = vec!["app".to_string(), control.to_string_lossy().to_string()];
         assert!(first_open_path_arg(&args).is_none());
+    }
+
+    #[test]
+    fn app_state_directory_creates_nested_tree_and_canonicalizes() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("state").join("nested");
+        let resolved = ensure_app_state_directory(&path, "Test state").expect("create state dir");
+        assert!(path.is_dir());
+        assert_eq!(resolved, path.canonicalize().expect("canonical path"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn app_state_directory_allows_symlinked_ancestor() {
+        use std::os::unix::fs::symlink;
+        let temp = tempfile::tempdir().expect("tempdir");
+        let real = temp.path().join("real");
+        std::fs::create_dir_all(&real).expect("create real dir");
+        let link = temp.path().join("link");
+        symlink(&real, &link).expect("create ancestor symlink");
+
+        let resolved = ensure_app_state_directory(&link.join("state"), "Test state")
+            .expect("trusted ancestor symlink should be allowed");
+        assert!(resolved.starts_with(real.canonicalize().expect("canonical real dir")));
+        assert!(resolved.ends_with("state"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn app_state_directory_rejects_symlinked_final_component() {
+        use std::os::unix::fs::symlink;
+        let temp = tempfile::tempdir().expect("tempdir");
+        let real = temp.path().join("real");
+        std::fs::create_dir_all(&real).expect("create real dir");
+        let link = temp.path().join("link");
+        symlink(&real, &link).expect("create symlink");
+
+        assert!(ensure_app_state_directory(&link, "Test state").is_err());
+    }
+
+    #[test]
+    fn app_state_directory_rejects_non_directory() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let file = temp.path().join("state");
+        std::fs::write(&file, "not a directory").expect("write temp file");
+
+        assert!(ensure_app_state_directory(&file, "Test state").is_err());
     }
 
     #[test]

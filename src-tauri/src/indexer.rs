@@ -407,25 +407,10 @@ fn get_index_locations() -> Vec<PathBuf> {
         // Skip /Applications + /Volumes: deep .app trees, external mounts. Opt-in later.
     }
 
-    #[cfg(target_os = "linux")]
-    {
-        for p in &["/usr", "/opt"] {
-            let path = Path::new(p);
-            if path.exists() {
-                locations.push(path.to_path_buf());
-            }
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        for letter in b'C'..=b'Z' {
-            let drive = format!("{}:\\", letter as char);
-            if Path::new(&drive).exists() {
-                locations.push(PathBuf::from(drive));
-            }
-        }
-    }
+    // No system-wide roots (Windows drive letters or Linux /usr, /opt) are
+    // indexed by default. They are large, rarely user-owned, and conflict with
+    // the user-folder-and-explicit-roots contract. Users can add such folders
+    // through ADDITIONAL_INDEX_LOCATIONS.
 
     let mut seen_roots = HashSet::new();
     locations.retain(|location| {
@@ -837,7 +822,7 @@ fn index_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e: tauri::Error| e.to_string())?;
-    crate::ensure_real_directory_tree(&dir, "Index directory")?;
+    let dir = crate::ensure_app_state_directory(&dir, "Index directory")?;
     Ok(dir.join("file-index.json"))
 }
 
@@ -908,6 +893,17 @@ fn save_index_to_disk(
         ));
     }
     let (tmp, mut file) = crate::create_secure_temp_file(path, "index")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Restrict the staging file before any payload is written so a crash
+        // cannot leave index data readable under the process umask.
+        if let Err(error) = file.set_permissions(fs::Permissions::from_mode(0o600)) {
+            drop(file);
+            let _ = fs::remove_file(&tmp);
+            return Err(format!("Failed to secure index temporary file: {}", error));
+        }
+    }
     let write_result = (|| -> Result<(), String> {
         file.write_all(json.as_bytes()).map_err(|e| e.to_string())?;
         file.sync_all().map_err(|e| e.to_string())?;
@@ -1430,7 +1426,9 @@ mod tests {
         assert!(result.metadata.truncation_reasons.is_empty());
         assert_eq!(
             result.metadata.indexed_roots,
-            [canonical_path_string(temp.path())]
+            [canonical_path_string(
+                &temp.path().canonicalize().expect("canonical temp root")
+            )]
         );
     }
 
@@ -2129,10 +2127,9 @@ mod index_lifecycle_tests {
             }
         }
         assert_eq!(scans.load(Ordering::SeqCst), 2);
-        assert_eq!(
-            names(&published.read().unwrap()),
-            ["after.txt", "before.txt"]
-        );
+        let mut published_names = names(&published.read().unwrap());
+        published_names.sort();
+        assert_eq!(published_names, ["after.txt", "before.txt"]);
     }
 
     #[test]

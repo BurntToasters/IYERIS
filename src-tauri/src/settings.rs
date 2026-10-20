@@ -88,7 +88,20 @@ fn merge_settings_patch(
         if matches!(key.as_str(), "_revision" | "_timestamp") {
             continue;
         }
-        if current.get(key) != base_values.get(key) && current.get(key) != patch.get(key) {
+        let patch_value = patch.get(key);
+        if patch_value.is_some_and(serde_json::Value::is_null) {
+            // A null patch value asks for key removal. Once the key is absent
+            // (or already null) the requested state is reached, so a stale
+            // delete is idempotent instead of conflicting.
+            let current_value = current.get(key);
+            if current_value.is_some_and(|value| !value.is_null())
+                && current_value != base_values.get(key)
+            {
+                conflicts.push(key.clone());
+            }
+            continue;
+        }
+        if current.get(key) != base_values.get(key) && current.get(key) != patch_value {
             conflicts.push(key.clone());
         }
     }
@@ -105,7 +118,11 @@ fn merge_settings_patch(
         if matches!(key.as_str(), "_revision" | "_timestamp") {
             continue;
         }
-        if next.get(key) != Some(value) {
+        if value.is_null() {
+            if next.remove(key).is_some() {
+                applied = true;
+            }
+        } else if next.get(key) != Some(value) {
             next.insert(key.clone(), value.clone());
             applied = true;
         }
@@ -153,8 +170,7 @@ fn settings_dir(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
         .path()
         .app_data_dir()
         .map_err(|e: tauri::Error| e.to_string())?;
-    crate::ensure_real_directory_tree(&dir, "Settings directory")?;
-    Ok(dir)
+    crate::ensure_app_state_directory(&dir, "Settings directory")
 }
 
 fn settings_path(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
@@ -198,6 +214,20 @@ fn write_json_file(path: &std::path::Path, data: &str) -> Result<(), String> {
         }
     }
     let (tmp, mut file) = crate::create_secure_temp_file(path, "settings")?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        // Restrict the staging file before any payload is written so a crash
+        // cannot leave private settings readable under the process umask.
+        if let Err(error) = file.set_permissions(fs::Permissions::from_mode(0o600)) {
+            drop(file);
+            let _ = fs::remove_file(&tmp);
+            return Err(format!(
+                "Failed to secure settings temporary file: {}",
+                error
+            ));
+        }
+    }
     let write_result = (|| -> Result<(), String> {
         file.write_all(data.as_bytes()).map_err(|e| e.to_string())?;
         file.sync_all().map_err(|e| e.to_string())?;
@@ -207,13 +237,6 @@ fn write_json_file(path: &std::path::Path, data: &str) -> Result<(), String> {
     if let Err(error) = write_result {
         let _ = fs::remove_file(&tmp);
         return Err(error);
-    }
-
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let perms = fs::Permissions::from_mode(0o600);
-        let _ = fs::set_permissions(&tmp, perms);
     }
 
     crate::atomic_replace_file(&tmp, path).inspect_err(|_| {
@@ -621,6 +644,65 @@ mod tests {
         assert_eq!(second["enableIndexer"], false);
         assert_eq!(second["emptyState"], true);
         assert_eq!(super::settings_revision(&second), 2);
+    }
+
+    #[test]
+    fn stale_independent_null_patch_deletes_without_conflict() {
+        let current = json!({
+            "theme": "dark",
+            "optionalFlag": true,
+            "viewMode": "grid",
+            "_revision": 1
+        });
+
+        let deleted = super::merge_settings_patch(
+            &current,
+            1,
+            &json!({ "optionalFlag": true }),
+            &json!({ "optionalFlag": null }),
+        )
+        .expect("null patch should delete the key");
+        assert!(deleted.get("optionalFlag").is_none());
+        assert_eq!(deleted["theme"], "dark");
+        assert_eq!(super::settings_revision(&deleted), 2);
+
+        let merged = super::merge_settings_patch(
+            &deleted,
+            1,
+            &json!({ "viewMode": "grid" }),
+            &json!({ "viewMode": "list" }),
+        )
+        .expect("stale independent patch after a delete should merge");
+        assert!(merged.get("optionalFlag").is_none());
+        assert_eq!(merged["viewMode"], "list");
+        assert_eq!(merged["theme"], "dark");
+        assert_eq!(super::settings_revision(&merged), 3);
+
+        let repeated = super::merge_settings_patch(
+            &merged,
+            1,
+            &json!({ "optionalFlag": true }),
+            &json!({ "optionalFlag": null }),
+        )
+        .expect("deleting an already absent key should be idempotent");
+        assert!(repeated.get("optionalFlag").is_none());
+        assert_eq!(super::settings_revision(&repeated), 3);
+    }
+
+    #[test]
+    fn stale_null_patch_conflicts_when_current_value_changed() {
+        let current = json!({ "optionalFlag": false, "_revision": 2 });
+        let conflict = super::merge_settings_patch(
+            &current,
+            2,
+            &json!({ "optionalFlag": true }),
+            &json!({ "optionalFlag": null }),
+        )
+        .expect_err("changed current value must conflict with a stale delete");
+
+        assert_eq!(conflict.keys, vec!["optionalFlag"]);
+        assert_eq!(conflict.latest["optionalFlag"], false);
+        assert_eq!(super::settings_revision(&conflict.latest), 2);
     }
 
     #[test]
