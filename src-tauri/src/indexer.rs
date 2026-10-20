@@ -1519,7 +1519,11 @@ mod tests {
             .map(|path| canonical_path_string(&path))
             .collect();
 
-        assert!(!expected.is_empty());
+        // Minimal CI homes may not have any of the standard user folders.
+        // In that case there is nothing this host can prove about them.
+        if expected.is_empty() {
+            return;
+        }
         for path in expected {
             assert!(
                 actual.contains(&path),

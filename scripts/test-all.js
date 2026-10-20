@@ -238,8 +238,13 @@ function printTail(output, log) {
   const lines = cleanOutput.split('\n');
   // Keep enough context for Rust test failures; cargo prints the failing
   // test names and assertion details well before the final summary line.
-  const tail = lines.slice(-80).join('\n');
-  log(`${colors.red}${tail}${colors.reset}`);
+  // Some commands write test output to stdout and compiler warnings to stderr,
+  // so scan the whole output for failure markers instead of relying on tail.
+  const failureLines = lines.filter((line) =>
+    /(?:FAILED|panicked at|assertion|test result: FAILED|^---- )/u.test(line)
+  );
+  const selected = [...new Set([...failureLines.slice(-80), ...lines.slice(-80)])];
+  log(`${colors.red}${selected.join('\n')}${colors.reset}`);
 }
 
 function runCommand(step, results, { spawn = spawnSync, log = console.log } = {}) {
