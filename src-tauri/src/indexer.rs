@@ -367,6 +367,25 @@ fn should_exclude(path: &Path, excl_segments: &HashSet<&str>, excl_files: &HashS
     false
 }
 
+/// Apply exclusions relative to an explicitly selected scan root. A root that
+/// lives under `AppData`, `Windows`, or another usually-excluded tree must
+/// still be scanned when the user selected it; only descendants below that
+/// root are filtered.
+fn should_exclude_under_root(
+    root: &Path,
+    path: &Path,
+    excl_segments: &HashSet<&str>,
+    excl_files: &HashSet<&str>,
+) -> bool {
+    let Ok(relative) = path.strip_prefix(root) else {
+        return should_exclude(path, excl_segments, excl_files);
+    };
+    if relative.as_os_str().is_empty() {
+        return false;
+    }
+    should_exclude(relative, excl_segments, excl_files)
+}
+
 fn get_index_locations() -> Vec<PathBuf> {
     let mut locations = Vec::new();
 
@@ -607,6 +626,7 @@ fn add_truncation_reason(metadata: &mut IndexMetadata, reason: &str) {
 }
 
 fn directory_has_unindexed_scannable_child(
+    root: &Path,
     path: &Path,
     already_indexed: &HashSet<String>,
     excl_segments: &HashSet<&str>,
@@ -616,7 +636,7 @@ fn directory_has_unindexed_scannable_child(
     for child in children {
         let child = child.map_err(|_| ())?;
         let child_path = child.path();
-        if should_exclude(&child_path, excl_segments, excl_files) {
+        if should_exclude_under_root(root, &child_path, excl_segments, excl_files) {
             continue;
         }
         let metadata = fs::symlink_metadata(&child_path).map_err(|_| ())?;
@@ -695,7 +715,12 @@ fn build_index_from_locations_with_limits(
                         return false;
                     }
                 }
-                !should_exclude(entry.path(), &excl_segments, &excl_files)
+                !should_exclude_under_root(
+                    &canonical_root,
+                    entry.path(),
+                    &excl_segments,
+                    &excl_files,
+                )
             })
         {
             if is_build_cancelled() {
@@ -750,6 +775,7 @@ fn build_index_from_locations_with_limits(
 
             if entry.depth() == max_depth && meta.is_dir() {
                 match directory_has_unindexed_scannable_child(
+                    &canonical_root,
                     path,
                     &seen_entries,
                     &excl_segments,
@@ -1511,7 +1537,8 @@ mod tests {
         .into_iter()
         .flatten()
         .filter(|path| path.exists())
-        .map(canonical_path_string)
+        .filter_map(|path| path.canonicalize().ok())
+        .map(|path| canonical_path_string(&path))
         .collect();
         let actual: HashSet<_> = get_index_locations()
             .iter()
