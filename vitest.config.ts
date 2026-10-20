@@ -10,8 +10,15 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],
+      reportsDirectory: 'coverage-headless',
       include: ['src/**/*.ts'],
-      exclude: ['src/tests/**/*.test.ts', 'src/renderer.ts', 'src/tauri-api.ts', 'src/types.d.ts'],
+      exclude: ['src/tests/**/*.test.ts', 'src/types.d.ts'],
+      thresholds: {
+        statements: 15,
+        branches: 10,
+        functions: 12,
+        lines: 15,
+      },
     },
   },
 });

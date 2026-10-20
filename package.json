@@ -54,7 +54,7 @@
     "tauri": "tauri",
     "tauri:dev": "npm run sync-version && npm run copy-vendor && tauri dev",
     "tauri:build": "npm run sync-version && npm run licenses && node scripts/tauri-build.js --require-tauri-signing",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage --coverage.reportsDirectory=coverage-headless",
     "test:all": "node scripts/test-all.js",
