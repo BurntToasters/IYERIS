@@ -236,7 +236,9 @@ function printTail(output, log) {
   const cleanOutput = stripAnsi(output).trim();
   if (!cleanOutput) return;
   const lines = cleanOutput.split('\n');
-  const tail = lines.slice(-20).join('\n');
+  // Keep enough context for Rust test failures; cargo prints the failing
+  // test names and assertion details well before the final summary line.
+  const tail = lines.slice(-80).join('\n');
   log(`${colors.red}${tail}${colors.reset}`);
 }
 

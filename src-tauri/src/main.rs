@@ -166,6 +166,7 @@ pub(crate) fn atomic_replace_file(temp: &Path, destination: &Path) -> Result<(),
 /// standard `create_dir_all` follows symlinks in existing parents, which is
 /// unsafe for app-owned state paths that may be redirected by another local
 /// process. Create missing components one at a time and lstat each result.
+#[cfg_attr(target_os = "windows", allow(dead_code))]
 pub(crate) fn ensure_real_directory_tree(path: &Path, label: &str) -> Result<(), String> {
     let mut missing = Vec::new();
     let mut cursor = path;
@@ -1325,10 +1326,30 @@ mod tests {
         assert!(!has_minimized_launch_arg(&args));
     }
 
+    #[cfg(unix)]
     #[test]
     fn first_open_path_arg_accepts_shell_looking_filenames() {
         let temp = tempfile::tempdir().expect("tempdir");
         let suspicious = temp.path().join("bad $`;|&<>\nname.txt");
+        std::fs::write(&suspicious, "valid").expect("write temp file");
+        let args = vec!["app".to_string(), suspicious.to_string_lossy().to_string()];
+        assert_eq!(
+            first_open_path_arg(&args),
+            Some(
+                suspicious
+                    .canonicalize()
+                    .expect("canonical path")
+                    .to_string_lossy()
+                    .to_string()
+            )
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn first_open_path_arg_accepts_shell_looking_filenames() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let suspicious = temp.path().join("bad $`;&name.txt");
         std::fs::write(&suspicious, "valid").expect("write temp file");
         let args = vec!["app".to_string(), suspicious.to_string_lossy().to_string()];
         assert_eq!(

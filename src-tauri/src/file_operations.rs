@@ -3225,6 +3225,7 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
     paths
 }
 
+#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
 fn bound_clipboard_paths(paths: Vec<String>) -> Vec<String> {
     let mut total = 0usize;
     paths
@@ -3920,7 +3921,7 @@ fn run_command_capture(command: &str, args: &[&str]) -> Option<String> {
     cmd.stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::null());
     let mut child = cmd.spawn().ok()?;
-    let Some(mut stdout) = child.stdout.take() else {
+    let Some(stdout) = child.stdout.take() else {
         let _ = child.kill();
         let _ = child.wait();
         return None;
