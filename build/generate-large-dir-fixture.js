@@ -137,7 +137,12 @@ function fixtureIdentity(stats) {
   return {
     dev: stats.dev,
     ino: stats.ino,
+    // birthtime is unavailable or zero on some Linux filesystems. Include
+    // ctime/mtime so a stale marker cannot match a replacement directory that
+    // happens to reuse the same inode.
     birthtimeMs: stats.birthtimeMs,
+    ctimeMs: stats.ctimeMs,
+    mtimeMs: stats.mtimeMs,
   };
 }
 
@@ -149,7 +154,9 @@ async function hasOwnedMarker(output, stats) {
       marker.output === path.resolve(output) &&
       marker.identity?.dev === stats.dev &&
       marker.identity?.ino === stats.ino &&
-      marker.identity?.birthtimeMs === stats.birthtimeMs
+      marker.identity?.birthtimeMs === stats.birthtimeMs &&
+      marker.identity?.ctimeMs === stats.ctimeMs &&
+      marker.identity?.mtimeMs === stats.mtimeMs
     );
   } catch {
     return false;
@@ -202,6 +209,22 @@ async function prepareTarget(output, clean) {
     if (error?.code !== 'ENOENT') throw error;
   }
   await fs.mkdir(output, { recursive: true });
+  await writeOwnershipMarker(output);
+}
+
+async function writeOwnershipMarker(output) {
+  const markerPath = fixtureMarkerPath(output);
+  // Never follow a marker swapped to a symlink between the initial lstat and
+  // this refresh. Remove only a regular marker, then reserve with 'wx'.
+  try {
+    const existing = await fs.lstat(markerPath);
+    if (existing.isSymbolicLink() || !existing.isFile()) {
+      throw new Error('Refusing to refresh an unsafe fixture ownership marker');
+    }
+    await fs.unlink(markerPath);
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
   const created = await fs.lstat(output);
   const marker = `${JSON.stringify({
     version: FIXTURE_MARKER_VERSION,
@@ -343,6 +366,10 @@ export async function generateFixture(options) {
   const filePlan = buildFilePlan(parents, options.files, options.hiddenEvery);
   await writeFiles(filePlan);
   await createFolders(options.output, options.folders, options.layout);
+  // The directory ctime/mtime changes while files are written. Refresh the
+  // marker after the tree is complete so the same owned fixture can be
+  // cleaned later, while a recreated directory still fails the identity check.
+  await writeOwnershipMarker(options.output);
   const generationMs = performance.now() - started;
   const measurements = await measureFixture(options.output, rssBefore);
   return {
