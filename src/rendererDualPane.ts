@@ -4,8 +4,18 @@ import { t } from './i18n.js';
 import { rendererPath as path, openFileWithFeedback } from './rendererUtils.js';
 import { formatFileSize, getFileIcon } from './rendererFileIcons.js';
 import { NAME_COLLATOR, DATE_FORMATTER } from './rendererLocalConstants.js';
+import {
+  IMAGE_EXTENSIONS,
+  RAW_EXTENSIONS,
+  VIDEO_EXTENSIONS,
+  AUDIO_EXTENSIONS,
+  PDF_EXTENSIONS,
+  OFFICE_THUMBNAIL_EXTENSIONS,
+} from './fileTypes.js';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
+
+const SECONDARY_RENDER_BATCH_SIZE = 200;
 
 export interface DualPaneDeps {
   getCurrentSettings: () => Settings;
@@ -43,6 +53,11 @@ export function createDualPaneController(deps: DualPaneDeps) {
   // Monotonically-increasing counter used to discard stale loadSecondaryPane
   // responses when a newer navigation was triggered before the earlier one resolved.
   let secondaryPaneLoadRequestId = 0;
+  // Backend operation id for the secondary pane's in-flight directory load, so a
+  // new navigation can cancel work the user already replaced.
+  let activeSecondaryOperationId: string | null = null;
+  // Invalidates queued requestAnimationFrame batches from an older render pass.
+  let secondaryRenderToken = 0;
   const secondaryFilePathMap = new Map<string, FileItem>();
   const secondaryFileElementMap = new Map<string, HTMLElement>();
 
@@ -56,7 +71,14 @@ export function createDualPaneController(deps: DualPaneDeps) {
     return document.getElementById(isSecondary ? 'dual-pane-secondary-list' : 'file-grid');
   }
 
+  function cancelActiveSecondaryOperation(): void {
+    if (!activeSecondaryOperationId) return;
+    window.tauriAPI.cancelDirectoryContents?.(activeSecondaryOperationId)?.catch(ignoreError);
+    activeSecondaryOperationId = null;
+  }
+
   function renderSecondaryPaneItems(items: FileItem[]): void {
+    const renderToken = ++secondaryRenderToken;
     const list = getDualPaneElement<HTMLElement>('dual-pane-secondary-list');
     if (!list) return;
     const settings = deps.getCurrentSettings();
@@ -64,7 +86,9 @@ export function createDualPaneController(deps: DualPaneDeps) {
     list.replaceChildren();
     secondaryFilePathMap.clear();
     secondaryFileElementMap.clear();
-    if (items.length === 0) {
+    const visibleItems =
+      settings.showHiddenFiles === false ? items.filter((item) => !item.isHidden) : items;
+    if (items.length === 0 || visibleItems.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'dual-pane-empty';
       empty.textContent = t('dualPane.empty');
@@ -73,7 +97,7 @@ export function createDualPaneController(deps: DualPaneDeps) {
     }
     const sortBy = settings.sortBy || 'name';
     const sortOrder = settings.sortOrder || 'asc';
-    const sorted = [...items].sort((a, b) => {
+    const sorted = [...visibleItems].sort((a, b) => {
       const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
       if (dirSort !== 0) return dirSort;
       const comparison =
@@ -92,69 +116,59 @@ export function createDualPaneController(deps: DualPaneDeps) {
     });
     let thumbnailCount = 0;
     const thumbnailCap = 400;
-    for (const item of sorted) {
-      secondaryFilePathMap.set(item.path, item);
-      const row = document.createElement('div');
-      row.className = 'file-item dual-pane-item';
-      row.dataset.path = item.path;
-      row.dataset.directory = String(item.isDirectory);
-      row.dataset.isDirectory = String(item.isDirectory);
-      row.tabIndex = -1;
-      row.setAttribute('role', 'option');
-      row.setAttribute('aria-selected', 'false');
-      const icon = getFileIcon(item.name);
-      const thumbType = item.isDirectory
-        ? ''
-        : path.extname(item.name).toLowerCase().replace('.', '');
-      const canThumb =
-        !item.isDirectory &&
-        [
-          'png',
-          'jpg',
-          'jpeg',
-          'gif',
-          'webp',
-          'bmp',
-          'tiff',
-          'avif',
-          'heic',
-          'heif',
-          'mp4',
-          'mov',
-          'mkv',
-          'avi',
-          'webm',
-          'mp3',
-          'wav',
-          'flac',
-          'm4a',
-          'aac',
-          'ogg',
-          'pdf',
-          'docx',
-          'xlsx',
-          'pptx',
-        ].includes(thumbType);
-      if (canThumb && thumbnailCount < thumbnailCap) {
-        row.classList.add('has-thumbnail');
-        row.dataset.thumbnailType = ['pdf'].includes(thumbType)
-          ? 'pdf'
-          : ['docx', 'xlsx', 'pptx'].includes(thumbType)
-            ? 'office'
-            : ['mp4', 'mov', 'mkv', 'avi', 'webm'].includes(thumbType)
-              ? 'video'
-              : ['mp3', 'wav', 'flac', 'm4a', 'aac', 'ogg'].includes(thumbType)
-                ? 'audio'
-                : 'image';
-        thumbnailCount++;
-      }
-      // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
-      row.innerHTML = `
+    const appendBatch = (batch: FileItem[]): void => {
+      const fragment = document.createDocumentFragment();
+      for (const item of batch) {
+        secondaryFilePathMap.set(item.path, item);
+        const row = document.createElement('div');
+        row.className = 'file-item dual-pane-item';
+        row.dataset.path = item.path;
+        row.dataset.directory = String(item.isDirectory);
+        row.dataset.isDirectory = String(item.isDirectory);
+        row.tabIndex = -1;
+        row.setAttribute('role', 'option');
+        row.setAttribute('aria-selected', 'false');
+        const icon = getFileIcon(item.name);
+        const thumbType = item.isDirectory
+          ? ''
+          : path.extname(item.name).toLowerCase().replace('.', '');
+        const canThumb =
+          !item.isDirectory &&
+          (PDF_EXTENSIONS.has(thumbType) ||
+            OFFICE_THUMBNAIL_EXTENSIONS.has(thumbType) ||
+            VIDEO_EXTENSIONS.has(thumbType) ||
+            AUDIO_EXTENSIONS.has(thumbType) ||
+            RAW_EXTENSIONS.has(thumbType) ||
+            IMAGE_EXTENSIONS.has(thumbType));
+        if (canThumb && thumbnailCount < thumbnailCap) {
+          row.classList.add('has-thumbnail');
+          row.dataset.thumbnailType = PDF_EXTENSIONS.has(thumbType)
+            ? 'pdf'
+            : OFFICE_THUMBNAIL_EXTENSIONS.has(thumbType)
+              ? 'office'
+              : VIDEO_EXTENSIONS.has(thumbType)
+                ? 'video'
+                : AUDIO_EXTENSIONS.has(thumbType)
+                  ? 'audio'
+                  : RAW_EXTENSIONS.has(thumbType)
+                    ? 'raw'
+                    : 'image';
+          thumbnailCount++;
+        }
+        let displayName = item.name;
+        if (!item.isDirectory && settings.showFileExtensions === false) {
+          const extension = path.extname(item.name);
+          if (extension.length > 0 && extension.length < item.name.length) {
+            displayName = item.name.slice(0, item.name.length - extension.length);
+          }
+        }
+        // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+        row.innerHTML = `
       <div class="file-main">
         <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
         <div class="file-icon">${icon}</div>
         <div class="file-text">
-          <div class="file-name dual-pane-item-name">${escapeHtml(item.name)}</div>
+          <div class="file-name dual-pane-item-name">${escapeHtml(displayName)}</div>
         </div>
       </div>
       <div class="file-info">
@@ -163,18 +177,36 @@ export function createDualPaneController(deps: DualPaneDeps) {
         <span class="file-modified">${DATE_FORMATTER.format(new Date(item.modified))}</span>
       </div>
     `;
-      secondaryFileElementMap.set(item.path, row);
-      if (secondaryPaneSelectedItems.has(item.path)) {
-        row.classList.add('selected');
-        row.setAttribute('aria-selected', 'true');
+        secondaryFileElementMap.set(item.path, row);
+        if (secondaryPaneSelectedItems.has(item.path)) {
+          row.classList.add('selected');
+          row.setAttribute('aria-selected', 'true');
+        }
+        if (row.classList.contains('has-thumbnail')) {
+          deps.observeThumbnailItem(row, 'dual-pane-secondary-list');
+        }
+        fragment.appendChild(row);
       }
-      if (row.classList.contains('has-thumbnail')) {
-        deps.observeThumbnailItem(row, 'dual-pane-secondary-list');
-      }
-      list.appendChild(row);
-    }
+      list.appendChild(fragment);
+    };
+
+    // Small folders render synchronously so synchronous callers see rows
+    // immediately; larger folders stream the rest in animation-frame chunks.
+    appendBatch(sorted.slice(0, SECONDARY_RENDER_BATCH_SIZE));
     if (settings.activePane === 'right' && items.length > 0) {
       deps.ensureActiveItem();
+    }
+    if (sorted.length > SECONDARY_RENDER_BATCH_SIZE) {
+      let nextIndex = SECONDARY_RENDER_BATCH_SIZE;
+      const renderNextBatch = (): void => {
+        if (renderToken !== secondaryRenderToken) return;
+        appendBatch(sorted.slice(nextIndex, nextIndex + SECONDARY_RENDER_BATCH_SIZE));
+        nextIndex += SECONDARY_RENDER_BATCH_SIZE;
+        if (nextIndex < sorted.length) {
+          requestAnimationFrame(renderNextBatch);
+        }
+      };
+      requestAnimationFrame(renderNextBatch);
     }
   }
 
@@ -238,12 +270,15 @@ export function createDualPaneController(deps: DualPaneDeps) {
   async function loadSecondaryPane(pathValue: string): Promise<void> {
     if (!pathValue) return;
     const requestId = ++secondaryPaneLoadRequestId;
+    cancelActiveSecondaryOperation();
+    const operationId = `dual-pane-${requestId}`;
+    activeSecondaryOperationId = operationId;
     const settings = deps.getCurrentSettings();
     const pathLabel = getDualPaneElement<HTMLElement>('dual-pane-secondary-path');
     try {
       const result = await window.tauriAPI.getDirectoryContents(
         pathValue,
-        undefined,
+        operationId,
         settings.showHiddenFiles,
         false
       );
@@ -277,7 +312,13 @@ export function createDualPaneController(deps: DualPaneDeps) {
       }
       syncDualPaneControls();
     } catch (error) {
+      // A cancelled or superseded load must not surface an error toast.
+      if (requestId !== secondaryPaneLoadRequestId) return;
       deps.showToast(getErrorMessage(error), t('dualPane.title'), 'error');
+    } finally {
+      if (activeSecondaryOperationId === operationId) {
+        activeSecondaryOperationId = null;
+      }
     }
   }
 
@@ -369,6 +410,9 @@ export function createDualPaneController(deps: DualPaneDeps) {
   }
 
   function clearSecondaryPane(): void {
+    // Discard any response that is still in flight for the pane being cleared.
+    secondaryPaneLoadRequestId++;
+    cancelActiveSecondaryOperation();
     secondaryPanePath = '';
     secondaryPaneItems = [];
     deps.getSecondaryPaneSelected().clear();

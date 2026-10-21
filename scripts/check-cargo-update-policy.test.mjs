@@ -468,7 +468,11 @@ test('21. whole-file exemption removed — troubleshooting text + execSync("carg
       error: (msg) => errors.push(msg),
     });
     assert.equal(ok, false, 'execSync("cargo update") in bump-version.js must be detected');
-    assert.ok(errors.some((e) => e.includes('programmatic Cargo mutation') || e.includes('raw Cargo mutation')));
+    assert.ok(
+      errors.some(
+        (e) => e.includes('programmatic Cargo mutation') || e.includes('raw Cargo mutation')
+      )
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -478,10 +482,7 @@ test('22. different file with same basename does not inherit any exemption', () 
   const root = createTempRepo();
   try {
     mkdirSync(path.join(root, 'tools'), { recursive: true });
-    writeFileSync(
-      path.join(root, 'tools', 'bump-version.js'),
-      'cargo update\n'
-    );
+    writeFileSync(path.join(root, 'tools', 'bump-version.js'), 'cargo update\n');
     const errors = [];
     const ok = runPolicyCheck({
       root,
@@ -500,10 +501,7 @@ test('22. different file with same basename does not inherit any exemption', () 
 test('23. blocks root-level update-deps.mjs with cargo update', () => {
   const root = createTempRepo();
   try {
-    writeFileSync(
-      path.join(root, 'update-deps.mjs'),
-      '#!/usr/bin/env node\ncargo update\n'
-    );
+    writeFileSync(path.join(root, 'update-deps.mjs'), '#!/usr/bin/env node\ncargo update\n');
     const errors = [];
     const ok = runPolicyCheck({
       root,
@@ -520,10 +518,7 @@ test('23. blocks root-level update-deps.mjs with cargo update', () => {
 test('24. blocks root-level release-deps.js with cargo update', () => {
   const root = createTempRepo();
   try {
-    writeFileSync(
-      path.join(root, 'release-deps.js'),
-      'const cmd = "cargo update";\nexec(cmd);\n'
-    );
+    writeFileSync(path.join(root, 'release-deps.js'), 'const cmd = "cargo update";\nexec(cmd);\n');
     const errors = [];
     const ok = runPolicyCheck({
       root,
@@ -543,10 +538,7 @@ test('25. blocks .cargo/config.toml with [alias] u = "update"', () => {
   const root = createTempRepo();
   try {
     mkdirSync(path.join(root, '.cargo'), { recursive: true });
-    writeFileSync(
-      path.join(root, '.cargo', 'config.toml'),
-      '[alias]\nu = "update"\n'
-    );
+    writeFileSync(path.join(root, '.cargo', 'config.toml'), '[alias]\nu = "update"\n');
     const errors = [];
     const ok = runPolicyCheck({
       root,
@@ -685,10 +677,7 @@ test('33. blocks raw npm update in package.json', () => {
 test('34. blocks programmatic npm update', () => {
   const root = createTempRepo();
   try {
-    writeFileSync(
-      path.join(root, 'scripts', 'update.mjs'),
-      'spawnSync("npm", ["update"]);\n'
-    );
+    writeFileSync(path.join(root, 'scripts', 'update.mjs'), 'spawnSync("npm", ["update"]);\n');
     const ok = runPolicyCheck({ root, log: () => {}, error: () => {} });
     assert.equal(ok, false);
   } finally {

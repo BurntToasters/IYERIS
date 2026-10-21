@@ -22,24 +22,6 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
   let diskSpaceDebounceTimer: NodeJS.Timeout | null = null;
   let lastDiskSpacePath: string = '';
 
-  function getUnixDrivePath(pathValue: string): string {
-    const normalized = pathValue.replace(/\\/g, '/');
-    const roots = ['/Volumes', '/media', '/mnt', '/run/media'];
-    for (const root of roots) {
-      if (normalized === root || normalized.startsWith(root + '/')) {
-        const parts = normalized.split('/').filter(Boolean);
-        const rootParts = root.split('/').filter(Boolean);
-        const extraSegments = root === '/run/media' ? 2 : 1;
-        const needed = rootParts.length + extraSegments;
-        if (parts.length >= needed) {
-          return '/' + parts.slice(0, needed).join('/');
-        }
-        return root;
-      }
-    }
-    return '/';
-  }
-
   function getWindowsDrivePath(pathValue: string): string {
     const normalized = pathValue.replace(/\//g, '\\');
     if (normalized.startsWith('\\\\')) {
@@ -102,7 +84,7 @@ export function createDiskSpaceController(deps: DiskSpaceControllerDeps) {
     if (platformOS === 'win32') {
       drivePath = getWindowsDrivePath(currentPath);
     } else {
-      drivePath = getUnixDrivePath(currentPath);
+      drivePath = currentPath;
     }
 
     if (drivePath === lastDiskSpacePath && diskSpaceDebounceTimer) {

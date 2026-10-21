@@ -24,7 +24,7 @@ type UpdateActionsDeps = {
 
 const RELEASES_LATEST_URL = 'https://github.com/BurntToasters/IYERIS/releases/latest';
 const BETA_CHANNEL_NO_MANIFEST_HINT =
-  'This is usually because the latest STABLE released was just pushed, meaning the next beta needs to be released for the beta json manifests to publish';
+  'Beta updater manifests are synchronized automatically to the latest stable release. If a stable release was just published, retry after the release workflow finishes; no manual post-release command is needed.';
 const BETA_VERSION_REGEX = /-(beta|alpha|rc)/i;
 const NOT_FOUND_REGEX = /\b404\b|not\s+found/;
 const INVALID_RELEASE_JSON_FETCH_REGEX = /could\s+not\s+fetch\s+a\s+valid\s+release\s+json/;

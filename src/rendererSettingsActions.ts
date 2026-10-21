@@ -7,7 +7,10 @@ type ToastType = 'success' | 'error' | 'info' | 'warning';
 interface SettingsActionsDeps {
   getCurrentSettings: () => Settings;
   setCurrentSettings: (settings: Settings) => void;
-  saveSettingsWithTimestamp: (settings: Settings) => Promise<{ success: boolean; error?: string }>;
+  saveSettingsWithTimestamp: (
+    settings: Settings,
+    replace?: boolean
+  ) => Promise<{ success: boolean; error?: string; conflictKeys?: string[] }>;
   showToast: (message: string, title?: string, type?: ToastType) => void;
   showConfirm: (message: string, title: string) => Promise<boolean>;
   loadBookmarks: () => void;
@@ -24,7 +27,7 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
     const result: Partial<Settings> = {};
     const data = imported as Record<string, unknown>;
     for (const key of Object.keys(data)) {
-      if (key !== '_timestamp' && key in sanitized) {
+      if (key !== '_timestamp' && key !== '_revision' && key in sanitized) {
         (result as Record<string, unknown>)[key] = sanitized[key as keyof Settings];
       }
     }
@@ -123,6 +126,7 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
         if (!file) return;
 
         try {
+          if (file.size > 8 * 1024 * 1024) throw new Error('Settings file exceeds 8 MiB limit');
           const text = await file.text();
           const parsed: unknown = JSON.parse(text);
           if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
@@ -138,17 +142,19 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
           }
 
           const nextSettings = { ...deps.getCurrentSettings(), ...validatedSettings };
-          deps.setCurrentSettings(nextSettings);
-          const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
+          const saveResult = await deps.saveSettingsWithTimestamp(nextSettings, true);
           if (!saveResult.success) {
-            deps.showToast(
-              saveResult.error || 'Failed to save imported settings',
-              'Import',
-              'error'
-            );
+            if (!saveResult.conflictKeys) {
+              deps.showToast(
+                saveResult.error || 'Failed to save imported settings',
+                'Import',
+                'error'
+              );
+            }
             return;
           }
 
+          deps.setCurrentSettings(nextSettings);
           await deps.hideSettingsModal();
           deps.showSettingsModal();
           deps.showToast(
@@ -172,7 +178,9 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
         const nextSettings = { ...deps.getCurrentSettings(), searchHistory: [] };
         const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
         if (!saveResult.success) {
-          deps.showToast(saveResult.error || 'Failed to clear search history', 'Data', 'error');
+          if (!saveResult.conflictKeys) {
+            deps.showToast(saveResult.error || 'Failed to clear search history', 'Data', 'error');
+          }
           return;
         }
         deps.setCurrentSettings(nextSettings);
@@ -189,7 +197,9 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
         const nextSettings = { ...deps.getCurrentSettings(), bookmarks: [] };
         const saveResult = await deps.saveSettingsWithTimestamp(nextSettings);
         if (!saveResult.success) {
-          deps.showToast(saveResult.error || 'Failed to clear bookmarks', 'Data', 'error');
+          if (!saveResult.conflictKeys) {
+            deps.showToast(saveResult.error || 'Failed to clear bookmarks', 'Data', 'error');
+          }
           return;
         }
         deps.setCurrentSettings(nextSettings);
@@ -224,12 +234,11 @@ export function createSettingsActionsController(deps: SettingsActionsDeps) {
 
     document.getElementById('export-diagnostics-btn')?.addEventListener('click', async () => {
       const result = await window.tauriAPI.exportDiagnostics();
-      if (result.success) {
-        const exportPath = result.path ? `\n${result.path}` : '';
-        deps.showToast(`Diagnostics exported${exportPath}`, 'Diagnostics', 'success');
+      if (result.success && result.status === 'saved') {
+        deps.showToast(`Diagnostics exported to ${result.path}`, 'Diagnostics', 'success');
         return;
       }
-      if (result.error === 'Export cancelled') {
+      if (result.success && result.status === 'cancelled') {
         deps.showToast('Diagnostics export cancelled', 'Diagnostics', 'info');
         return;
       }

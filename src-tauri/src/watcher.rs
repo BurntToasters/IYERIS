@@ -9,9 +9,32 @@ use tauri::{Emitter, Manager};
 pub struct DirectoryWatcher {
     _watcher: notify::RecommendedWatcher,
     _path: PathBuf,
+    watcher_id: u64,
 }
 
 static WATCH_EVENT_COUNTER: AtomicU64 = AtomicU64::new(1);
+static WATCHER_COUNTER: AtomicU64 = AtomicU64::new(1);
+const WATCH_OVERFLOW_LOG_INTERVAL: Duration = Duration::from_secs(5);
+
+#[derive(Default)]
+struct WatchOverflowReporter {
+    dropped_since_report: u64,
+    last_report: Option<Instant>,
+}
+
+impl WatchOverflowReporter {
+    fn record_drop(&mut self, now: Instant) -> Option<u64> {
+        self.dropped_since_report = self.dropped_since_report.saturating_add(1);
+        let report_due = self
+            .last_report
+            .is_none_or(|last| now.duration_since(last) >= WATCH_OVERFLOW_LOG_INTERVAL);
+        if !report_due {
+            return None;
+        }
+        self.last_report = Some(now);
+        Some(std::mem::take(&mut self.dropped_since_report))
+    }
+}
 
 fn is_noise_change_path(path: &Path) -> bool {
     path.file_name()
@@ -60,6 +83,114 @@ fn classify_directory_change_event(
     ("emit", relevant_paths)
 }
 
+fn watcher_id_matches(existing_id: Option<u64>, watcher_id: u64) -> bool {
+    existing_id == Some(watcher_id)
+}
+
+fn watcher_is_current(app: &tauri::AppHandle, window_label: &str, watcher_id: u64) -> bool {
+    let Some(state) = app.try_state::<crate::AppState>() else {
+        return false;
+    };
+    let is_current = match state.watchers.lock() {
+        Ok(watchers) => watchers
+            .get(window_label)
+            .is_some_and(|existing| watcher_id_matches(Some(existing.watcher_id), watcher_id)),
+        Err(poisoned) => {
+            log::warn!("[Watcher] watcher map mutex poisoned while checking identity");
+            poisoned
+                .into_inner()
+                .get(window_label)
+                .is_some_and(|existing| watcher_id_matches(Some(existing.watcher_id), watcher_id))
+        }
+    };
+    is_current
+}
+
+fn emit_pending_if_current(
+    app: &tauri::AppHandle,
+    window_label: &str,
+    watcher_id: u64,
+    watch_path: &Path,
+    pending: &mut Option<(u64, String, Vec<String>)>,
+) {
+    let Some((event_id, event_kind, event_paths)) = pending.take() else {
+        return;
+    };
+    let Some(state) = app.try_state::<crate::AppState>() else {
+        return;
+    };
+    // Keep the identity guard locked through the emit. A replacement can
+    // otherwise land between the check and the event dispatch.
+    let watchers = match state.watchers.lock() {
+        Ok(watchers) => watchers,
+        Err(poisoned) => {
+            log::warn!("[Watcher] watcher map mutex poisoned while emitting");
+            poisoned.into_inner()
+        }
+    };
+    if !watchers
+        .get(window_label)
+        .is_some_and(|existing| watcher_id_matches(Some(existing.watcher_id), watcher_id))
+    {
+        log::debug!(
+            "[Watcher] [{}] Dropping pending event from replaced watcher",
+            event_id
+        );
+        return;
+    }
+    log::debug!(
+        "[Watcher] [{}] Emitting directory-changed kind={} paths={:?}",
+        event_id,
+        event_kind,
+        event_paths
+    );
+    if let Err(e) = app.emit(
+        "directory-changed",
+        serde_json::json!({
+            "dirPath": watch_path.to_string_lossy(),
+            "eventId": event_id,
+            "eventKind": event_kind,
+            "eventPaths": event_paths,
+        }),
+    ) {
+        log::warn!("[Watcher] Failed to emit directory-changed: {}", e);
+    }
+}
+
+fn emit_watched_dir_removed_if_current(
+    app: &tauri::AppHandle,
+    window_label: &str,
+    watcher_id: u64,
+    watch_path: &Path,
+) -> bool {
+    let Some(state) = app.try_state::<crate::AppState>() else {
+        return false;
+    };
+    let mut watchers = match state.watchers.lock() {
+        Ok(watchers) => watchers,
+        Err(poisoned) => {
+            log::warn!("[Watcher] watcher map mutex poisoned while handling removal");
+            poisoned.into_inner()
+        }
+    };
+    if !watchers
+        .get(window_label)
+        .is_some_and(|existing| watcher_id_matches(Some(existing.watcher_id), watcher_id))
+    {
+        return false;
+    }
+    if let Err(e) = app.emit(
+        "watched-dir-removed",
+        serde_json::json!({
+            "dirPath": watch_path.to_string_lossy(),
+        }),
+    ) {
+        log::warn!("[Watcher] Failed to emit watched-dir-removed: {}", e);
+    }
+    watchers.remove(window_label);
+    true
+}
+
 #[tauri::command]
 pub fn watch_directory(
     dir_path: String,
@@ -74,6 +205,11 @@ pub fn watch_directory(
         window_label
     );
     let path = crate::validate_existing_path(&dir_path, "Directory")?;
+    let metadata = std::fs::symlink_metadata(&path)
+        .map_err(|error| format!("Cannot inspect watched path: {}", error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("Watched path must be a real directory".to_string());
+    }
     let path_display = path.to_string_lossy().to_string();
 
     // Build and start the new watcher BEFORE dropping the old one.
@@ -88,14 +224,18 @@ pub fn watch_directory(
     // still trigger a refresh.
     const WATCH_CHANNEL_CAPACITY: usize = 1024;
     let (tx, rx) = mpsc::sync_channel::<notify::Result<Event>>(WATCH_CHANNEL_CAPACITY);
+    let mut overflow_reporter = WatchOverflowReporter::default();
     let mut new_watcher = notify::recommended_watcher(move |res: notify::Result<Event>| {
         if let Err(e) = tx.try_send(res) {
             match e {
                 mpsc::TrySendError::Full(_) => {
-                    log::warn!(
-                        "[Watcher] channel full ({} events); dropping event",
-                        WATCH_CHANNEL_CAPACITY
-                    );
+                    if let Some(dropped) = overflow_reporter.record_drop(Instant::now()) {
+                        log::warn!(
+                            "[Watcher] channel full ({} queued); dropped {} event(s) since last warning",
+                            WATCH_CHANNEL_CAPACITY,
+                            dropped
+                        );
+                    }
                 }
                 mpsc::TrySendError::Disconnected(_) => {
                     log::debug!("[Watcher] channel disconnected; watcher thread exiting");
@@ -110,12 +250,16 @@ pub fn watch_directory(
 
     let watch_path = path.clone();
     let thread_window_label = window_label.clone();
+    let watcher_id = WATCHER_COUNTER.fetch_add(1, Ordering::Relaxed);
     log::debug!("[Watcher] Started watcher thread for {}", path_display);
 
     // Acquire the watcher map lock BEFORE spawning the thread so that
     // a concurrent unwatch_directory call cannot slip in between the
     // thread start and the map insertion.
-    let mut w = state.watchers.lock().map_err(|e| e.to_string())?;
+    let mut w = state.watchers.lock().unwrap_or_else(|poisoned| {
+        log::warn!("[Watcher] watcher map mutex poisoned while replacing; recovering");
+        poisoned.into_inner()
+    });
     if let Some(existing) = w.get(&window_label) {
         log::debug!(
             "[Watcher] Replacing existing watcher for window {}: {}",
@@ -126,18 +270,41 @@ pub fn watch_directory(
 
     std::thread::spawn(move || {
         let debounce_duration = Duration::from_millis(500);
-        let startup_suppression_duration = Duration::from_millis(1500);
-        let watch_started_at = Instant::now();
-        let mut last_emit = Instant::now() - debounce_duration;
+        let mut pending: Option<(u64, String, Vec<String>)> = None;
+        let mut last_relevant_event = Instant::now();
         let mut consecutive_errors: u32 = 0;
         const MAX_CONSECUTIVE_ERRORS: u32 = 5;
 
-        while let Ok(event) = rx.recv() {
+        let emit_pending = |pending: &mut Option<(u64, String, Vec<String>)>| {
+            emit_pending_if_current(&app, &thread_window_label, watcher_id, &watch_path, pending);
+        };
+
+        loop {
+            let wait = pending
+                .as_ref()
+                .map(|_| debounce_duration.saturating_sub(last_relevant_event.elapsed()))
+                .unwrap_or(Duration::from_secs(1));
+            let event = match rx.recv_timeout(wait) {
+                Ok(event) => event,
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    emit_pending(&mut pending);
+                    continue;
+                }
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            };
+
+            // Flush the previous burst before handling an event that arrived
+            // after the quiet period. This gives every burst a trailing emit,
+            // instead of dropping the final change as the old leading-edge
+            // debounce did.
+            if pending.is_some() && last_relevant_event.elapsed() >= debounce_duration {
+                emit_pending(&mut pending);
+            }
+
             match event {
                 Ok(event) => {
                     consecutive_errors = 0;
                     let event_id = WATCH_EVENT_COUNTER.fetch_add(1, Ordering::Relaxed);
-                    let now = Instant::now();
                     let event_kind = format!("{:?}", event.kind);
                     let event_paths = event
                         .paths
@@ -145,45 +312,27 @@ pub fn watch_directory(
                         .map(|path| path.to_string_lossy().to_string())
                         .collect::<Vec<_>>();
 
-                    if now.duration_since(watch_started_at) < startup_suppression_duration {
-                        log::debug!(
-                            "[Watcher] [{}] Suppressed startup event kind={} paths={:?}",
-                            event_id,
-                            event_kind,
-                            event_paths
-                        );
-                        continue;
-                    }
                     let (decision, relevant_paths) =
                         classify_directory_change_event(&event, &watch_path);
                     if decision == "watched-dir-removed" {
+                        // A removal notification supersedes any earlier
+                        // debounced change. Do not emit a stale refresh after
+                        // the UI has been told that the watched directory is
+                        // gone.
+                        pending = None;
                         log::debug!(
                             "[Watcher] [{}] Watched directory removed, emitting watched-dir-removed",
                             event_id
                         );
-                        if let Err(e) = app.emit(
-                            "watched-dir-removed",
-                            serde_json::json!({
-                                "dirPath": watch_path.to_string_lossy(),
-                            }),
-                        ) {
-                            log::warn!("[Watcher] Failed to emit watched-dir-removed: {}", e);
-                        }
-                        // Drop our own map entry so the now-defunct watcher
-                        // doesn't keep an OS handle on the deleted directory.
-                        // Guard on _path so we never evict a watcher that a
-                        // concurrent watch_directory call may have replaced us with.
-                        if let Some(state) = app.try_state::<crate::AppState>() {
-                            if let Ok(mut watchers) = state.watchers.lock() {
-                                if watchers
-                                    .get(&thread_window_label)
-                                    .map(|existing| existing._path == watch_path)
-                                    .unwrap_or(false)
-                                {
-                                    watchers.remove(&thread_window_label);
-                                }
-                            }
-                        }
+                        // Emit and remove only while holding the identity
+                        // guard, so a replacement watcher cannot be told that
+                        // its directory was removed by an older watcher.
+                        let _ = emit_watched_dir_removed_if_current(
+                            &app,
+                            &thread_window_label,
+                            watcher_id,
+                            &watch_path,
+                        );
                         break;
                     }
                     if decision != "emit" {
@@ -196,36 +345,8 @@ pub fn watch_directory(
                         );
                         continue;
                     }
-                    let elapsed_since_last_emit = now.duration_since(last_emit);
-                    if elapsed_since_last_emit < debounce_duration {
-                        log::debug!(
-                            "[Watcher] [{}] Debounced event ({}ms < {}ms) kind={} paths={:?}",
-                            event_id,
-                            elapsed_since_last_emit.as_millis(),
-                            debounce_duration.as_millis(),
-                            event_kind,
-                            relevant_paths
-                        );
-                        continue;
-                    }
-                    last_emit = now;
-                    log::debug!(
-                        "[Watcher] [{}] Emitting directory-changed kind={} paths={:?}",
-                        event_id,
-                        event_kind,
-                        relevant_paths
-                    );
-                    if let Err(e) = app.emit(
-                        "directory-changed",
-                        serde_json::json!({
-                            "dirPath": watch_path.to_string_lossy(),
-                            "eventId": event_id,
-                            "eventKind": event_kind,
-                            "eventPaths": relevant_paths,
-                        }),
-                    ) {
-                        log::warn!("[Watcher] Failed to emit directory-changed: {}", e);
-                    }
+                    last_relevant_event = Instant::now();
+                    pending = Some((event_id, event_kind, relevant_paths));
                 }
                 Err(error) => {
                     log::warn!("[Watcher] notify error: {}", error);
@@ -241,6 +362,28 @@ pub fn watch_directory(
                 }
             }
         }
+        // A replaced watcher may disconnect after its successor is installed.
+        // Do not flush that old watcher's pending event into the new stream.
+        let is_current = watcher_is_current(&app, &thread_window_label, watcher_id);
+        if is_current {
+            emit_pending(&mut pending);
+        }
+        if let Some(state) = app.try_state::<crate::AppState>() {
+            // Cleanup must still happen after a prior watcher operation
+            // poisoned the map mutex; otherwise stale watcher entries leak
+            // and future watches can be rejected or misidentified.
+            let mut watchers = state.watchers.lock().unwrap_or_else(|poisoned| {
+                log::warn!("[Watcher] watcher map mutex poisoned during cleanup; recovering");
+                poisoned.into_inner()
+            });
+            if watchers
+                .get(&thread_window_label)
+                .map(|existing| existing.watcher_id == watcher_id)
+                .unwrap_or(false)
+            {
+                watchers.remove(&thread_window_label);
+            }
+        }
         log::debug!(
             "[Watcher] Watch channel closed for {}",
             watch_path.to_string_lossy()
@@ -252,6 +395,7 @@ pub fn watch_directory(
         DirectoryWatcher {
             _watcher: new_watcher,
             _path: path,
+            watcher_id,
         },
     );
 
@@ -268,7 +412,10 @@ pub fn unwatch_directory(
         "[Watcher] unwatch_directory request (window={})",
         window_label
     );
-    let mut w = state.watchers.lock().map_err(|e| e.to_string())?;
+    let mut w = state.watchers.lock().unwrap_or_else(|poisoned| {
+        log::warn!("[Watcher] watcher map mutex poisoned while unwatching; recovering");
+        poisoned.into_inner()
+    });
     w.remove(&window_label);
     Ok(())
 }
@@ -289,5 +436,26 @@ mod tests {
     fn real_files_are_not_noise() {
         assert!(!is_noise_change_path(Path::new("/x/report.txt")));
         assert!(!is_noise_change_path(Path::new("/x/.ds_store_notes.md")));
+    }
+
+    #[test]
+    fn watcher_identity_guard_rejects_replacements_and_missing_entries() {
+        assert!(watcher_id_matches(Some(7), 7));
+        assert!(!watcher_id_matches(Some(8), 7));
+        assert!(!watcher_id_matches(None, 7));
+    }
+
+    #[test]
+    fn overflow_warnings_are_rate_limited_and_aggregated() {
+        let start = Instant::now();
+        let mut reporter = WatchOverflowReporter::default();
+
+        assert_eq!(reporter.record_drop(start), Some(1));
+        assert_eq!(reporter.record_drop(start + Duration::from_secs(1)), None);
+        assert_eq!(reporter.record_drop(start + Duration::from_secs(2)), None);
+        assert_eq!(
+            reporter.record_drop(start + WATCH_OVERFLOW_LOG_INTERVAL),
+            Some(3)
+        );
     }
 }

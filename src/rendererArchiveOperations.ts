@@ -149,7 +149,7 @@ export function createArchiveOperationsController(deps: ArchiveOperationsDeps) {
           ${renderIcon(icon, 'twemoji')}
           <span class="archive-operation-name" title="${escapeHtml(operation.name)}">${title}: ${escapeHtml(operation.name)}</span>
         </div>
-        ${!operation.aborted ? `<button class="archive-operation-cancel" data-id="${escapeHtml(id)}">Cancel</button>` : ''}
+        ${!operation.aborted ? `<button type="button" class="archive-operation-cancel" data-id="${escapeHtml(id)}">Cancel</button>` : ''}
       </div>
       <div class="archive-operation-file">${escapeHtml(operation.currentFile)}</div>
       <div class="archive-operation-stats">${operation.current} / ${operation.total} files</div>

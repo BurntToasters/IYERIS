@@ -14,8 +14,8 @@ concurrency:
 
 env:
   NODE_VERSION: '24.16.0'
-  NPM_VERSION: '12'
-  RUST_VERSION: 'stable'
+  NPM_VERSION: '12.0.2'
+  RUST_VERSION: '1.98.1'
   CARGO_AUDIT_VERSION: '0.22.2'
 
 jobs:
@@ -37,14 +37,14 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install latest npm 12
+      - name: Install npm 12.0.2
         run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts --min-release-age=3
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
           toolchain: ${{ env.RUST_VERSION }}
-          components: clippy
+          components: clippy, rustfmt
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
@@ -74,29 +74,20 @@ jobs:
       - name: Verify npm registry signatures
         run: npm audit signatures
 
-      - name: Typecheck (app + tests)
-        run: |
-          npm run typecheck
-          npm run typecheck:test
+      - name: Run full quality gate (audits run once in security job)
+        run: npm run test:all -- --skip-audits
 
-      - name: Lint
-        # lint:prod is app source with --max-warnings 0 (strict). Test files
-        # use innerHTML with static fixtures, which trips the XSS guard rule;
-        # those are reviewed and intentionally excluded from the strict gate.
-        run: npm run lint:prod
-
-      - name: Clippy
-        # -D warnings fails on any clippy lint or rustc warning, except the
-        # deliberate unsafe_code markers (crate sets unsafe_code = "warn" to
-        # self-document justified FFI/env blocks; those should not fail CI).
-        run: cargo clippy --locked --all-targets -- -D warnings -A unsafe_code
-        working-directory: src-tauri
-
-      - name: Run test suite and formatting checks
-        run: npm run test:all
-
-      - name: Build frontend
-        run: npm run build
+      - name: Upload browser and test evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: browser-test-evidence-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_id }}
+          path: |
+            coverage-headless/browser-smoke-artifact.json
+            coverage-headless/browser-smoke-diagnostics.log
+            coverage-headless/browser-smoke-*.png
+          if-no-files-found: warn
+          retention-days: 14
 
   security:
     name: Security Audit
@@ -112,7 +103,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install latest npm 12
+      - name: Install npm 12.0.2
         run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts --min-release-age=3
 
       - name: Setup Rust
@@ -134,8 +125,8 @@ jobs:
       - name: Verify npm registry signatures
         run: npm audit signatures
 
-      - name: npm audit (production deps)
-        run: npm audit --production --audit-level=high
+      - name: npm audit (all dependencies)
+        run: npm run audit
 
       - name: Install cargo-audit
         run: cargo install cargo-audit --version ${{ env.CARGO_AUDIT_VERSION }} --locked

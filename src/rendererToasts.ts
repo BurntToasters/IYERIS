@@ -70,7 +70,7 @@ export function createToastManager(options: ToastOptions) {
       ${title ? `<div class="toast-title">${escapeHtml(title)}</div>` : ''}
       <div class="toast-message">${escapeHtml(message)}</div>
     </div>
-    <button class="toast-dismiss" aria-label="Dismiss">&times;</button>
+    <button type="button" class="toast-dismiss" aria-label="Dismiss">&times;</button>
   `;
 
     if (actions && actions.length > 0) {
@@ -78,6 +78,7 @@ export function createToastManager(options: ToastOptions) {
       actionsContainer.className = 'toast-actions';
       for (const action of actions) {
         const btn = document.createElement('button');
+        btn.type = 'button';
         btn.className = 'toast-action-btn';
         btn.textContent = action.label;
         btn.addEventListener('click', (e) => {

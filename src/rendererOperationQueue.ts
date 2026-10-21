@@ -9,6 +9,7 @@ type QueueUpdate = {
   total?: number;
   currentFile?: string;
   error?: string;
+  cancellable?: boolean;
 };
 
 type QueueDeps = {
@@ -262,15 +263,18 @@ export function createOperationQueueController(deps: QueueDeps) {
       });
     }
     if (timers.has(id)) clearTimeout(timers.get(id));
-    timers.set(
-      id,
-      setTimeout(() => {
-        operations.delete(id);
-        timers.delete(id);
-        render();
-        hidePanelIfEmpty();
-      }, COMPLETE_REMOVE_DELAY_MS)
-    );
+    timers.delete(id);
+    if (status === 'done') {
+      timers.set(
+        id,
+        setTimeout(() => {
+          operations.delete(id);
+          timers.delete(id);
+          render();
+          hidePanelIfEmpty();
+        }, COMPLETE_REMOVE_DELAY_MS)
+      );
+    }
     scheduleRender();
   }
 
@@ -311,9 +315,11 @@ export function createOperationQueueController(deps: QueueDeps) {
       .then((result) => {
         if (!result.success) {
           completeOperation(id, 'failed', result.error || 'Cancel failed');
-          return;
         }
-        completeOperation(id, 'failed', 'Cancelled');
+        // Do not mark a successful cancellation complete here. The native
+        // operation is still unwinding; its compress/extract promise will
+        // report the terminal state through the owning controller. Keeping
+        // `cancelling` blocks Retry until that promise has actually finished.
       })
       .catch((error) => {
         completeOperation(id, 'failed', String(error));

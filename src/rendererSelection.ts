@@ -1,6 +1,8 @@
 import type { FileItem } from './types';
 
 type SelectionDeps = {
+  getOrderedFiles?: () => FileItem[];
+  ensureItemRendered?: (path: string) => HTMLElement | null;
   getSelectedItems: () => Set<string>;
   setSelectedItems: (items: Set<string>) => void;
   updateStatusBar: () => void;
@@ -168,6 +170,7 @@ export function createSelectionController(deps: SelectionDeps) {
   function selectAll() {
     const selectedItems = deps.getSelectedItems();
     selectedItems.clear();
+    for (const item of getOrderedFiles()) if (item.path) selectedItems.add(item.path);
     getFileItemsArray().forEach((item) => {
       setSelectedState(item as HTMLElement, true);
       const itemPath = item.getAttribute('data-path');
@@ -201,7 +204,7 @@ export function createSelectionController(deps: SelectionDeps) {
   }
 
   function getFileItemsArray(): HTMLElement[] {
-    if (fileItemsArrayCache) return fileItemsArrayCache;
+    if (fileItemsArrayCache && !deps.getOrderedFiles) return fileItemsArrayCache;
     const scope = getSelectionScope();
     fileItemsArrayCache = Array.from(scope.querySelectorAll('.file-item')) as HTMLElement[];
     return fileItemsArrayCache;
@@ -227,152 +230,85 @@ export function createSelectionController(deps: SelectionDeps) {
     gridColumnsCache = null;
   }
 
+  function getOrderedFiles(): Array<Pick<FileItem, 'path'>> {
+    return (
+      deps.getOrderedFiles?.() ??
+      getFileItemsArray().map((item) => ({ path: item.dataset.path || '' }))
+    );
+  }
+
+  function currentIndex(files: Array<Pick<FileItem, 'path'>>): number {
+    if (lastSelectedIndex >= 0 && lastSelectedIndex < files.length) return lastSelectedIndex;
+    const selected = Array.from(deps.getSelectedItems());
+    return Math.max(
+      0,
+      files.findIndex((file) => file.path === selected[selected.length - 1])
+    );
+  }
+
+  function selectIndex(index: number, shiftKey: boolean): void {
+    const files = getOrderedFiles();
+    const target = files[index];
+    if (!target) return;
+    const anchor = currentIndex(files);
+    clearSelection();
+    const selected = deps.getSelectedItems();
+    const start = shiftKey ? Math.min(anchor, index) : index;
+    const end = shiftKey ? Math.max(anchor, index) : index;
+    for (let i = start; i <= end; i++) selected.add(files[i]!.path);
+    const mounted = deps.ensureItemRendered?.(target.path);
+    invalidateFileItemsCache();
+    const elements = getFileItemsArray();
+    for (const element of elements)
+      setSelectedState(element, selected.has(element.dataset.path || ''));
+    setActiveItem(
+      mounted ?? elements.find((element) => element.dataset.path === target.path) ?? null,
+      true
+    );
+    lastSelectedIndex = index;
+    deps.onSelectionChanged?.();
+    deps.updateStatusBar();
+    const preview = deps.getFileByPath(target.path);
+    if (deps.isPreviewVisible() && selected.size === 1 && preview) deps.updatePreview(preview);
+  }
+
   function navigateFileGrid(key: string, shiftKey: boolean) {
-    const fileItems = getFileItemsArray();
-    if (fileItems.length === 0) return;
-
-    let currentIndex = lastSelectedIndex;
-    if (currentIndex === -1 || currentIndex >= fileItems.length) {
-      const selectedItems = deps.getSelectedItems();
-      const selectedPath = Array.from(selectedItems)[selectedItems.size - 1];
-      currentIndex = fileItems.findIndex((item) => item.getAttribute('data-path') === selectedPath);
-    }
-    if (currentIndex === -1) currentIndex = 0;
-
-    const columns = getGridColumns();
-    let newIndex = currentIndex;
-
-    switch (key) {
-      case 'ArrowUp':
-        newIndex = Math.max(0, currentIndex - columns);
-        break;
-      case 'ArrowDown':
-        newIndex = Math.min(fileItems.length - 1, currentIndex + columns);
-        break;
-      case 'ArrowLeft':
-        newIndex = Math.max(0, currentIndex - 1);
-        break;
-      case 'ArrowRight':
-        newIndex = Math.min(fileItems.length - 1, currentIndex + 1);
-        break;
-    }
-
-    const selectedItems = deps.getSelectedItems();
-    if (newIndex !== currentIndex || selectedItems.size === 0) {
-      selectItemAtIndex(fileItems, newIndex, shiftKey, currentIndex);
-    }
+    const files = getOrderedFiles();
+    const delta = (
+      {
+        ArrowUp: -getGridColumns(),
+        ArrowDown: getGridColumns(),
+        ArrowLeft: -1,
+        ArrowRight: 1,
+      } as Record<string, number>
+    )[key];
+    if (delta === undefined || files.length === 0) return;
+    selectIndex(Math.max(0, Math.min(files.length - 1, currentIndex(files) + delta)), shiftKey);
   }
 
   function selectFirstItem(shiftKey: boolean) {
-    const fileItems = getFileItemsArray();
-    if (fileItems.length === 0) return;
-
-    if (shiftKey && lastSelectedIndex !== -1) {
-      selectItemAtIndex(fileItems, 0, true, lastSelectedIndex);
-    } else {
-      selectItemAtIndex(fileItems, 0, false, -1);
-    }
+    selectIndex(0, shiftKey);
   }
-
   function selectLastItem(shiftKey: boolean) {
-    const fileItems = getFileItemsArray();
-    if (fileItems.length === 0) return;
-
-    if (shiftKey && lastSelectedIndex !== -1) {
-      selectItemAtIndex(fileItems, fileItems.length - 1, true, lastSelectedIndex);
-    } else {
-      selectItemAtIndex(fileItems, fileItems.length - 1, false, -1);
-    }
+    selectIndex(getOrderedFiles().length - 1, shiftKey);
   }
 
   function navigateByPage(direction: 'up' | 'down', shiftKey: boolean) {
-    const fileItems = getFileItemsArray();
-    if (fileItems.length === 0) return;
-
-    const fileGrid = deps.getFileGrid();
-    if (!fileGrid) return;
-
-    const columns = getGridColumns();
-    const gridRect = fileGrid.getBoundingClientRect();
-    const firstItem = fileItems[0];
-    if (!firstItem) return;
-
-    const itemRect = firstItem.getBoundingClientRect();
-    const itemHeight = itemRect.height + 8;
-    const visibleRows = Math.max(1, Math.floor(gridRect.height / itemHeight));
-    const pageSize = visibleRows * columns;
-
-    let currentIndex = lastSelectedIndex;
-    if (currentIndex === -1 || currentIndex >= fileItems.length) {
-      const selectedItems = deps.getSelectedItems();
-      const selectedPath = Array.from(selectedItems)[selectedItems.size - 1];
-      currentIndex = fileItems.findIndex((item) => item.getAttribute('data-path') === selectedPath);
-    }
-    if (currentIndex === -1) currentIndex = 0;
-
-    let newIndex: number;
-    if (direction === 'up') {
-      newIndex = Math.max(0, currentIndex - pageSize);
-    } else {
-      newIndex = Math.min(fileItems.length - 1, currentIndex + pageSize);
-    }
-
-    const selectedItems = deps.getSelectedItems();
-    if (newIndex !== currentIndex || selectedItems.size === 0) {
-      selectItemAtIndex(fileItems, newIndex, shiftKey, currentIndex);
-    }
-  }
-
-  function selectItemAtIndex(
-    fileItems: HTMLElement[],
-    index: number,
-    shiftKey: boolean,
-    anchorIndex: number
-  ) {
-    if (index < 0 || index >= fileItems.length) return;
-
-    if (shiftKey && anchorIndex !== -1) {
-      const start = Math.min(anchorIndex, index);
-      const end = Math.max(anchorIndex, index);
-      clearSelection();
-      const selectedItems = deps.getSelectedItems();
-      for (let i = start; i <= end; i++) {
-        const item = fileItems[i]!;
-        setSelectedState(item, true);
-        const itemPath = item.getAttribute('data-path');
-        if (itemPath) {
-          selectedItems.add(itemPath);
-        }
-      }
-    } else {
-      clearSelection();
-      const item = fileItems[index]!;
-      setSelectedState(item, true);
-      const itemPath = item.getAttribute('data-path');
-      if (itemPath) {
-        deps.getSelectedItems().add(itemPath);
-      }
-    }
-
-    lastSelectedIndex = index;
-    setActiveItem(fileItems[index]!, true);
-    deps.onSelectionChanged?.();
-    deps.updateStatusBar();
-
-    if (deps.isPreviewVisible() && deps.getSelectedItems().size === 1) {
-      const itemPath = Array.from(deps.getSelectedItems())[0]!;
-      const fileItem = deps.getFileByPath(itemPath);
-      if (fileItem) {
-        deps.updatePreview(fileItem);
-      }
-    }
+    const files = getOrderedFiles();
+    const grid = deps.getFileGrid();
+    const first = getFileItemsArray()[0];
+    if (!grid || !first || files.length === 0) return;
+    const viewport = grid.closest('.file-view') ?? grid;
+    const height = first.getBoundingClientRect().height + 8;
+    const pageSize =
+      Math.max(1, Math.floor(viewport.getBoundingClientRect().height / height)) * getGridColumns();
+    const delta = direction === 'up' ? -pageSize : pageSize;
+    selectIndex(Math.max(0, Math.min(files.length - 1, currentIndex(files) + delta)), shiftKey);
   }
 
   function selectSingleItem(fileItem: HTMLElement): void {
-    const fileItems = getFileItemsArray();
-    const index = fileItems.indexOf(fileItem);
-    if (index === -1) return;
-    selectItemAtIndex(fileItems, index, false, -1);
+    const index = getOrderedFiles().findIndex((file) => file.path === fileItem.dataset.path);
+    if (index !== -1) selectIndex(index, false);
   }
 
   function setupRubberBandSelection(): void {
@@ -467,7 +403,7 @@ export function createSelectionController(deps: SelectionDeps) {
           if (intersects && cached.path) {
             setSelectedState(cached.el, true);
             nextSelection.add(cached.path);
-            const currentIndex = getFileItemsArray().indexOf(cached.el);
+            const currentIndex = getOrderedFiles().findIndex((file) => file.path === cached.path);
             if (currentIndex !== -1) {
               rubberBandLastIndex = currentIndex;
             }

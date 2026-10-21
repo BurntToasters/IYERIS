@@ -112,4 +112,33 @@ describe('rendererOperationQueue — terminal-state guard (M2)', () => {
     const fill = document.querySelector('.operation-queue-progress-fill') as HTMLElement | null;
     expect(fill?.style.width).toBe('50%');
   });
+
+  it('can switch an active operation to non-cancellable before elevation', () => {
+    const ctrl = createController();
+    ctrl.addOperation('op-elevated', 'copy', 'system-file.dat', {
+      cancellable: true,
+      total: 1,
+    });
+    expect(document.querySelector('.operation-queue-cancel')).not.toBeNull();
+
+    ctrl.updateOperation('op-elevated', {
+      cancellable: false,
+      currentFile: 'Waiting for elevated permissions...',
+      status: 'active',
+    });
+
+    expect(ctrl.getOperation('op-elevated')?.cancellable).toBe(false);
+    expect(document.querySelector('.operation-queue-cancel')).toBeNull();
+
+    // Even a stale cancel button must be refused while non-cancellable.
+    const content = document.getElementById('progress-panel-content')!;
+    const staleCancel = document.createElement('button');
+    staleCancel.className = 'operation-queue-cancel';
+    staleCancel.dataset.id = 'op-elevated';
+    content.appendChild(staleCancel);
+    staleCancel.click();
+
+    expect(ctrl.getOperation('op-elevated')?.status).toBe('active');
+    expect(ctrl.isOperationCancelling('op-elevated')).toBe(false);
+  });
 });

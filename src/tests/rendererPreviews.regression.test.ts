@@ -43,11 +43,18 @@ vi.mock('../rendererDom.js', () => ({
   getById: vi.fn((id: string) => document.getElementById(id)),
 }));
 vi.mock('../rendererUtils.js', () => ({
+  createPreviewDataUrlRequest: (file: { size: number; modified: Date }, maxBytes: number) => ({
+    maxBytes,
+    fingerprint: `${file.size}:${file.modified.getTime()}`,
+  }),
   encodeFileUrl: (p: string) => `file://${p}`,
   getFileDataUrlWithCache: mockGetFileDataUrlWithCache,
   twemojiImg: () => '<img />',
 }));
-vi.mock('../rendererMarkdown.js', () => ({ loadMarked: mockLoadMarked }));
+vi.mock('../rendererMarkdown.js', () => ({
+  loadMarked: mockLoadMarked,
+  sanitizeMarkdownHtml: (html: string) => Promise.resolve(html),
+}));
 
 import { createPreviewController } from '../rendererPreviews';
 

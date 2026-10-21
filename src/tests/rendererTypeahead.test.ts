@@ -6,8 +6,21 @@ vi.mock('../rendererDom.js', () => ({
 }));
 
 import { createTypeaheadController } from '../rendererTypeahead';
+import type { FileItem } from '../types';
 
 HTMLElement.prototype.scrollIntoView = function () {};
+
+function fileItem(name: string, path: string): FileItem {
+  return {
+    name,
+    path,
+    isDirectory: false,
+    isFile: true,
+    size: 0,
+    modified: new Date(0),
+    isHidden: false,
+  };
+}
 
 function makeDeps() {
   return {
@@ -202,6 +215,108 @@ describe('rendererTypeahead', () => {
       ctrl.handleInput('n');
       expect(item.classList.contains('selected')).toBe(true);
       expect(selected.size).toBe(0);
+    });
+  });
+
+  describe('ordered-file and renderer hooks', () => {
+    it('matches against ordered files instead of querying the DOM', () => {
+      const ordered = [fileItem('alpha.txt', '/alpha'), fileItem('apps.txt', '/apps')];
+      const rendered = createFileItem('alpha.txt', '/alpha');
+      document.body.appendChild(rendered);
+      const ensureItemRendered = vi.fn(() => rendered);
+      const deps = {
+        ...makeDeps(),
+        getOrderedFiles: vi.fn(() => ordered),
+        ensureItemRendered,
+      };
+      const selected = new Set<string>();
+      deps.getSelectedItems.mockReturnValue(selected);
+
+      const ctrl = createTypeaheadController(deps);
+      ctrl.handleInput('a');
+
+      expect(ensureItemRendered).toHaveBeenCalledWith('/alpha');
+      expect(deps.getFileItems).not.toHaveBeenCalled();
+      expect(rendered.classList.contains('selected')).toBe(true);
+      expect(selected.has('/alpha')).toBe(true);
+    });
+
+    it('falls back to the rendered DOM when ensureItemRendered misses', () => {
+      const item = createFileItem('beta.txt', '/beta');
+      document.body.appendChild(item);
+      const deps = {
+        ...makeDeps(),
+        getOrderedFiles: vi.fn(() => [fileItem('beta.txt', '/beta')]),
+        ensureItemRendered: vi.fn(() => null),
+      };
+      deps.getFileItems.mockReturnValue([item]);
+      deps.getSelectedItems.mockReturnValue(new Set<string>());
+
+      const ctrl = createTypeaheadController(deps);
+      ctrl.handleInput('b');
+
+      expect(item.classList.contains('selected')).toBe(true);
+    });
+
+    it('cycles ordered files and wraps after the last match', () => {
+      const ordered = [fileItem('alpha.txt', '/alpha'), fileItem('apps.txt', '/apps')];
+      const elements = new Map([
+        ['/alpha', createFileItem('alpha.txt', '/alpha')],
+        ['/apps', createFileItem('apps.txt', '/apps')],
+      ]);
+      elements.forEach((element) => document.body.appendChild(element));
+      const deps = {
+        ...makeDeps(),
+        getOrderedFiles: vi.fn(() => ordered),
+        ensureItemRendered: vi.fn((path: string) => elements.get(path) ?? null),
+      };
+      const selected = new Set<string>();
+      deps.getSelectedItems.mockReturnValue(selected);
+
+      const ctrl = createTypeaheadController(deps);
+
+      ctrl.handleInput('a');
+      expect(selected.has('/alpha')).toBe(true);
+
+      selected.clear();
+      selected.add('/apps');
+      ctrl.handleInput('a');
+      expect(selected.has('/alpha')).toBe(true);
+    });
+
+    it('delegates selection to selectSingleItem when provided', () => {
+      const item = createFileItem('gamma.txt', '/gamma');
+      document.body.appendChild(item);
+      const selectSingleItem = vi.fn();
+      const deps = {
+        ...makeDeps(),
+        getOrderedFiles: vi.fn(() => [fileItem('gamma.txt', '/gamma')]),
+        ensureItemRendered: vi.fn(() => item),
+        selectSingleItem,
+      };
+
+      const ctrl = createTypeaheadController(deps);
+      ctrl.handleInput('g');
+
+      expect(selectSingleItem).toHaveBeenCalledWith(item);
+      expect(deps.clearSelection).not.toHaveBeenCalled();
+      expect(deps.updateStatusBar).not.toHaveBeenCalled();
+      expect(item.classList.contains('selected')).toBe(false);
+    });
+
+    it('does not ensure a render when ordered files have no match', () => {
+      const ensureItemRendered = vi.fn();
+      const deps = {
+        ...makeDeps(),
+        getOrderedFiles: vi.fn(() => [fileItem('alpha.txt', '/alpha')]),
+        ensureItemRendered,
+      };
+
+      const ctrl = createTypeaheadController(deps);
+      ctrl.handleInput('z');
+
+      expect(ensureItemRendered).not.toHaveBeenCalled();
+      expect(deps.clearSelection).not.toHaveBeenCalled();
     });
   });
 

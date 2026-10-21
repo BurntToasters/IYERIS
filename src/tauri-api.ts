@@ -4,8 +4,19 @@ import { getCurrentWebview } from '@tauri-apps/api/webview';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import type { DragDropEvent } from '@tauri-apps/api/webview';
 import type { Update } from '@tauri-apps/plugin-updater';
-import type { TauriAPI, Settings, HomeSettings, LicensesData, NativeDragDropEvent } from './types';
+import type {
+  TauriAPI,
+  Settings,
+  HomeSettings,
+  HomeSettingsSaveResponse,
+  LicensesData,
+  NativeDragDropEvent,
+  SettingsSaveResponse,
+  GitFileStatus,
+} from './types';
 import { devLog, ignoreError } from './shared.js';
+import { sanitizeSettings } from './settings.js';
+import { sanitizeHomeSettings } from './homeSettings.js';
 import {
   RawFileItemSchema,
   RawDriveInfoSchema,
@@ -15,6 +26,23 @@ import {
   RawFolderSizeSchema,
   RawDuplicateGroupSchema,
   RawGitStatusSchema,
+  RawSettingsSchema,
+  RawSettingsSaveSchema,
+  RawDiagnosticsExportSchema,
+  RawUndoStateSchema,
+  RawIndexStatusSchema,
+  RawHomeSettingsSchema,
+  RawHomeSettingsSaveSchema,
+  RawClipboardOperationSchema,
+  RawArchiveProgressSchema,
+  RawFileOperationProgressSchema,
+  RawDirectoryChangedSchema,
+  RawWatchedDirectoryRemovedSchema,
+  RawDirectoryContentsProgressSchema,
+  RawDirectoryTruncatedSchema,
+  RawFolderSizeProgressSchema,
+  RawChecksumProgressSchema,
+  RawOpenWithAppSchema,
   validateIpc,
 } from './rendererSchemas.js';
 
@@ -26,10 +54,391 @@ type ConflictDecision = Exclude<ConflictResolution, 'cancel'>;
 let pendingUpdate: Update | null = null;
 let updateDownloadInProgress = false;
 let updateReadyToInstall = false;
+let updateGeneration = 0;
+
+function closeUpdate(update: Update | null): void {
+  if (!update) return;
+  try {
+    void update.close().catch(ignoreError);
+  } catch (error) {
+    ignoreError(error);
+  }
+}
+
+function replacePendingUpdate(update: Update | null): void {
+  const previous = pendingUpdate;
+  pendingUpdate = update;
+  if (previous !== update) closeUpdate(previous);
+}
+
 let currentUpdateChannel: 'auto' | 'beta' | 'stable' = 'auto';
 let cachedPlatformOS: string | null = null;
 let lastWatchedDirectoryPath = '';
+let settingsBaselineRaw: Record<string, unknown> | null = null;
+let settingsBaselineView: Settings | null = null;
+let latestSettingsCanonical: Record<string, unknown> | null = null;
+let homeSettingsBaselineRaw: Record<string, unknown> | null = null;
+let homeSettingsBaselineView: HomeSettings | null = null;
+let latestHomeSettingsCanonical: Record<string, unknown> | null = null;
 const IPC_SLOW_WARNING_MS = 1200;
+
+function settingsRevision(settings: object): number {
+  const revision = Object.getOwnPropertyDescriptor(settings, '_revision')?.value;
+  return typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0
+    ? revision
+    : 0;
+}
+
+function homeSettingsRevision(settings: object): number {
+  const revision = Object.getOwnPropertyDescriptor(settings, '_revision')?.value;
+  return typeof revision === 'number' && Number.isSafeInteger(revision) && revision >= 0
+    ? revision
+    : 0;
+}
+
+function getSettingsField(settings: Settings, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(settings, key)?.value;
+}
+
+function setSettingsField(settings: Settings, key: string, value: unknown): void {
+  Object.defineProperty(settings, key, {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value,
+  });
+}
+
+function removeSettingsField(settings: Settings, key: string): void {
+  Reflect.deleteProperty(settings, key);
+}
+
+function latestCanonicalForSave(settings: Record<string, unknown>): Record<string, unknown> {
+  return latestSettingsCanonical &&
+    settingsRevision(latestSettingsCanonical) > settingsRevision(settings)
+    ? latestSettingsCanonical
+    : settings;
+}
+
+function settingsValueEqual(left: unknown, right: unknown): boolean {
+  if (Object.is(left, right)) return true;
+  if (Array.isArray(left) || Array.isArray(right)) {
+    return (
+      Array.isArray(left) &&
+      Array.isArray(right) &&
+      left.length === right.length &&
+      left.every((item, index) => settingsValueEqual(item, right[index]))
+    );
+  }
+  if (typeof left !== 'object' || left === null || typeof right !== 'object' || right === null) {
+    return false;
+  }
+  const leftRecord = left as Record<string, unknown>;
+  const rightRecord = right as Record<string, unknown>;
+  const leftKeys = Object.keys(leftRecord).sort();
+  const rightKeys = Object.keys(rightRecord).sort();
+  return (
+    leftKeys.length === rightKeys.length &&
+    leftKeys.every(
+      (key, index) =>
+        key === rightKeys[index] && settingsValueEqual(leftRecord[key], rightRecord[key])
+    )
+  );
+}
+
+function parseSettingsPayload(raw: unknown, label: string): Record<string, unknown> | null {
+  let parsed = raw;
+  if (typeof raw === 'string') {
+    try {
+      parsed = JSON.parse(raw) as unknown;
+    } catch {
+      devLog('IPC', `invalid JSON in ${label}`);
+      return null;
+    }
+  }
+  return validateIpc(RawSettingsSchema, parsed, label);
+}
+
+function storeSettingsBaseline(settings: Record<string, unknown>): void {
+  if (settingsBaselineRaw && settingsRevision(settings) < settingsRevision(settingsBaselineRaw))
+    return;
+  settingsBaselineRaw = { ...settings };
+  settingsBaselineView = sanitizeSettings(settings);
+  latestSettingsCanonical = { ...settings };
+}
+
+function advanceSettingsBaseline(
+  remote: Record<string, unknown>,
+  preserveKeys: Iterable<string>
+): void {
+  if (settingsBaselineRaw && settingsRevision(remote) < settingsRevision(settingsBaselineRaw))
+    return;
+  const nextRaw = { ...remote };
+  const nextView = sanitizeSettings(remote);
+  if (settingsBaselineRaw && settingsBaselineView) {
+    for (const key of preserveKeys) {
+      if (Object.prototype.hasOwnProperty.call(settingsBaselineRaw, key)) {
+        nextRaw[key] = settingsBaselineRaw[key];
+      } else {
+        delete nextRaw[key];
+      }
+      if (Object.prototype.hasOwnProperty.call(settingsBaselineView, key)) {
+        setSettingsField(nextView, key, getSettingsField(settingsBaselineView, key));
+      } else {
+        removeSettingsField(nextView, key);
+      }
+    }
+  }
+  settingsBaselineRaw = nextRaw;
+  settingsBaselineView = nextView;
+  latestSettingsCanonical = { ...remote };
+}
+
+function storeHomeSettingsBaseline(settings: Record<string, unknown>): void {
+  if (
+    homeSettingsBaselineRaw &&
+    homeSettingsRevision(settings) < homeSettingsRevision(homeSettingsBaselineRaw)
+  ) {
+    return;
+  }
+  homeSettingsBaselineRaw = { ...settings };
+  homeSettingsBaselineView = sanitizeHomeSettings(settings);
+  latestHomeSettingsCanonical = { ...settings };
+}
+
+function advanceHomeSettingsBaseline(
+  remote: Record<string, unknown>,
+  preserveKeys: Iterable<string>
+): void {
+  if (
+    homeSettingsBaselineRaw &&
+    homeSettingsRevision(remote) < homeSettingsRevision(homeSettingsBaselineRaw)
+  ) {
+    return;
+  }
+  const nextRaw = { ...remote };
+  const nextView = sanitizeHomeSettings(remote);
+  if (homeSettingsBaselineRaw && homeSettingsBaselineView) {
+    for (const key of preserveKeys) {
+      if (Object.prototype.hasOwnProperty.call(homeSettingsBaselineRaw, key)) {
+        nextRaw[key] = homeSettingsBaselineRaw[key];
+      } else {
+        delete nextRaw[key];
+      }
+      if (Object.prototype.hasOwnProperty.call(homeSettingsBaselineView, key)) {
+        Object.defineProperty(nextView, key, {
+          configurable: true,
+          enumerable: true,
+          writable: true,
+          value: Object.getOwnPropertyDescriptor(homeSettingsBaselineView, key)?.value,
+        });
+      } else {
+        Reflect.deleteProperty(nextView, key);
+      }
+    }
+  }
+  homeSettingsBaselineRaw = nextRaw;
+  homeSettingsBaselineView = nextView;
+  latestHomeSettingsCanonical = { ...remote };
+}
+
+function latestCanonicalHomeSettingsForSave(
+  settings: Record<string, unknown>
+): Record<string, unknown> {
+  return latestHomeSettingsCanonical &&
+    homeSettingsRevision(latestHomeSettingsCanonical) > homeSettingsRevision(settings)
+    ? latestHomeSettingsCanonical
+    : settings;
+}
+
+const SETTINGS_PATCH_RESERVED_KEYS = new Set(['_revision', '_timestamp']);
+const HOME_SETTINGS_PATCH_RESERVED_KEYS = new Set(['_revision']);
+
+// Undefined values disappear from JSON.stringify, so a removed optional key
+// would never reach the backend. Build the patch from the union of the new
+// settings and the baseline view, and encode removals as explicit nulls with
+// the baseline value for conflict detection.
+function buildSettingsPatch(
+  settings: object,
+  baselineRaw: Record<string, unknown>,
+  baselineView: object,
+  reservedKeys: ReadonlySet<string>
+): { patch: Record<string, unknown>; baseValues: Record<string, unknown> } {
+  const settingsRecord = settings as Record<string, unknown>;
+  const baselineRecord = baselineView as Record<string, unknown>;
+  const patch: Record<string, unknown> = {};
+  const baseValues: Record<string, unknown> = {};
+  const keys = new Set([...Object.keys(settingsRecord), ...Object.keys(baselineRecord)]);
+  for (const key of keys) {
+    if (reservedKeys.has(key)) continue;
+    const hasNewValue = Object.prototype.hasOwnProperty.call(settingsRecord, key);
+    const newValue = settingsRecord[key];
+    const baselineValue = baselineRecord[key];
+    if (!hasNewValue || newValue === undefined) {
+      if (baselineValue === undefined) continue;
+      patch[key] = null;
+    } else {
+      if (settingsValueEqual(newValue, baselineValue)) continue;
+      patch[key] = newValue;
+    }
+    if (Object.prototype.hasOwnProperty.call(baselineRaw, key)) {
+      baseValues[key] = baselineRaw[key];
+    }
+  }
+  return { patch, baseValues };
+}
+
+async function saveHomeSettingsThroughBridge(
+  settings: HomeSettings
+): Promise<HomeSettingsSaveResponse> {
+  const serializedSettings = JSON.stringify(settings);
+  if (!homeSettingsBaselineRaw || !homeSettingsBaselineView) {
+    try {
+      const json = await invoke<string>('get_home_settings');
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(json || '{}') as unknown;
+      } catch {
+        return { success: false, error: 'Could not parse current home settings before saving' };
+      }
+      const canonical = validateIpc(RawHomeSettingsSchema, parsed, 'HomeSettingsBeforeSave');
+      if (!canonical) {
+        return { success: false, error: 'Could not load current home settings before saving' };
+      }
+      storeHomeSettingsBaseline(canonical);
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+  const baselineRaw = homeSettingsBaselineRaw;
+  const baselineView = homeSettingsBaselineView;
+  if (!baselineRaw || !baselineView) {
+    return { success: false, error: 'Could not establish current home settings before saving' };
+  }
+
+  const { patch, baseValues } = buildSettingsPatch(
+    settings,
+    baselineRaw,
+    baselineView,
+    HOME_SETTINGS_PATCH_RESERVED_KEYS
+  );
+
+  try {
+    const raw = await invoke<unknown>('save_home_settings', {
+      settings: serializedSettings,
+      expectedRevision: homeSettingsRevision(baselineRaw),
+      patch: JSON.stringify(patch),
+      baseValues: JSON.stringify(baseValues),
+    });
+    const result = validateIpc(RawHomeSettingsSaveSchema, raw, 'HomeSettingsSave');
+    if (!result) return { success: false, error: 'Invalid home settings response from backend' };
+    if (result.status === 'conflict') {
+      advanceHomeSettingsBaseline(result.settings, Object.keys(patch));
+      return {
+        success: false,
+        error: 'Home settings changed in another window. Review the latest settings and try again.',
+        settings: sanitizeHomeSettings(latestCanonicalHomeSettingsForSave(result.settings)),
+        conflictKeys: result.conflictKeys ?? Object.keys(patch),
+        changedKeys: result.changedKeys ?? Object.keys(patch),
+      };
+    }
+    storeHomeSettingsBaseline(result.settings);
+    return {
+      success: true,
+      settings: sanitizeHomeSettings(latestCanonicalHomeSettingsForSave(result.settings)),
+    };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
+
+async function saveSettingsThroughBridge(
+  settings: Settings,
+  replace = false
+): Promise<SettingsSaveResponse> {
+  const serializedSettings = JSON.stringify(settings);
+  if (!settingsBaselineRaw || !settingsBaselineView) {
+    try {
+      const json = await invoke<string>('get_settings');
+      const canonical = parseSettingsPayload(json || '{}', 'SettingsBeforeSave');
+      if (!canonical)
+        return { success: false, error: 'Could not load current settings before saving' };
+      storeSettingsBaseline(canonical);
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+  const baselineRaw = settingsBaselineRaw;
+  const baselineView = settingsBaselineView;
+  if (!baselineRaw || !baselineView) {
+    return { success: false, error: 'Could not establish current settings before saving' };
+  }
+
+  const expectedRevision = settingsRevision(baselineRaw);
+  if (replace) {
+    try {
+      const raw = await invoke<unknown>('save_settings', {
+        settings: serializedSettings,
+        expectedRevision,
+        replace: true,
+      });
+      const result = validateIpc(RawSettingsSaveSchema, raw, 'SettingsSave');
+      if (!result) return { success: false, error: 'Invalid settings response from backend' };
+      if (result.status === 'conflict') {
+        advanceSettingsBaseline(result.settings, []);
+        return {
+          success: false,
+          error: 'Settings changed in another window. Review the latest settings and try again.',
+          settings: sanitizeSettings(latestCanonicalForSave(result.settings)),
+          conflictKeys: result.conflictKeys ?? ['settings'],
+          changedKeys: result.changedKeys ?? ['settings'],
+        };
+      }
+      storeSettingsBaseline(result.settings);
+      return {
+        success: true,
+        settings: sanitizeSettings(latestCanonicalForSave(result.settings)),
+      };
+    } catch (error) {
+      return { success: false, error: String(error) };
+    }
+  }
+
+  const { patch, baseValues } = buildSettingsPatch(
+    settings,
+    baselineRaw,
+    baselineView,
+    SETTINGS_PATCH_RESERVED_KEYS
+  );
+
+  try {
+    const raw = await invoke<unknown>('save_settings', {
+      settings: serializedSettings,
+      expectedRevision,
+      patch: JSON.stringify(patch),
+      baseValues: JSON.stringify(baseValues),
+    });
+    const parsed = validateIpc(RawSettingsSaveSchema, raw, 'SettingsSave');
+    if (!parsed) return { success: false, error: 'Invalid settings response from backend' };
+    if (parsed.status === 'conflict') {
+      advanceSettingsBaseline(parsed.settings, Object.keys(patch));
+      return {
+        success: false,
+        error: 'Settings changed in another window. Review the latest settings and try again.',
+        settings: sanitizeSettings(latestCanonicalForSave(parsed.settings)),
+        conflictKeys: parsed.conflictKeys ?? Object.keys(patch),
+        changedKeys: parsed.changedKeys ?? Object.keys(patch),
+      };
+    }
+    storeSettingsBaseline(parsed.settings);
+    return {
+      success: true,
+      settings: sanitizeSettings(latestCanonicalForSave(parsed.settings)),
+    };
+  } catch (error) {
+    return { success: false, error: String(error) };
+  }
+}
 
 function nowMs(): number {
   return typeof performance !== 'undefined' ? performance.now() : Date.now();
@@ -62,12 +471,18 @@ async function getUpdaterTargetBase(): Promise<string> {
 
 async function getCheckTarget(
   channel: 'auto' | 'beta' | 'stable',
-  isBeta: boolean
+  installedIsBeta: boolean
 ): Promise<string | undefined> {
-  const useBeta = channel === 'beta' || (channel === 'auto' && isBeta);
-  if (!useBeta) return undefined;
+  if (!isCheckingBetaChannel(channel, installedIsBeta)) return undefined;
   const base = await getUpdaterTargetBase();
   return `${base}-beta`;
+}
+
+function isCheckingBetaChannel(
+  channel: 'auto' | 'beta' | 'stable',
+  installedIsBeta: boolean
+): boolean {
+  return channel === 'beta' || (channel === 'auto' && installedIsBeta);
 }
 const updateDownloadProgressCallbacks = new Set<
   (progress: {
@@ -96,7 +511,7 @@ async function wrap(
   }
 }
 
-function buildFileItem(raw: Record<string, unknown>) {
+function buildFileItem(raw: unknown) {
   const v = validateIpc(RawFileItemSchema, raw, 'FileItem');
   if (!v) return null;
   return {
@@ -118,8 +533,8 @@ function buildFileItem(raw: Record<string, unknown>) {
   };
 }
 
-// Search returns SearchResult (no symlink/hidden flags), so it gets its own
-// schema; the output keeps the FileItem shape the renderer expects.
+// Search returns SearchResult (no symlink flags), so it gets its own schema;
+// the output keeps the FileItem shape the renderer expects.
 function buildSearchResultItem(raw: Record<string, unknown>) {
   const v = validateIpc(RawSearchResultSchema, raw, 'SearchResult');
   if (!v) return null;
@@ -135,7 +550,7 @@ function buildSearchResultItem(raw: Record<string, unknown>) {
     isDesktopEntry: false,
     symlinkTarget: undefined,
     shortcutTarget: undefined,
-    isHidden: false,
+    isHidden: v.isHidden ?? v.name.startsWith('.'),
     size: v.size,
     modified: new Date(v.modified),
     isSystemProtected: false,
@@ -171,14 +586,16 @@ function bindSystemFallbacks() {
   media.addEventListener('change', emitThemeChanged);
 }
 
+const MAX_CONFLICT_RESOLUTION_ATTEMPTS = 10_001;
+
 function parseConflictItem(errorMessage: string): string | null {
   const marker = 'CONFLICT:';
   const index = errorMessage.indexOf(marker);
   if (index === -1) return null;
   const rest = errorMessage.slice(index + marker.length).trim();
-  const endIndex = rest.search(/\s*[([{]/);
-  const item = endIndex === -1 ? rest : rest.slice(0, endIndex);
-  return item || null;
+  // Native errors terminate the conflict item at the end of the message.
+  // Keep punctuation and spaces: both are valid filename characters.
+  return rest || null;
 }
 
 function normalizeWatchPath(pathValue: string): string {
@@ -219,17 +636,19 @@ async function promptConflictResolution(
 }
 
 async function runFileOperationWithConflictResolution(
-  command: 'copy_items' | 'move_items',
+  command: 'copy_items' | 'move_items' | 'elevated_copy_batch' | 'elevated_move_batch',
   operation: 'copy' | 'move',
   sourcePaths: string[],
   destPath: string,
   conflictBehavior?: FileConflictBehavior,
-  operationId?: string
+  operationId?: string,
+  previousResolutions?: Record<string, ConflictDecision>
 ) {
   const behavior = conflictBehavior ?? 'ask';
-  const conflictResolutions: Record<string, ConflictDecision> = {};
+  const conflictResolutions: Record<string, ConflictDecision> = { ...previousResolutions };
+  let attempts = 0;
 
-  while (true) {
+  while (attempts++ < MAX_CONFLICT_RESOLUTION_ATTEMPTS) {
     try {
       await invoke(command, {
         sourcePaths,
@@ -242,12 +661,12 @@ async function runFileOperationWithConflictResolution(
     } catch (e) {
       const error = String(e);
       if (behavior !== 'ask') {
-        return { success: false as const, error };
+        return { success: false as const, error, conflictResolutions };
       }
 
       const conflictItem = parseConflictItem(error);
       if (!conflictItem) {
-        return { success: false as const, error };
+        return { success: false as const, error, conflictResolutions };
       }
 
       const resolution = await promptConflictResolution(conflictItem, operation);
@@ -258,6 +677,11 @@ async function runFileOperationWithConflictResolution(
       conflictResolutions[conflictItem] = resolution;
     }
   }
+
+  return {
+    success: false as const,
+    error: 'Too many file-conflict resolution attempts',
+  };
 }
 
 const tauriAPI: TauriAPI = {
@@ -284,7 +708,7 @@ const tauriAPI: TauriAPI = {
       return {
         success: true,
         contents: items.map(buildFileItem).filter((item) => item !== null),
-      } as never;
+      };
     } catch (e) {
       const durationMs = elapsedMs(startedAt);
       devLog('IPC', `get_directory_contents failed in ${durationMs.toFixed(1)}ms`, {
@@ -292,7 +716,7 @@ const tauriAPI: TauriAPI = {
         operationId: operationId ?? null,
         error: String(e),
       });
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   cancelDirectoryContents: (operationId) => {
@@ -331,9 +755,9 @@ const tauriAPI: TauriAPI = {
   getSpecialDirectory: async (directory: SpecialDirectory) => {
     try {
       const p = await invoke<string>('get_special_directory', { directory });
-      return { success: true, path: p } as never;
+      return { success: true, path: p };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   openFile: (filePath) => wrap(() => invoke('open_file', { filePath })),
@@ -341,10 +765,10 @@ const tauriAPI: TauriAPI = {
     try {
       const { open } = await import('@tauri-apps/plugin-dialog');
       const selected = await open({ directory: true, multiple: false });
-      if (selected) return { success: true, path: selected as string } as never;
-      return { success: false, error: 'No folder selected' } as never;
+      if (selected) return { success: true, path: selected as string };
+      return { success: false, error: 'No folder selected' };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   minimizeWindow: () => invoke('minimize_window'),
@@ -363,17 +787,17 @@ const tauriAPI: TauriAPI = {
   createFolder: async (parentPath, folderName) => {
     try {
       const p = await invoke<string>('create_folder', { parentPath, folderName });
-      return { success: true, path: p } as never;
+      return { success: true, path: p };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   createFile: async (parentPath, fileName) => {
     try {
       const p = await invoke<string>('create_file', { parentPath, fileName });
-      return { success: true, path: p } as never;
+      return { success: true, path: p };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   deleteItem: (itemPath) => wrap(() => invoke('delete_item', { itemPath })),
@@ -382,9 +806,9 @@ const tauriAPI: TauriAPI = {
   renameItem: async (oldPath, newName) => {
     try {
       const p = await invoke<string>('rename_item', { oldPath, newName });
-      return { success: true, path: p } as never;
+      return { success: true, path: p };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   getItemProperties: async (itemPath) => {
@@ -392,7 +816,7 @@ const tauriAPI: TauriAPI = {
       const props = await invoke<Record<string, unknown>>('get_item_properties', { itemPath });
       const v = validateIpc(RawItemPropertiesSchema, props, 'ItemProperties');
       if (!v) {
-        return { success: false, error: 'Invalid item properties from backend' } as never;
+        return { success: false, error: 'Invalid item properties from backend' };
       }
       return {
         success: true,
@@ -414,9 +838,9 @@ const tauriAPI: TauriAPI = {
           owner: v.owner ?? undefined,
           group: v.group ?? undefined,
         },
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   setPermissions: (itemPath, mode) => wrap(() => invoke('set_permissions', { itemPath, mode })),
@@ -424,58 +848,192 @@ const tauriAPI: TauriAPI = {
   getSettings: async () => {
     try {
       const json = await invoke<string>('get_settings');
-      if (json && json !== '{}') {
-        try {
-          const settings = JSON.parse(json) as Record<string, unknown>;
-          return { success: true, settings } as never;
-        } catch (e) {
-          console.error('[Settings] Failed to parse settings JSON, file may be corrupted', e);
-          return { success: false, error: 'Settings file is corrupted, using defaults' } as never;
-        }
+      const settings = parseSettingsPayload(json || '{}', 'Settings');
+      if (!settings) {
+        return { success: false, error: 'Settings file is corrupted, using defaults' };
       }
-      return { success: true, settings: {} } as never;
+      storeSettingsBaseline(settings);
+      return { success: true, settings: sanitizeSettings(settings) };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
-  saveSettings: (settings: Settings) =>
-    wrap(() => invoke('save_settings', { settings: JSON.stringify(settings) })),
-  saveSettingsSync: (settings: Settings) =>
-    wrap(() => invoke('save_settings', { settings: JSON.stringify(settings) })),
+  saveSettings: (settings: Settings, replace = false) =>
+    saveSettingsThroughBridge(settings, replace),
+  saveSettingsSync: (settings: Settings, replace = false) =>
+    saveSettingsThroughBridge(settings, replace),
+  reconcileSettingsSnapshot: (remote, local, canonical) => {
+    const latest =
+      (canonical && parseSettingsPayload(canonical, 'SettingsEventCanonical')) ||
+      (latestSettingsCanonical &&
+      settingsRevision(latestSettingsCanonical) === settingsRevision(remote)
+        ? latestSettingsCanonical
+        : parseSettingsPayload(remote, 'SettingsEvent'));
+    if (!latest) return local;
+    const currentRevision = settingsBaselineRaw ? settingsRevision(settingsBaselineRaw) : 0;
+    if (settingsRevision(latest) < currentRevision) return local;
+
+    const baseline = settingsBaselineView ?? local;
+    const pendingKeys = Object.keys(local).filter(
+      (key) =>
+        key !== '_revision' &&
+        key !== '_timestamp' &&
+        !settingsValueEqual(getSettingsField(local, key), getSettingsField(baseline, key))
+    );
+    advanceSettingsBaseline(latest, pendingKeys);
+    const merged: Record<string, unknown> = { ...sanitizeSettings(latest) };
+    for (const key of pendingKeys) {
+      if (Object.prototype.hasOwnProperty.call(local, key)) {
+        merged[key] = getSettingsField(local, key);
+      } else {
+        delete merged[key];
+      }
+    }
+    return sanitizeSettings(merged);
+  },
+  resolveSettingsConflict: (settings, keys, resolution) => {
+    const latest = latestSettingsCanonical;
+    if (!latest) return settings;
+    const latestView = sanitizeSettings(latest);
+    const next: Record<string, unknown> = { ...settings, _revision: settingsRevision(latest) };
+    if (settingsBaselineRaw && settingsBaselineView) {
+      if (keys.includes('settings')) {
+        settingsBaselineRaw = { ...latest };
+        settingsBaselineView = latestView;
+        return resolution === 'useLatest' ? latestView : sanitizeSettings(next);
+      }
+      for (const key of keys) {
+        if (key === '_revision' || key === '_timestamp') continue;
+        if (Object.prototype.hasOwnProperty.call(latest, key)) {
+          settingsBaselineRaw[key] = latest[key];
+        } else {
+          delete settingsBaselineRaw[key];
+        }
+        if (Object.prototype.hasOwnProperty.call(latestView, key)) {
+          setSettingsField(settingsBaselineView, key, getSettingsField(latestView, key));
+        } else {
+          removeSettingsField(settingsBaselineView, key);
+        }
+        if (resolution === 'useLatest') {
+          if (Object.prototype.hasOwnProperty.call(latestView, key)) {
+            next[key] = getSettingsField(latestView, key);
+          } else {
+            delete next[key];
+          }
+        }
+      }
+    }
+    return sanitizeSettings(next);
+  },
   resetSettings: () => wrap(() => invoke('reset_settings')),
   relaunchApp: () => invoke('relaunch_app'),
   getSettingsPath: () => invoke('get_settings_path'),
   getHomeSettings: async () => {
     try {
       const json = await invoke<string>('get_home_settings');
-      if (json && json !== '{}') {
-        try {
-          const settings = JSON.parse(json) as Record<string, unknown>;
-          return { success: true, settings } as never;
-        } catch (e) {
-          console.error('[Settings] Failed to parse home settings JSON, file may be corrupted', e);
-          return {
-            success: false,
-            error: 'Home settings file is corrupted, using defaults',
-          } as never;
-        }
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(json || '{}') as unknown;
+      } catch {
+        return { success: false, error: 'Home settings file is corrupted, using defaults' };
       }
-      return { success: true, settings: {} } as never;
+      const settings = validateIpc(RawHomeSettingsSchema, parsed, 'HomeSettings');
+      if (!settings) {
+        return { success: false, error: 'Home settings file is corrupted, using defaults' };
+      }
+      storeHomeSettingsBaseline(settings);
+      return { success: true, settings: sanitizeHomeSettings(settings) };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
-  saveHomeSettings: (settings: HomeSettings) =>
-    wrap(() => invoke('save_home_settings', { settings: JSON.stringify(settings) })),
+  saveHomeSettings: (settings: HomeSettings) => saveHomeSettingsThroughBridge(settings),
+  reconcileHomeSettingsSnapshot: (remote, local, canonical) => {
+    const latest =
+      (canonical && validateIpc(RawHomeSettingsSchema, canonical, 'HomeSettingsEventCanonical')) ||
+      (latestHomeSettingsCanonical &&
+      homeSettingsRevision(latestHomeSettingsCanonical) === homeSettingsRevision(remote)
+        ? latestHomeSettingsCanonical
+        : validateIpc(RawHomeSettingsSchema, remote, 'HomeSettingsEvent'));
+    if (!latest) return local;
+    const currentRevision = homeSettingsBaselineRaw
+      ? homeSettingsRevision(homeSettingsBaselineRaw)
+      : 0;
+    if (homeSettingsRevision(latest) < currentRevision) return local;
+
+    const baseline = homeSettingsBaselineView ?? local;
+    const pendingKeys = Object.keys(local).filter(
+      (key) =>
+        key !== '_revision' &&
+        !settingsValueEqual(
+          Object.getOwnPropertyDescriptor(local, key)?.value,
+          Object.getOwnPropertyDescriptor(baseline, key)?.value
+        )
+    );
+    advanceHomeSettingsBaseline(latest, pendingKeys);
+    const merged: Record<string, unknown> = { ...sanitizeHomeSettings(latest) };
+    for (const key of pendingKeys) {
+      if (Object.prototype.hasOwnProperty.call(local, key)) {
+        merged[key] = Object.getOwnPropertyDescriptor(local, key)?.value;
+      } else {
+        delete merged[key];
+      }
+    }
+    return sanitizeHomeSettings(merged);
+  },
+  resolveHomeSettingsConflict: (settings, keys, resolution) => {
+    const latest = latestHomeSettingsCanonical;
+    if (!latest) return settings;
+    const latestView = sanitizeHomeSettings(latest);
+    const next: HomeSettings = { ...settings, _revision: homeSettingsRevision(latest) };
+    if (homeSettingsBaselineRaw && homeSettingsBaselineView) {
+      for (const key of keys) {
+        if (key === '_revision') continue;
+        if (Object.prototype.hasOwnProperty.call(latest, key)) {
+          homeSettingsBaselineRaw[key] = latest[key];
+        } else {
+          delete homeSettingsBaselineRaw[key];
+        }
+        if (Object.prototype.hasOwnProperty.call(latestView, key)) {
+          Object.defineProperty(homeSettingsBaselineView, key, {
+            configurable: true,
+            enumerable: true,
+            writable: true,
+            value: Object.getOwnPropertyDescriptor(latestView, key)?.value,
+          });
+        } else {
+          Reflect.deleteProperty(homeSettingsBaselineView, key);
+        }
+        if (resolution === 'useLatest') {
+          if (Object.prototype.hasOwnProperty.call(latestView, key)) {
+            Object.defineProperty(next, key, {
+              configurable: true,
+              enumerable: true,
+              writable: true,
+              value: Object.getOwnPropertyDescriptor(latestView, key)?.value,
+            });
+          } else {
+            Reflect.deleteProperty(next, key);
+          }
+        }
+      }
+    }
+    return sanitizeHomeSettings(next);
+  },
   resetHomeSettings: () => wrap(() => invoke('reset_home_settings')),
   getHomeSettingsPath: () => invoke('get_home_settings_path'),
 
   setClipboard: (clipboardData) => invoke('set_clipboard', { clipboardData }),
   // Resolve to null on failure so a clipboard-read error never blocks startup.
-  getClipboard: () =>
-    (invoke('get_clipboard') as Promise<import('./types').ClipboardOperation | null>).catch(
-      () => null
-    ),
+  getClipboard: async () => {
+    try {
+      const raw = await invoke<unknown>('get_clipboard');
+      if (raw === null) return null;
+      return validateIpc(RawClipboardOperationSchema, raw, 'ClipboardOperation');
+    } catch {
+      return null;
+    }
+  },
   getSystemClipboardData: async () => {
     try {
       const data = await invoke<{ operation?: string; paths?: string[] } | null>(
@@ -485,12 +1043,12 @@ const tauriAPI: TauriAPI = {
         return {
           operation: data.operation === 'cut' ? 'cut' : 'copy',
           paths: data.paths,
-        } as never;
+        };
       }
     } catch (e) {
       devLog('IPC', 'getSystemClipboardData failed', e);
     }
-    return null as never;
+    return null;
   },
   getSystemClipboardFiles: async () => {
     try {
@@ -503,7 +1061,14 @@ const tauriAPI: TauriAPI = {
   },
   writeToSystemClipboard: (text: string) => invoke('write_to_system_clipboard', { text }),
   onClipboardChanged: (callback) => {
-    const unlisten = listen('clipboard-changed', (event) => callback(event.payload as never));
+    const unlisten = listen('clipboard-changed', (event) => {
+      if (event.payload === null) {
+        callback(null);
+        return;
+      }
+      const clipboard = validateIpc(RawClipboardOperationSchema, event.payload, 'ClipboardEvent');
+      if (clipboard) callback(clipboard);
+    });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
     };
@@ -545,12 +1110,8 @@ const tauriAPI: TauriAPI = {
 
   onSettingsChanged: (callback) => {
     const unlisten = listen('settings-changed', (event) => {
-      const payload = event.payload as string;
-      try {
-        callback(JSON.parse(payload) as Settings);
-      } catch {
-        console.error('[Settings] Failed to parse settings-changed payload');
-      }
+      const payload = parseSettingsPayload(event.payload, 'SettingsEvent');
+      if (payload) callback(sanitizeSettings(payload), payload);
     });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
@@ -558,9 +1119,11 @@ const tauriAPI: TauriAPI = {
   },
   onHomeSettingsChanged: (callback) => {
     const unlisten = listen('home-settings-changed', (event) => {
-      const payload = event.payload as string;
+      let payload: unknown = event.payload;
       try {
-        callback(JSON.parse(payload) as HomeSettings);
+        if (typeof payload === 'string') payload = JSON.parse(payload) as unknown;
+        const settings = validateIpc(RawHomeSettingsSchema, payload, 'HomeSettingsEvent');
+        if (settings) callback(sanitizeHomeSettings(settings), settings);
       } catch {
         console.error('[Settings] Failed to parse home-settings-changed payload');
       }
@@ -578,7 +1141,7 @@ const tauriAPI: TauriAPI = {
       destPath,
       conflictBehavior,
       operationId
-    ) as never,
+    ),
   moveItems: (sourcePaths, destPath, conflictBehavior, operationId) =>
     runFileOperationWithConflictResolution(
       'move_items',
@@ -587,54 +1150,57 @@ const tauriAPI: TauriAPI = {
       destPath,
       conflictBehavior,
       operationId
-    ) as never,
+    ),
   showConflictDialog: (fileName, operation) =>
-    promptConflictResolution(fileName, operation as 'copy' | 'move') as never,
-  searchFiles: async (dirPath, query, filters, operationId) => {
+    promptConflictResolution(fileName, operation as 'copy' | 'move'),
+  searchFiles: async (dirPath, query, filters, operationId, includeHidden) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_files', {
         dirPath,
         query,
         filters: filters ? JSON.stringify(filters) : null,
         operationId: operationId ?? null,
+        includeHidden: includeHidden === true,
       });
       return {
         success: true,
         results: results.map(buildSearchResultItem).filter((item) => item !== null),
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
-  searchFilesWithContent: async (dirPath, query, filters, operationId) => {
+  searchFilesWithContent: async (dirPath, query, filters, operationId, includeHidden) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_files_content', {
         dirPath,
         query,
         filters: filters ? JSON.stringify(filters) : null,
         operationId: operationId ?? null,
+        includeHidden: includeHidden === true,
       });
       return {
         success: true,
         results: results.map(buildSearchResultItem).filter((item) => item !== null),
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
-  searchFilesWithContentGlobal: async (query, filters, operationId) => {
+  searchFilesWithContentGlobal: async (query, filters, operationId, includeHidden) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_files_content_global', {
         query,
         filters: filters ? JSON.stringify(filters) : null,
         operationId: operationId ?? null,
+        includeHidden: includeHidden === true,
       });
       return {
         success: true,
         results: results.map(buildSearchResultItem).filter((item) => item !== null),
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   getDiskSpace: async (drivePath) => {
@@ -647,13 +1213,13 @@ const tauriAPI: TauriAPI = {
         total: info.total as number,
         free: info.free as number,
       });
-      return { success: true, total: info.total as number, free: info.free as number } as never;
+      return { success: true, total: info.total as number, free: info.free as number };
     } catch (e) {
       devLog('IPC', `get_disk_space failed in ${elapsedMs(startedAt).toFixed(1)}ms`, {
         drivePath,
         error: String(e),
       });
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   openTerminal: (dirPath) => wrap(() => invoke('open_terminal', { dirPath })),
@@ -665,10 +1231,26 @@ const tauriAPI: TauriAPI = {
   elevatedDelete: (itemPath) => wrap(() => invoke('elevated_delete', { itemPath })),
   elevatedRename: (itemPath, newName) =>
     wrap(() => invoke('elevated_rename', { itemPath, newName })),
-  elevatedCopyBatch: (sourcePaths, destPath) =>
-    wrap(() => invoke('elevated_copy_batch', { sourcePaths, destPath })),
-  elevatedMoveBatch: (sourcePaths, destPath) =>
-    wrap(() => invoke('elevated_move_batch', { sourcePaths, destPath })),
+  elevatedCopyBatch: (sourcePaths, destPath, behavior, resolutions) =>
+    runFileOperationWithConflictResolution(
+      'elevated_copy_batch',
+      'copy',
+      sourcePaths,
+      destPath,
+      behavior,
+      undefined,
+      resolutions
+    ),
+  elevatedMoveBatch: (sourcePaths, destPath, behavior, resolutions) =>
+    runFileOperationWithConflictResolution(
+      'elevated_move_batch',
+      'move',
+      sourcePaths,
+      destPath,
+      behavior,
+      undefined,
+      resolutions
+    ),
   elevatedDeleteBatch: (itemPaths) => wrap(() => invoke('elevated_delete_batch', { itemPaths })),
   resolveShortcut: async (shortcutPath) => {
     try {
@@ -688,9 +1270,9 @@ const tauriAPI: TauriAPI = {
         success: true,
         content: payload.content,
         isTruncated: payload.isTruncated,
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   getFileDataUrl: async (filePath, maxSize) => {
@@ -699,9 +1281,9 @@ const tauriAPI: TauriAPI = {
         filePath,
         maxSize: maxSize ?? null,
       });
-      return { success: true, dataUrl } as never;
+      return { success: true, dataUrl };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   getLicenses: async () => {
@@ -709,11 +1291,11 @@ const tauriAPI: TauriAPI = {
       const json = await invoke<string>('get_licenses');
       const parsed = JSON.parse(json) as unknown;
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return { success: false, error: 'Invalid licenses payload format' } as never;
+        return { success: false, error: 'Invalid licenses payload format' };
       }
-      return { success: true, licenses: parsed as LicensesData } as never;
+      return { success: true, licenses: parsed as LicensesData };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   getPlatform: () => invoke('get_platform'),
@@ -734,9 +1316,9 @@ const tauriAPI: TauriAPI = {
   checkFullDiskAccess: async () => {
     try {
       const hasAccess = await invoke<boolean>('check_full_disk_access');
-      return { success: true, hasAccess } as never;
+      return { success: true, hasAccess };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   requestFullDiskAccess: () => wrap(() => invoke('request_full_disk_access')),
@@ -755,9 +1337,25 @@ const tauriAPI: TauriAPI = {
         invoke<boolean>('is_msi'),
       ]);
     } catch (e) {
-      return { success: false as const, error: String(e) } as never;
+      return { success: false as const, error: String(e) };
     }
-    const isBeta = /-(beta|alpha|rc)/i.test(currentVersion);
+    const installedIsBeta = /-(beta|alpha|rc)/i.test(currentVersion);
+    const requestedChannel = currentUpdateChannel;
+    const isBeta = isCheckingBetaChannel(requestedChannel, installedIsBeta);
+
+    // A second check must not replace the update object while download/install
+    // owns it. Return the current state instead; caller can retry after the
+    // active operation completes.
+    if (updateDownloadInProgress || updateReadyToInstall) {
+      return {
+        success: true,
+        hasUpdate: pendingUpdate !== null,
+        currentVersion,
+        latestVersion: pendingUpdate?.version ?? currentVersion,
+        isBeta,
+      };
+    }
+    const generation = ++updateGeneration;
 
     const storeChecks: Array<{
       active: boolean;
@@ -802,15 +1400,25 @@ const tauriAPI: TauriAPI = {
         isBeta,
         [store.flag]: true,
         [store.messageKey]: store.message,
-      } as never;
+      };
     }
 
     try {
       const { check } = await import('@tauri-apps/plugin-updater');
-      const target = await getCheckTarget(currentUpdateChannel, isBeta);
+      const target = await getCheckTarget(requestedChannel, installedIsBeta);
       const update = target ? await check({ target }) : await check();
+      if (generation !== updateGeneration || updateDownloadInProgress || updateReadyToInstall) {
+        if (update !== pendingUpdate) closeUpdate(update);
+        return {
+          success: true,
+          hasUpdate: pendingUpdate !== null,
+          currentVersion,
+          latestVersion: pendingUpdate?.version ?? currentVersion,
+          isBeta: isCheckingBetaChannel(currentUpdateChannel, installedIsBeta),
+        };
+      }
       if (update) {
-        pendingUpdate = update;
+        replacePendingUpdate(update);
         updateReadyToInstall = false;
         updateAvailableCallbacks.forEach((cb) => {
           try {
@@ -829,10 +1437,10 @@ const tauriAPI: TauriAPI = {
           currentVersion,
           latestVersion: update.version,
           isBeta,
-        } as never;
+        };
       }
       if (!updateDownloadInProgress && !updateReadyToInstall) {
-        pendingUpdate = null;
+        replacePendingUpdate(null);
       }
       return {
         success: true,
@@ -840,10 +1448,10 @@ const tauriAPI: TauriAPI = {
         currentVersion,
         latestVersion: currentVersion,
         isBeta,
-      } as never;
+      };
     } catch (e) {
-      if (!updateDownloadInProgress && !updateReadyToInstall) {
-        pendingUpdate = null;
+      if (generation === updateGeneration && !updateDownloadInProgress && !updateReadyToInstall) {
+        replacePendingUpdate(null);
       }
       const message = String(e);
       const error = /pubkey|signature|updater/i.test(message)
@@ -852,17 +1460,23 @@ const tauriAPI: TauriAPI = {
       return {
         success: false,
         error,
-      } as never;
+      };
     }
   },
   downloadUpdate: async () => {
     try {
-      if (!pendingUpdate) return { success: false as const, error: 'No update available' };
+      const update = pendingUpdate;
+      if (!update) return { success: false as const, error: 'No update available' };
+      if (updateDownloadInProgress) {
+        return { success: false as const, error: 'Update download already in progress' };
+      }
+      if (updateReadyToInstall) return { success: true as const };
+      const generation = updateGeneration;
       updateDownloadInProgress = true;
       updateReadyToInstall = false;
       let downloaded = 0;
       let contentLength = 0;
-      await pendingUpdate.download((event) => {
+      await update.download((event) => {
         if (event.event === 'Started' && event.data.contentLength) {
           contentLength = event.data.contentLength;
         } else if (event.event === 'Progress') {
@@ -881,18 +1495,26 @@ const tauriAPI: TauriAPI = {
               console.error('[Updater] onDownloadProgress callback error:', err);
             }
           });
-        } else if (event.event === 'Finished') {
-          updateReadyToInstall = true;
-          updateDownloadedCallbacks.forEach((cb) => {
-            try {
-              cb({ version: pendingUpdate?.version ?? '' });
-            } catch (err) {
-              console.error('[Updater] onUpdateDownloaded callback error:', err);
-            }
-          });
         }
       });
       updateDownloadInProgress = false;
+      if (pendingUpdate !== update || updateGeneration !== generation) {
+        if (pendingUpdate === update) replacePendingUpdate(null);
+        else closeUpdate(update);
+        return { success: false as const, error: 'Update was superseded by a newer check' };
+      }
+      // Finished reports transport completion. Only the resolved download
+      // promise confirms verification and availability of the install resource.
+      if (!updateReadyToInstall) {
+        updateReadyToInstall = true;
+        updateDownloadedCallbacks.forEach((cb) => {
+          try {
+            cb({ version: update.version });
+          } catch (err) {
+            console.error('[Updater] onUpdateDownloaded callback error:', err);
+          }
+        });
+      }
       return { success: true as const };
     } catch (e) {
       updateDownloadInProgress = false;
@@ -902,10 +1524,17 @@ const tauriAPI: TauriAPI = {
   },
   installUpdate: async () => {
     try {
-      if (!pendingUpdate) return { success: false as const, error: 'No update available' };
-      await pendingUpdate.install();
-      updateReadyToInstall = false;
-      pendingUpdate = null;
+      const update = pendingUpdate;
+      if (!update) return { success: false as const, error: 'No update available' };
+      if (!updateReadyToInstall) {
+        return { success: false as const, error: 'Update has not finished downloading' };
+      }
+      const generation = updateGeneration;
+      await update.install();
+      if (pendingUpdate === update && updateGeneration === generation) {
+        updateReadyToInstall = false;
+        replacePendingUpdate(null);
+      }
       const { relaunch } = await import('@tauri-apps/plugin-process');
       await relaunch();
       return { success: true as const };
@@ -937,65 +1566,75 @@ const tauriAPI: TauriAPI = {
   },
   undoAction: async () => {
     try {
-      const state = await invoke<{ canUndo: boolean; canRedo: boolean }>('undo_action');
-      return { success: true, canUndo: state.canUndo, canRedo: state.canRedo } as never;
+      const raw = await invoke<unknown>('undo_action');
+      const state = validateIpc(RawUndoStateSchema, raw, 'UndoState');
+      if (!state) return { success: false, error: 'Invalid undo state from backend' };
+      return { success: true, canUndo: state.canUndo, canRedo: state.canRedo };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   redoAction: async () => {
     try {
-      const state = await invoke<{ canUndo: boolean; canRedo: boolean }>('redo_action');
-      return { success: true, canUndo: state.canUndo, canRedo: state.canRedo } as never;
+      const raw = await invoke<unknown>('redo_action');
+      const state = validateIpc(RawUndoStateSchema, raw, 'RedoState');
+      if (!state) return { success: false, error: 'Invalid redo state from backend' };
+      return { success: true, canUndo: state.canUndo, canRedo: state.canRedo };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   getUndoRedoState: async () => {
     try {
-      const state = await invoke<{ canUndo: boolean; canRedo: boolean }>('get_undo_redo_state');
-      return { success: true, canUndo: state.canUndo, canRedo: state.canRedo } as never;
+      const raw = await invoke<unknown>('get_undo_redo_state');
+      const state = validateIpc(RawUndoStateSchema, raw, 'UndoRedoState');
+      if (!state) return { success: false, error: 'Invalid undo state from backend' };
+      return { success: true, canUndo: state.canUndo, canRedo: state.canRedo };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
-  searchIndex: async (query, operationId) => {
+  searchIndex: async (query, operationId, filters, includeHidden) => {
     try {
       const results = await invoke<Record<string, unknown>[]>('search_index', {
         query,
         operationId: operationId ?? null,
+        filters: filters ? JSON.stringify(filters) : null,
+        includeHidden: includeHidden === true,
       });
       return {
         success: true,
-        results: results.map((r) => ({
-          name: r.name as string,
-          path: r.path as string,
-          isDirectory: r.isDirectory as boolean,
-          isFile: !(r.isDirectory as boolean),
-          size: r.size as number,
-          modified: new Date(r.modified as number),
-        })),
-      } as never;
+        results: results.map(buildSearchResultItem).filter((item) => item !== null),
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   cancelSearch: (operationId) => wrap(() => invoke('cancel_search', { operationId })),
   rebuildIndex: () => wrap(() => invoke('rebuild_index')),
   getIndexStatus: async () => {
     try {
-      const status = await invoke<Record<string, unknown>>('get_index_status');
+      const raw = await invoke<unknown>('get_index_status');
+      const status = validateIpc(RawIndexStatusSchema, raw, 'IndexStatus');
+      if (!status) return { success: false, error: 'Invalid index status from backend' };
+      const lastIndexTime = status.lastBuilt ? new Date(status.lastBuilt) : null;
+      if (lastIndexTime && !Number.isFinite(lastIndexTime.getTime())) {
+        return { success: false, error: 'Invalid index timestamp from backend' };
+      }
       return {
         success: true,
         status: {
-          isIndexing: status.isBuilding as boolean,
-          totalFiles: status.entryCount as number,
-          indexedFiles: status.entryCount as number,
-          lastIndexTime: status.lastBuilt ? new Date(status.lastBuilt as string) : null,
+          isIndexing: status.isBuilding,
+          totalFiles: status.entryCount,
+          indexedFiles: status.entryCount,
+          lastIndexTime,
+          truncated: status.truncated ?? false,
+          truncationReasons: status.truncationReasons ?? [],
+          indexedRoots: status.indexedRoots ?? [],
         },
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   compressFiles: (sourcePaths, outputPath, format, operationId, advancedOptions) =>
@@ -1020,19 +1659,32 @@ const tauriAPI: TauriAPI = {
   cancelArchiveOperation: (operationId) =>
     wrap(() => invoke('cancel_archive_operation', { operationId })),
   onCompressProgress: (callback) => {
-    const unlisten = listen('compress-progress', (event) => callback(event.payload as never));
+    const unlisten = listen('compress-progress', (event) => {
+      const progress = validateIpc(RawArchiveProgressSchema, event.payload, 'CompressProgress');
+      if (progress) callback(progress);
+    });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   onExtractProgress: (callback) => {
-    const unlisten = listen('extract-progress', (event) => callback(event.payload as never));
+    const unlisten = listen('extract-progress', (event) => {
+      const progress = validateIpc(RawArchiveProgressSchema, event.payload, 'ExtractProgress');
+      if (progress) callback(progress);
+    });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
     };
   },
   onFileOperationProgress: (callback) => {
-    const unlisten = listen('file-operation-progress', (event) => callback(event.payload as never));
+    const unlisten = listen('file-operation-progress', (event) => {
+      const progress = validateIpc(
+        RawFileOperationProgressSchema,
+        event.payload,
+        'FileOperationProgress'
+      );
+      if (progress) callback(progress);
+    });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
     };
@@ -1048,8 +1700,8 @@ const tauriAPI: TauriAPI = {
   },
   onDirectoryChanged: (callback) => {
     const unlisten = listen('directory-changed', (event) => {
-      devLog('Watcher', 'directory-changed payload', event.payload as Record<string, unknown>);
-      callback(event.payload as never);
+      const changed = validateIpc(RawDirectoryChangedSchema, event.payload, 'DirectoryChanged');
+      if (changed) callback(changed);
     });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
@@ -1057,8 +1709,12 @@ const tauriAPI: TauriAPI = {
   },
   onWatchedDirRemoved: (callback) => {
     const unlisten = listen('watched-dir-removed', (event) => {
-      devLog('Watcher', 'watched-dir-removed payload', event.payload as Record<string, unknown>);
-      callback(event.payload as never);
+      const removed = validateIpc(
+        RawWatchedDirectoryRemovedSchema,
+        event.payload,
+        'WatchedDirectoryRemoved'
+      );
+      if (removed) callback(removed);
     });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
@@ -1075,9 +1731,9 @@ const tauriAPI: TauriAPI = {
   getZoomLevel: async () => {
     try {
       const zoomLevel = await invoke<number>('get_zoom_level');
-      return { success: true, zoomLevel } as never;
+      return { success: true, zoomLevel };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   watchDirectory: async (dirPath) => {
@@ -1123,7 +1779,7 @@ const tauriAPI: TauriAPI = {
       });
       const v = validateIpc(RawFolderSizeSchema, result, 'FolderSize');
       if (!v) {
-        return { success: false, error: 'Invalid folder size from backend' } as never;
+        return { success: false, error: 'Invalid folder size from backend' };
       }
       return {
         success: true,
@@ -1132,20 +1788,21 @@ const tauriAPI: TauriAPI = {
           fileCount: v.fileCount ?? 0,
           folderCount: v.folderCount ?? 0,
         },
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   cancelFolderSizeCalculation: (operationId) =>
     wrap(() => invoke('cancel_folder_size_calculation', { operationId })),
   onFolderSizeProgress: (callback) => {
     const unlisten = listen('folder-size-progress', (event) => {
-      const p = event.payload as Record<string, unknown>;
+      const p = validateIpc(RawFolderSizeProgressSchema, event.payload, 'FolderSizeProgress');
+      if (!p) return;
       callback({
-        operationId: p.operationId as string,
-        calculatedSize: p.size as number,
-        fileCount: p.files as number,
+        operationId: p.operationId,
+        calculatedSize: p.size,
+        fileCount: p.files,
         folderCount: 0,
         currentPath: '',
       });
@@ -1156,7 +1813,21 @@ const tauriAPI: TauriAPI = {
   },
   onDirectoryContentsProgress: (callback) => {
     const unlisten = listen('directory-contents-progress', (event) => {
-      callback(event.payload as never);
+      const progress = validateIpc(
+        RawDirectoryContentsProgressSchema,
+        event.payload,
+        'DirectoryContentsProgress'
+      );
+      if (!progress) return;
+      const items = progress.items
+        ?.map((item) => buildFileItem(item))
+        .filter((item) => item !== null);
+      callback({
+        dirPath: progress.dirPath,
+        loaded: progress.loaded,
+        operationId: progress.operationId,
+        items,
+      });
     });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
@@ -1164,7 +1835,12 @@ const tauriAPI: TauriAPI = {
   },
   onDirectoryTruncated: (callback) => {
     const unlisten = listen('directory-truncated', (event) => {
-      callback(event.payload as never);
+      const truncated = validateIpc(
+        RawDirectoryTruncatedSchema,
+        event.payload,
+        'DirectoryTruncated'
+      );
+      if (truncated) callback(truncated);
     });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
@@ -1186,15 +1862,18 @@ const tauriAPI: TauriAPI = {
           blake3: result.blake3,
           crc32: result.crc32,
         },
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   cancelChecksumCalculation: (operationId) =>
     wrap(() => invoke('cancel_checksum_calculation', { operationId })),
   onChecksumProgress: (callback) => {
-    const unlisten = listen('checksum-progress', (event) => callback(event.payload as never));
+    const unlisten = listen('checksum-progress', (event) => {
+      const progress = validateIpc(RawChecksumProgressSchema, event.payload, 'ChecksumProgress');
+      if (progress) callback(progress);
+    });
     return () => {
       unlisten.then((fn) => fn()).catch(ignoreError);
     };
@@ -1207,24 +1886,24 @@ const tauriAPI: TauriAPI = {
       });
       const result = validateIpc(RawGitStatusSchema, raw, 'GitStatus');
       if (!result) {
-        return { success: false, error: 'Invalid git status from backend' } as never;
+        return { success: false, error: 'Invalid git status from backend' };
       }
-      const statuses: Array<{ path: string; status: string }> = [];
+      const statuses: GitFileStatus[] = [];
       for (const f of result.modified || []) statuses.push({ path: f, status: 'modified' });
       for (const f of result.added || []) statuses.push({ path: f, status: 'added' });
       for (const f of result.deleted || []) statuses.push({ path: f, status: 'deleted' });
       for (const f of result.untracked || []) statuses.push({ path: f, status: 'untracked' });
-      return { success: true, isGitRepo: result.isGitRepo, statuses } as never;
+      return { success: true, isGitRepo: result.isGitRepo, statuses };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   getGitBranch: async (dirPath) => {
     try {
       const branch = await invoke<string>('get_git_branch', { dirPath });
-      return { success: true, branch } as never;
+      return { success: true, branch };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   listArchiveContents: async (archivePath) => {
@@ -1247,9 +1926,9 @@ const tauriAPI: TauriAPI = {
             };
           })
           .filter((entry) => entry !== null),
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   getEmbeddedOfficeThumbnail: async (filePath, maxSize) => {
@@ -1258,9 +1937,9 @@ const tauriAPI: TauriAPI = {
         filePath,
         maxSize: maxSize ?? null,
       });
-      return { success: true, dataUrl } as never;
+      return { success: true, dataUrl };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
 
@@ -1280,37 +1959,44 @@ const tauriAPI: TauriAPI = {
           .map((g) => validateIpc(RawDuplicateGroupSchema, g, 'DuplicateGroup'))
           .filter((group) => group !== null),
         partial: payload.partial,
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
 
-  getCachedThumbnail: async (filePath, mtimeMs, fileSize) => {
+  getCachedThumbnail: async (filePath, mtimeMs, fileSize, variant) => {
     try {
       const dataUrl = await invoke<string | null>('get_cached_thumbnail', {
         filePath,
         mtimeMs,
         fileSize,
+        ...(variant === undefined ? {} : { variant }),
       });
-      return dataUrl
-        ? ({ success: true, dataUrl } as never)
-        : ({ success: false, error: 'Not cached' } as never);
+      return dataUrl ? { success: true, dataUrl } : { success: false, error: 'Not cached' };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
-  saveCachedThumbnail: (filePath, dataUrl, mtimeMs, fileSize) =>
-    wrap(() => invoke('save_cached_thumbnail', { filePath, dataUrl, mtimeMs, fileSize })),
+  saveCachedThumbnail: (filePath, dataUrl, mtimeMs, fileSize, variant) =>
+    wrap(() =>
+      invoke('save_cached_thumbnail', {
+        filePath,
+        dataUrl,
+        mtimeMs,
+        fileSize,
+        ...(variant === undefined ? {} : { variant }),
+      })
+    ),
   clearThumbnailCache: () => wrap(() => invoke('clear_thumbnail_cache')),
   getThumbnailCacheSize: async () => {
     try {
       const result = await invoke<{ sizeBytes: number; fileCount: number }>(
         'get_thumbnail_cache_size'
       );
-      return { success: true, sizeBytes: result.sizeBytes, fileCount: result.fileCount } as never;
+      return { success: true, sizeBytes: result.sizeBytes, fileCount: result.fileCount };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
 
@@ -1318,27 +2004,36 @@ const tauriAPI: TauriAPI = {
   openLogsFolder: () => wrap(() => invoke('open_logs_folder')),
   exportDiagnostics: async () => {
     try {
-      const diag = await invoke<string>('export_diagnostics');
-      return { success: true, path: diag } as never;
+      const raw = await invoke<unknown>('export_diagnostics');
+      const result = validateIpc(RawDiagnosticsExportSchema, raw, 'DiagnosticsExport');
+      if (!result) return { success: false, error: 'Invalid diagnostics export response' };
+      if (result.status === 'cancelled') return { success: true, status: 'cancelled' };
+      return { success: true, status: 'saved', path: result.path };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   getLogFileContent: async () => {
     try {
       const content = await invoke<string>('get_log_file_content');
-      return { success: true, content, isTruncated: false } as never;
+      return { success: true, content, isTruncated: false };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
 
   getOpenWithApps: async (filePath) => {
     try {
-      const apps = await invoke<Record<string, unknown>[]>('get_open_with_apps', { filePath });
-      return { success: true, apps } as never;
+      const raw = await invoke<unknown>('get_open_with_apps', { filePath });
+      if (!Array.isArray(raw)) {
+        return { success: false, error: 'Invalid open-with app list from backend' };
+      }
+      const apps = raw
+        .map((app) => validateIpc(RawOpenWithAppSchema, app, 'OpenWithApp'))
+        .filter((app) => app !== null);
+      return { success: true, apps };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   openFileWithApp: (filePath, appId) =>
@@ -1354,11 +2049,11 @@ const tauriAPI: TauriAPI = {
         return {
           success: false,
           error: `${failures.length} item(s) failed to rename. ${firstError}`,
-        } as never;
+        };
       }
-      return { success: true } as never;
+      return { success: true };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   createSymlink: (targetPath, linkPath) =>
@@ -1373,9 +2068,9 @@ const tauriAPI: TauriAPI = {
         supported: data.supported as boolean,
         installed: data.installed as boolean,
         message: data.message as string,
-      } as never;
+      };
     } catch (e) {
-      return { success: false, error: String(e) } as never;
+      return { success: false, error: String(e) };
     }
   },
   installNativeIntegration: () => wrap(() => invoke('install_native_integration')),
@@ -1394,6 +2089,11 @@ const tauriAPI: TauriAPI = {
   },
   setUpdateChannel: (channel) => {
     currentUpdateChannel = channel === 'beta' ? 'beta' : channel === 'stable' ? 'stable' : 'auto';
+    updateGeneration += 1;
+    if (!updateDownloadInProgress) {
+      replacePendingUpdate(null);
+      updateReadyToInstall = false;
+    }
   },
 };
 

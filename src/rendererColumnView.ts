@@ -122,12 +122,19 @@ export function createColumnViewController(deps: ColumnViewDeps) {
 
       if (isWindows) {
         // Normalize forward-slashes so Windows paths like C:/foo work too.
-        const parts = deps.getCurrentPath().replace(/\//g, '\\').split('\\').filter(Boolean);
-        for (let i = 0; i < parts.length; i++) {
-          if (i === 0) {
-            columnPaths.push(parts[0] + '\\');
-          } else {
-            columnPaths.push(parts.slice(0, i + 1).join('\\'));
+        const normalized = deps.getCurrentPath().replace(/\//g, '\\');
+        const parts = normalized.split('\\').filter(Boolean);
+        if (normalized.startsWith('\\\\')) {
+          if (parts.length >= 2) {
+            const root = `\\\\${parts[0]}\\${parts[1]}`;
+            columnPaths.push(root + '\\');
+            for (let i = 2; i < parts.length; i++) {
+              columnPaths.push(root + '\\' + parts.slice(2, i + 1).join('\\'));
+            }
+          }
+        } else {
+          for (let i = 0; i < parts.length; i++) {
+            columnPaths.push(i === 0 ? parts[0] + '\\' : parts.slice(0, i + 1).join('\\'));
           }
         }
       } else {
@@ -257,11 +264,98 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     deps.columnView.appendChild(pane);
   }
 
-  function setupPaneDragHandlers(pane: HTMLDivElement, columnPath: string): void {
+  function getColumnItemFromEventTarget(e: Event): HTMLElement | null {
+    const target = e.target as HTMLElement | null;
+    return (target?.closest('.column-item:not(.placeholder)') as HTMLElement | null) ?? null;
+  }
+
+  function setupPaneDragHandlers(
+    pane: HTMLDivElement,
+    columnPath: string,
+    columnIndex: number,
+    paneFileMap: Map<string, FileItem>
+  ): void {
+    // One delegated listener per pane replaces per-item dragstart/dragend
+    // listeners, keeping large folder rendering linear instead of 5 x N.
+    pane.addEventListener('dragstart', (e) => {
+      const item = getColumnItemFromEventTarget(e);
+      if (!item) return;
+      e.stopPropagation();
+
+      const itemPath = item.dataset.path;
+      if (!itemPath) return;
+      const fileItem = paneFileMap.get(itemPath) ?? resolveFileItemFromElement(itemPath, item);
+
+      if (!item.classList.contains('selected')) {
+        pane.querySelectorAll('.column-item').forEach((i) => {
+          i.classList.remove('selected');
+          i.setAttribute('aria-selected', 'false');
+        });
+        item.classList.add('selected');
+        item.setAttribute('aria-selected', 'true');
+        deps.clearSelection();
+        deps.getSelectedItems().add(fileItem.path);
+      }
+
+      const selectedPaths = Array.from(deps.getSelectedItems());
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = 'copyMove';
+        e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
+      }
+
+      const setDragDataResult = window.tauriAPI.setDragData(selectedPaths) as
+        Promise<unknown> | undefined;
+      if (setDragDataResult && typeof setDragDataResult.catch === 'function') {
+        setDragDataResult.catch(ignoreError);
+      }
+
+      item.classList.add('dragging');
+    });
+
+    pane.addEventListener('dragend', (e) => {
+      const item = getColumnItemFromEventTarget(e);
+      if (!item) return;
+      item.classList.remove('dragging');
+      document.querySelectorAll('.column-item.drag-over').forEach((el) => {
+        el.classList.remove('drag-over');
+      });
+      const clearDragDataResult = window.tauriAPI.clearDragData() as Promise<unknown> | undefined;
+      if (clearDragDataResult && typeof clearDragDataResult.catch === 'function') {
+        clearDragDataResult.catch(ignoreError);
+      }
+      deps.clearSpringLoad();
+      deps.hideDropIndicator();
+    });
+
     pane.addEventListener('dragover', (e) => {
-      if ((e.target as HTMLElement).closest('.column-item')) {
+      const item = getColumnItemFromEventTarget(e);
+      if (item) {
+        if (item.classList.contains('is-directory')) {
+          deps.consumeEvent(e);
+
+          if (
+            !e.dataTransfer ||
+            (!e.dataTransfer.types.includes('text/plain') && e.dataTransfer.files.length === 0)
+          ) {
+            if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
+            return;
+          }
+
+          const itemPath = item.dataset.path;
+          if (!itemPath) return;
+          const operation = deps.getDragOperation(e);
+          e.dataTransfer.dropEffect = operation;
+          item.classList.add('drag-over');
+          deps.showDropIndicator(operation, itemPath, e.clientX, e.clientY);
+          deps.scheduleSpringLoad(item, () => {
+            item.classList.remove('drag-over', 'spring-loading');
+            handleColumnItemClick(item, itemPath, true, columnIndex);
+          });
+        }
+        // Non-directory items never accept drops; the pane stays untouched.
         return;
       }
+
       deps.consumeEvent(e);
 
       if (
@@ -279,9 +373,24 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     });
 
     pane.addEventListener('dragleave', (e) => {
-      if ((e.target as HTMLElement).closest('.column-item')) {
+      const item = getColumnItemFromEventTarget(e);
+      if (item) {
+        if (!item.classList.contains('is-directory')) return;
+        deps.consumeEvent(e);
+        const itemRect = item.getBoundingClientRect();
+        if (
+          e.clientX < itemRect.left ||
+          e.clientX >= itemRect.right ||
+          e.clientY < itemRect.top ||
+          e.clientY >= itemRect.bottom
+        ) {
+          item.classList.remove('drag-over');
+          deps.clearSpringLoad(item);
+          deps.hideDropIndicator();
+        }
         return;
       }
+
       e.preventDefault();
       const rect = pane.getBoundingClientRect();
       if (
@@ -296,9 +405,33 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     });
 
     pane.addEventListener('drop', async (e) => {
-      if ((e.target as HTMLElement).closest('.column-item')) {
+      const item = getColumnItemFromEventTarget(e);
+      if (item) {
+        if (!item.classList.contains('is-directory')) return;
+        deps.consumeEvent(e);
+
+        item.classList.remove('drag-over');
+        deps.clearSpringLoad(item);
+
+        const itemPath = item.dataset.path;
+        if (!itemPath) {
+          deps.hideDropIndicator();
+          return;
+        }
+
+        const draggedPaths = await deps.getDraggedPaths(e);
+
+        if (draggedPaths.length === 0 || draggedPaths.includes(itemPath)) {
+          deps.hideDropIndicator();
+          return;
+        }
+
+        const operation = deps.getDragOperation(e);
+        await deps.handleDrop(draggedPaths, itemPath, operation);
+        deps.hideDropIndicator();
         return;
       }
+
       deps.consumeEvent(e);
 
       pane.classList.remove('drag-over');
@@ -327,117 +460,11 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     });
   }
 
-  function setupItemDragHandlers(
-    item: HTMLElement,
-    fileItem: FileItem,
-    pane: HTMLDivElement,
-    columnIndex: number
-  ): void {
-    item.draggable = true;
-
-    item.addEventListener('dragstart', (e) => {
-      e.stopPropagation();
-
-      if (!item.classList.contains('selected')) {
-        pane.querySelectorAll('.column-item').forEach((i) => {
-          i.classList.remove('selected');
-          i.setAttribute('aria-selected', 'false');
-        });
-        item.classList.add('selected');
-        item.setAttribute('aria-selected', 'true');
-        deps.clearSelection();
-        deps.getSelectedItems().add(fileItem.path);
-      }
-
-      const selectedPaths = Array.from(deps.getSelectedItems());
-      if (e.dataTransfer) {
-        e.dataTransfer.effectAllowed = 'copyMove';
-        e.dataTransfer.setData('text/plain', JSON.stringify(selectedPaths));
-      }
-
-      const setDragDataResult = window.tauriAPI.setDragData(selectedPaths) as
-        Promise<unknown> | undefined;
-      if (setDragDataResult && typeof setDragDataResult.catch === 'function') {
-        setDragDataResult.catch(ignoreError);
-      }
-
-      item.classList.add('dragging');
-    });
-
-    item.addEventListener('dragend', () => {
-      item.classList.remove('dragging');
-      document.querySelectorAll('.column-item.drag-over').forEach((el) => {
-        el.classList.remove('drag-over');
-      });
-      const clearDragDataResult = window.tauriAPI.clearDragData() as Promise<unknown> | undefined;
-      if (clearDragDataResult && typeof clearDragDataResult.catch === 'function') {
-        clearDragDataResult.catch(ignoreError);
-      }
-      deps.clearSpringLoad();
-      deps.hideDropIndicator();
-    });
-
-    if (fileItem.isDirectory) {
-      item.addEventListener('dragover', (e) => {
-        deps.consumeEvent(e);
-
-        if (
-          !e.dataTransfer ||
-          (!e.dataTransfer.types.includes('text/plain') && e.dataTransfer.files.length === 0)
-        ) {
-          if (e.dataTransfer) e.dataTransfer.dropEffect = 'none';
-          return;
-        }
-
-        const operation = deps.getDragOperation(e);
-        e.dataTransfer.dropEffect = operation;
-        item.classList.add('drag-over');
-        deps.showDropIndicator(operation, fileItem.path, e.clientX, e.clientY);
-        deps.scheduleSpringLoad(item, () => {
-          item.classList.remove('drag-over', 'spring-loading');
-          handleColumnItemClick(item, fileItem.path, true, columnIndex);
-        });
-      });
-
-      item.addEventListener('dragleave', (e) => {
-        deps.consumeEvent(e);
-        const rect = item.getBoundingClientRect();
-        if (
-          e.clientX < rect.left ||
-          e.clientX >= rect.right ||
-          e.clientY < rect.top ||
-          e.clientY >= rect.bottom
-        ) {
-          item.classList.remove('drag-over');
-          deps.clearSpringLoad(item);
-          deps.hideDropIndicator();
-        }
-      });
-
-      item.addEventListener('drop', async (e) => {
-        deps.consumeEvent(e);
-
-        item.classList.remove('drag-over');
-        deps.clearSpringLoad(item);
-
-        const draggedPaths = await deps.getDraggedPaths(e);
-
-        if (draggedPaths.length === 0 || draggedPaths.includes(fileItem.path)) {
-          deps.hideDropIndicator();
-          return;
-        }
-
-        const operation = deps.getDragOperation(e);
-        await deps.handleDrop(draggedPaths, fileItem.path, operation);
-        deps.hideDropIndicator();
-      });
-    }
-  }
-
   function createColumnItemElement(
     fileItem: FileItem,
     columnIndex: number,
-    pane: HTMLDivElement
+    paneFileMap: Map<string, FileItem>,
+    settings: Settings
   ): HTMLElement {
     const item = document.createElement('div');
     item.className = 'column-item';
@@ -446,6 +473,8 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     item.setAttribute('aria-selected', 'false');
     if (fileItem.isDirectory) item.classList.add('is-directory');
     item.dataset.path = fileItem.path;
+    item.draggable = true;
+    paneFileMap.set(fileItem.path, fileItem);
 
     const nextColPath = columnPaths[columnIndex + 1];
     if (nextColPath && fileItem.path === nextColPath) {
@@ -458,17 +487,20 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       : deps.getFileIcon(fileItem.name);
 
     const symlinkBadge = fileItem.isSymlink
-      ? '<span class="symlink-badge" aria-label="Symbolic link">⤳</span>'
+      ? '<span class="symlink-badge" role="img" aria-label="Symbolic link">⤳</span>'
       : '';
+
+    const displayName =
+      settings.showFileExtensions === false && !fileItem.isDirectory
+        ? stripFileExtension(fileItem.name)
+        : fileItem.name;
 
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
     item.innerHTML = `
           <span class="column-item-icon">${icon}${symlinkBadge}</span>
-          <span class="column-item-name">${escapeHtml(fileItem.name)}</span>
+          <span class="column-item-name">${escapeHtml(displayName)}</span>
           ${fileItem.isDirectory ? '<span class="column-item-arrow">▸</span>' : ''}
         `;
-
-    setupItemDragHandlers(item, fileItem, pane, columnIndex);
 
     return item;
   }
@@ -486,6 +518,16 @@ export function createColumnViewController(deps: ColumnViewDeps) {
       modified: new Date(),
       isHidden: name.startsWith('.'),
     };
+  }
+
+  function stripFileExtension(name: string): string {
+    const dotIndex = name.lastIndexOf('.');
+    return dotIndex > 0 ? name.slice(0, dotIndex) : name;
+  }
+
+  function lowercaseExtensionOf(name: string): string {
+    const dotIndex = name.lastIndexOf('.');
+    return dotIndex > 0 ? name.slice(dotIndex + 1).toLowerCase() : '';
   }
 
   function setupPaneEventDelegation(pane: HTMLDivElement, columnIndex: number): void {
@@ -550,7 +592,8 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     pane.dataset.columnIndex = String(columnIndex);
     pane.dataset.path = columnPath;
 
-    setupPaneDragHandlers(pane, columnPath);
+    const paneFileMap = new Map<string, FileItem>();
+    setupPaneDragHandlers(pane, columnPath, columnIndex, paneFileMap);
     setupPaneEventDelegation(pane, columnIndex);
 
     pane.addEventListener('keydown', (e) => {
@@ -609,6 +652,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
     });
 
     try {
+      const settings = deps.getCurrentSettings();
       const operationId = deps.createDirectoryOperationId('column');
       activeColumnOperationIds.add(operationId);
       let result: DirectoryResponse;
@@ -616,7 +660,7 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         result = await window.tauriAPI.getDirectoryContents(
           columnPath,
           operationId,
-          deps.getCurrentSettings().showHiddenFiles
+          settings.showHiddenFiles
         );
       } finally {
         activeColumnOperationIds.delete(operationId);
@@ -628,14 +672,32 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         throw new Error(result.error || 'Error loading folder');
       }
       const items = result.contents || [];
+      const sortBy = settings.sortBy || 'name';
+      const sortOrder = settings.sortOrder || 'asc';
 
       const sortedItems = [...items].sort((a, b) => {
         const dirSort = (b.isDirectory ? 1 : 0) - (a.isDirectory ? 1 : 0);
         if (dirSort !== 0) return dirSort;
-        return deps.nameCollator.compare(a.name, b.name);
+        let comparison: number;
+        if (sortBy === 'size') {
+          comparison = a.size - b.size;
+        } else if (sortBy === 'date') {
+          comparison = new Date(a.modified).getTime() - new Date(b.modified).getTime();
+        } else if (sortBy === 'type') {
+          comparison = deps.nameCollator.compare(
+            lowercaseExtensionOf(a.name),
+            lowercaseExtensionOf(b.name)
+          );
+          if (comparison === 0) {
+            comparison = deps.nameCollator.compare(a.name, b.name);
+          }
+        } else {
+          comparison = deps.nameCollator.compare(a.name, b.name);
+        }
+        return sortOrder === 'desc' ? -comparison : comparison;
       });
 
-      const visibleItems = deps.getCurrentSettings().showHiddenFiles
+      const visibleItems = settings.showHiddenFiles
         ? sortedItems
         : sortedItems.filter((item) => !item.isHidden);
 
@@ -647,7 +709,9 @@ export function createColumnViewController(deps: ColumnViewDeps) {
         // one layout pass for the whole list instead of one per row.
         const fragment = document.createDocumentFragment();
         for (const fileItem of visibleItems) {
-          fragment.appendChild(createColumnItemElement(fileItem, columnIndex, pane));
+          fragment.appendChild(
+            createColumnItemElement(fileItem, columnIndex, paneFileMap, settings)
+          );
         }
         pane.appendChild(fragment);
       }

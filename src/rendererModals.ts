@@ -5,7 +5,25 @@ export type DialogType = 'info' | 'warning' | 'error' | 'success' | 'question';
 const MODAL_FOCUS_SELECTORS =
   'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), audio[controls], video[controls], [contenteditable]:not([contenteditable="false"]), [tabindex]:not([tabindex="-1"])';
 let activeModal: HTMLElement | null = null;
-let modalRestoreFocusEl: HTMLElement | null = null;
+let modalFocusTrapInstalled = false;
+
+type ModalStackEntry = {
+  modal: HTMLElement;
+  restoreFocusEl: HTMLElement | null;
+};
+
+const modalStack: ModalStackEntry[] = [];
+
+type DialogRequest = {
+  title: string;
+  message: string;
+  type: DialogType;
+  showCancel: boolean;
+  resolve: (value: boolean) => void;
+};
+
+const dialogQueue: DialogRequest[] = [];
+let dialogRequestActive = false;
 
 function getFocusableElements(modal: HTMLElement): HTMLElement[] {
   return Array.from(modal.querySelectorAll<HTMLElement>(MODAL_FOCUS_SELECTORS)).filter(
@@ -35,17 +53,29 @@ function trapModalFocus(e: KeyboardEvent): void {
 }
 
 export function activateModal(modal: HTMLElement, options?: { restoreFocus?: boolean }) {
-  if (activeModal && activeModal !== modal) {
-    deactivateModal(activeModal, { restoreFocus: false });
+  const existingIndex = modalStack.findIndex((entry) => entry.modal === modal);
+  const existingEntry = existingIndex >= 0 ? modalStack[existingIndex] : undefined;
+  if (existingIndex >= 0) {
+    // A controller may re-open the same modal while an async operation is in
+    // flight. Keep one stack entry so a later close cannot pop an older opener.
+    modalStack.splice(existingIndex, 1);
   }
+
+  const restoreFocusEl =
+    existingEntry !== undefined
+      ? existingEntry.restoreFocusEl
+      : options?.restoreFocus === false || !(document.activeElement instanceof HTMLElement)
+        ? null
+        : (document.activeElement as HTMLElement);
+  modalStack.push({ modal, restoreFocusEl });
   activeModal = modal;
-  if (options?.restoreFocus !== false) {
-    modalRestoreFocusEl = document.activeElement as HTMLElement | null;
-  }
   if (!modal.hasAttribute('tabindex')) {
     modal.tabIndex = -1;
   }
-  document.addEventListener('keydown', trapModalFocus, true);
+  if (!modalFocusTrapInstalled) {
+    document.addEventListener('keydown', trapModalFocus, true);
+    modalFocusTrapInstalled = true;
+  }
   const focusable = getFocusableElements(modal);
   if (focusable.length > 0) {
     focusable[0]!.focus({ preventScroll: true });
@@ -55,14 +85,91 @@ export function activateModal(modal: HTMLElement, options?: { restoreFocus?: boo
 }
 
 export function deactivateModal(modal?: HTMLElement, options?: { restoreFocus?: boolean }) {
-  if (modal && activeModal !== modal) return;
-  document.removeEventListener('keydown', trapModalFocus, true);
-  activeModal = null;
+  const top = modalStack.at(-1);
+  if (!top || (modal && top.modal !== modal)) return;
+  modalStack.pop();
   const shouldRestore = options?.restoreFocus !== false;
-  if (shouldRestore && modalRestoreFocusEl && document.contains(modalRestoreFocusEl)) {
-    modalRestoreFocusEl.focus({ preventScroll: true });
+  if (shouldRestore && top.restoreFocusEl && document.contains(top.restoreFocusEl)) {
+    top.restoreFocusEl.focus({ preventScroll: true });
   }
-  modalRestoreFocusEl = null;
+  activeModal = modalStack.at(-1)?.modal ?? null;
+  if (!activeModal && modalFocusTrapInstalled) {
+    document.removeEventListener('keydown', trapModalFocus, true);
+    modalFocusTrapInstalled = false;
+  }
+}
+
+function showNextDialog(): void {
+  if (dialogRequestActive) return;
+  const request = dialogQueue.shift();
+  if (!request) return;
+  dialogRequestActive = true;
+
+  const dialogModal = document.getElementById('dialog-modal') as HTMLElement | null;
+  const dialogTitle = document.getElementById('dialog-title') as HTMLElement | null;
+  const dialogContent = document.getElementById('dialog-content') as HTMLElement | null;
+  const dialogIcon = document.getElementById('dialog-icon') as HTMLElement | null;
+  const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement | null;
+  const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement | null;
+
+  if (!dialogModal || !dialogTitle || !dialogContent || !dialogIcon || !dialogOk || !dialogCancel) {
+    dialogRequestActive = false;
+    request.resolve(false);
+    showNextDialog();
+    return;
+  }
+
+  const icons: Record<DialogType, string> = {
+    info: 'info',
+    warning: 'alert-triangle',
+    error: 'x',
+    success: 'check-circle',
+    question: 'help-circle',
+  };
+
+  dialogIcon.innerHTML = twemojiImg(icons[request.type] || icons.info, 'twemoji');
+  dialogTitle.textContent = request.title;
+  dialogContent.textContent = request.message;
+  dialogCancel.style.display = request.showCancel ? 'block' : 'none';
+
+  dialogModal.style.display = 'flex';
+  activateModal(dialogModal);
+  dialogOk.focus();
+
+  let resolved = false;
+
+  const settle = (value: boolean): void => {
+    if (resolved) return;
+    resolved = true;
+    dialogModal.style.display = 'none';
+    deactivateModal(dialogModal);
+    cleanup();
+    dialogRequestActive = false;
+    request.resolve(value);
+    showNextDialog();
+  };
+
+  const handleEscape = (e: KeyboardEvent): void => {
+    if (e.key === 'Escape' && !resolved) {
+      settle(false);
+    }
+  };
+
+  const cleanup = (): void => {
+    dialogOk.onclick = null;
+    dialogCancel.onclick = null;
+    document.removeEventListener('keydown', handleEscape);
+  };
+
+  dialogOk.onclick = () => {
+    settle(true);
+  };
+
+  dialogCancel.onclick = () => {
+    settle(false);
+  };
+
+  document.addEventListener('keydown', handleEscape);
 }
 
 export function showDialog(
@@ -72,88 +179,8 @@ export function showDialog(
   showCancel: boolean = false
 ): Promise<boolean> {
   return new Promise((resolve) => {
-    if (document.activeElement instanceof HTMLElement) {
-      document.activeElement.blur();
-    }
-
-    const dialogModal = document.getElementById('dialog-modal') as HTMLElement | null;
-    const dialogTitle = document.getElementById('dialog-title') as HTMLElement | null;
-    const dialogContent = document.getElementById('dialog-content') as HTMLElement | null;
-    const dialogIcon = document.getElementById('dialog-icon') as HTMLElement | null;
-    const dialogOk = document.getElementById('dialog-ok') as HTMLButtonElement | null;
-    const dialogCancel = document.getElementById('dialog-cancel') as HTMLButtonElement | null;
-
-    if (
-      !dialogModal ||
-      !dialogTitle ||
-      !dialogContent ||
-      !dialogIcon ||
-      !dialogOk ||
-      !dialogCancel
-    ) {
-      resolve(false);
-      return;
-    }
-
-    const icons: Record<DialogType, string> = {
-      info: 'info',
-      warning: 'alert-triangle',
-      error: 'x',
-      success: 'check-circle',
-      question: 'help-circle',
-    };
-
-    dialogIcon.innerHTML = twemojiImg(icons[type] || icons.info, 'twemoji');
-    dialogTitle.textContent = title;
-    dialogContent.textContent = message;
-
-    if (showCancel) {
-      dialogCancel.style.display = 'block';
-    } else {
-      dialogCancel.style.display = 'none';
-    }
-
-    dialogModal.style.display = 'flex';
-    activateModal(dialogModal);
-    dialogOk.focus();
-
-    let resolved = false;
-
-    const handleEscape = (e: KeyboardEvent): void => {
-      if (e.key === 'Escape' && !resolved) {
-        resolved = true;
-        dialogModal.style.display = 'none';
-        deactivateModal(dialogModal);
-        cleanup();
-        resolve(false);
-      }
-    };
-
-    const cleanup = (): void => {
-      dialogOk.onclick = null;
-      dialogCancel.onclick = null;
-      document.removeEventListener('keydown', handleEscape);
-    };
-
-    dialogOk.onclick = () => {
-      if (resolved) return;
-      resolved = true;
-      dialogModal.style.display = 'none';
-      deactivateModal(dialogModal);
-      cleanup();
-      resolve(true);
-    };
-
-    dialogCancel.onclick = () => {
-      if (resolved) return;
-      resolved = true;
-      dialogModal.style.display = 'none';
-      deactivateModal(dialogModal);
-      cleanup();
-      resolve(false);
-    };
-
-    document.addEventListener('keydown', handleEscape);
+    dialogQueue.push({ title, message, type, showCancel, resolve });
+    showNextDialog();
   });
 }
 

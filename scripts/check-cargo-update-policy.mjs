@@ -85,9 +85,8 @@ const LOCKFILE_TRUNCATE_OVERWRITE_REGEX =
 // Also catches execSync("cargo update") style calls.
 // Uses conservative regex — false positives in docs are reviewable.
 const PROGRAMMATIC_CARGO_MUTATION_REGEX =
-  /\b(?:spawn(?:Sync)?|execFile(?:Sync)?|execa(?:Sync)?)\s*\(\s*['"]cargo['"]\s*,\s*\[\s*(?:['"]\+[A-Za-z0-9._-]+['"]\s*,\s*)?['"](?:update|upgrade|add|generate-lockfile)['"]/
-  // Also catch execSync("cargo update") / exec("cargo update") forms
-  ;
+  /\b(?:spawn(?:Sync)?|execFile(?:Sync)?|execa(?:Sync)?)\s*\(\s*['"]cargo['"]\s*,\s*\[\s*(?:['"]\+[A-Za-z0-9._-]+['"]\s*,\s*)?['"](?:update|upgrade|add|generate-lockfile)['"]/;
+// Also catch execSync("cargo update") / exec("cargo update") forms
 const EXEC_SYNC_CARGO_MUTATION_REGEX =
   /\b(?:execSync|exec)\s*\(\s*['"]cargo(?:\s+\+[A-Za-z0-9._-]+)?\s+(?:update|upgrade|add|generate-lockfile)\b/;
 const PYTHON_CARGO_MUTATION_REGEX =
@@ -354,7 +353,10 @@ export function scanCargoConfig(root, violations) {
       const aliasValue = trimmed.slice(eqIdx + 1).trim();
 
       // Extract the first word from the alias expansion (strip quotes, brackets)
-      const stripped = aliasValue.replace(/^\[?\s*['"]?/, '').replace(/['"\]].*/u, '').trim();
+      const stripped = aliasValue
+        .replace(/^\[?\s*['"]?/, '')
+        .replace(/['"\]].*/u, '')
+        .trim();
 
       if (MUTATION_ALIAS_REGEX.test(stripped)) {
         const relConfig = normalizeRelPath(path.relative(root, configPath));
@@ -417,11 +419,19 @@ export function runPolicyCheck({ root = repoRoot, log = console.log, error = con
 
   // P2: Scan root-level shell, PowerShell, cmd, AND JS/TS automation files
   const ROOT_SCRIPT_EXTENSIONS = new Set([
-    '.sh', '.bash', '.zsh',
-    '.ps1', '.psm1',
-    '.cmd', '.bat',
-    '.js', '.mjs', '.cjs',
-    '.ts', '.mts', '.cts',
+    '.sh',
+    '.bash',
+    '.zsh',
+    '.ps1',
+    '.psm1',
+    '.cmd',
+    '.bat',
+    '.js',
+    '.mjs',
+    '.cjs',
+    '.ts',
+    '.mts',
+    '.cts',
     '.py',
   ]);
   try {

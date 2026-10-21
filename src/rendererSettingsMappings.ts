@@ -69,7 +69,7 @@ export const SELECT_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings, re
 export const INT_RANGE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings, number, number]> =
   [
     ['max-thumbnail-size-input', 'maxThumbnailSizeMB', 1, 100],
-    ['max-preview-size-input', 'maxPreviewSizeMB', 1, 500],
+    ['max-preview-size-input', 'maxPreviewSizeMB', 1, 50],
     ['max-search-history-input', 'maxSearchHistoryItems', 1, 20],
     ['max-directory-history-input', 'maxDirectoryHistoryItems', 1, 20],
     ['nav-transition-duration-slider', 'navTransitionDuration', 0, 400],

@@ -1,4 +1,5 @@
 import type { Settings } from './types';
+import type { SupportedIconName } from './rendererUtils.js';
 
 export const THEME_VALUES = [
   'dark',
@@ -125,7 +126,7 @@ export const FOLDER_ICON_VALUES = [
   'trees',
   'sun',
   'palette',
-] as const;
+] as const satisfies readonly SupportedIconName[];
 
 export function isOneOf<T extends readonly string[]>(
   value: string,

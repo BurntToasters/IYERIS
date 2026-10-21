@@ -12,6 +12,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockInvoke = vi.hoisted(() => vi.fn());
 const mockListen = vi.hoisted(() => vi.fn());
+const mockUpdaterCheck = vi.hoisted(() => vi.fn());
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: mockInvoke }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: mockListen }));
@@ -26,13 +27,15 @@ vi.mock('@tauri-apps/plugin-notification', () => ({
   sendNotification: vi.fn(),
 }));
 vi.mock('@tauri-apps/plugin-process', () => ({ relaunch: vi.fn(), exit: vi.fn() }));
-vi.mock('@tauri-apps/plugin-updater', () => ({ check: vi.fn() }));
+vi.mock('@tauri-apps/plugin-updater', () => ({ check: mockUpdaterCheck }));
 
 describe('tauri-api regressions', () => {
   beforeEach(() => {
     vi.resetModules();
     mockInvoke.mockReset();
     mockListen.mockResolvedValue(() => {});
+    mockUpdaterCheck.mockReset();
+    mockUpdaterCheck.mockResolvedValue(null);
   });
 
   // M6 -----------------------------------------------------------------------
@@ -128,6 +131,293 @@ describe('tauri-api regressions', () => {
       expect(getArgs?.filePath).toBe(saveArgs?.filePath);
       expect(getArgs?.mtimeMs).toBe(saveArgs?.mtimeMs);
       expect(getArgs?.fileSize).toBe(saveArgs?.fileSize);
+    });
+  });
+
+  describe('update check reports the selected channel', () => {
+    function mockInstalledVersion(version: string) {
+      mockInvoke.mockImplementation(async (command: string) => {
+        switch (command) {
+          case 'get_app_version':
+            return version;
+          case 'is_flatpak':
+          case 'is_mas':
+          case 'is_ms_store':
+          case 'is_msi':
+            return false;
+          case 'get_platform':
+            return 'darwin';
+          default:
+            return null;
+        }
+      });
+    }
+
+    it('returns isBeta when a stable install checks the beta channel', async () => {
+      mockInstalledVersion('3.0.4');
+      await import('../tauri-api');
+      window.tauriAPI.setUpdateChannel('beta');
+
+      const result = await window.tauriAPI.checkForUpdates();
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          hasUpdate: false,
+          isBeta: true,
+          currentVersion: '3.0.4',
+        })
+      );
+      expect(mockUpdaterCheck).toHaveBeenCalledWith({ target: 'darwin-beta' });
+    });
+
+    it('returns stable messaging when a beta install checks the stable channel', async () => {
+      mockInstalledVersion('3.0.5-beta.1');
+      await import('../tauri-api');
+      window.tauriAPI.setUpdateChannel('stable');
+
+      const result = await window.tauriAPI.checkForUpdates();
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          success: true,
+          hasUpdate: false,
+          isBeta: false,
+          currentVersion: '3.0.5-beta.1',
+        })
+      );
+      expect(mockUpdaterCheck).toHaveBeenCalledWith();
+    });
+
+    it('keeps a newer update when an older check rejects', async () => {
+      mockInstalledVersion('3.0.4');
+      let rejectOld!: (error: Error) => void;
+      mockUpdaterCheck.mockImplementationOnce(
+        () =>
+          new Promise((_, reject) => {
+            rejectOld = reject;
+          })
+      );
+      const update = {
+        version: '3.0.5',
+        body: '',
+        close: vi.fn().mockResolvedValue(undefined),
+        download: vi.fn().mockResolvedValue(undefined),
+      };
+      mockUpdaterCheck.mockResolvedValueOnce(update);
+      await import('../tauri-api');
+      const old = window.tauriAPI.checkForUpdates();
+      await vi.waitFor(() => expect(mockUpdaterCheck).toHaveBeenCalledTimes(1));
+      await window.tauriAPI.checkForUpdates();
+      rejectOld(new Error('old network request failed'));
+      await old;
+      await expect(window.tauriAPI.downloadUpdate()).resolves.toEqual({ success: true });
+      expect(update.download).toHaveBeenCalledTimes(1);
+      expect(update.close).not.toHaveBeenCalled();
+    });
+
+    it('does not announce readiness at Finished before verification resolves', async () => {
+      mockInstalledVersion('3.0.4');
+      let resolveDownload!: () => void;
+      const verified = new Promise<void>((resolve) => {
+        resolveDownload = resolve;
+      });
+      const update = {
+        version: '3.0.5',
+        body: '',
+        close: vi.fn().mockResolvedValue(undefined),
+        download: vi.fn(async (callback: (event: unknown) => void) => {
+          callback({ event: 'Finished' });
+          await verified;
+        }),
+        install: vi.fn().mockResolvedValue(undefined),
+      };
+      mockUpdaterCheck.mockResolvedValue(update);
+      await import('../tauri-api');
+      const downloaded = vi.fn();
+      window.tauriAPI.onUpdateDownloaded(downloaded);
+      await window.tauriAPI.checkForUpdates();
+      const downloading = window.tauriAPI.downloadUpdate();
+      await Promise.resolve();
+      expect(downloaded).not.toHaveBeenCalled();
+      expect((await window.tauriAPI.installUpdate()).success).toBe(false);
+      expect(update.install).not.toHaveBeenCalled();
+      resolveDownload();
+      await downloading;
+      expect(downloaded).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not invalidate an in-flight download when a second check arrives', async () => {
+      mockInstalledVersion('3.0.4');
+      let releaseDownload!: () => void;
+      const downloadRelease = new Promise<void>((resolve) => {
+        releaseDownload = resolve;
+      });
+      const update = {
+        version: '3.0.5',
+        body: '',
+        download: vi.fn(async (callback: (event: unknown) => void) => {
+          callback({ event: 'Started', data: { contentLength: 10 } });
+          await downloadRelease;
+          callback({ event: 'Finished', data: {} });
+        }),
+        install: vi.fn().mockResolvedValue(undefined),
+      };
+      mockUpdaterCheck.mockResolvedValue(update);
+      await import('../tauri-api');
+
+      await expect(window.tauriAPI.checkForUpdates()).resolves.toEqual(
+        expect.objectContaining({ hasUpdate: true })
+      );
+      const downloading = window.tauriAPI.downloadUpdate();
+      await Promise.resolve();
+      await expect(window.tauriAPI.checkForUpdates()).resolves.toEqual(
+        expect.objectContaining({ hasUpdate: true, latestVersion: '3.0.5' })
+      );
+      releaseDownload();
+      await expect(downloading).resolves.toEqual({ success: true });
+    });
+  });
+
+  describe('search hidden policy', () => {
+    it('forwards includeHidden to search_files', async () => {
+      mockInvoke.mockResolvedValue([]);
+      await import('../tauri-api');
+      await window.tauriAPI.searchFiles('/tmp', 'q', undefined, 'op-1', true);
+      expect(mockInvoke).toHaveBeenCalledWith(
+        'search_files',
+        expect.objectContaining({ includeHidden: true, dirPath: '/tmp', query: 'q' })
+      );
+    });
+
+    it('maps backend isHidden onto search results', async () => {
+      mockInvoke.mockResolvedValue([
+        {
+          name: 'config',
+          path: '/repo/.git/config',
+          isDirectory: false,
+          size: 10,
+          modified: 1,
+          extension: '',
+          isHidden: false,
+        },
+        {
+          name: '.env',
+          path: '/repo/.env',
+          isDirectory: false,
+          size: 4,
+          modified: 1,
+          extension: 'env',
+          isHidden: true,
+        },
+      ]);
+      await import('../tauri-api');
+      const result = await window.tauriAPI.searchFiles('/repo', 'e');
+      expect(result.success).toBe(true);
+      if (!result.success) return;
+      expect(result.results[0]?.isHidden).toBe(false);
+      expect(result.results[1]?.isHidden).toBe(true);
+    });
+  });
+
+  describe('settings deletion patches', () => {
+    const customTheme = {
+      name: 'Audit theme',
+      accentColor: '#112233',
+      bgPrimary: '#111111',
+      bgSecondary: '#222222',
+      textPrimary: '#eeeeee',
+      textSecondary: '#cccccc',
+      glassBg: 'rgba(0, 0, 0, 0.5)',
+      glassBorder: 'rgba(255, 255, 255, 0.2)',
+      iconHue: '#112233',
+    };
+
+    function installSettingsBackend(baseline: Record<string, unknown>) {
+      mockInvoke.mockImplementation(async (command: string) => {
+        if (command === 'get_settings') return JSON.stringify(baseline);
+        if (command === 'save_settings') return { status: 'saved', settings: baseline };
+        return null;
+      });
+    }
+
+    async function saveAfterSettingsMutation(
+      mutate: (settings: Record<string, unknown>) => void
+    ): Promise<{ patch: unknown; baseValues: unknown; expectedRevision: number }> {
+      installSettingsBackend({ _revision: 7, theme: 'dark', customTheme });
+      await import('../tauri-api');
+      const loaded = await window.tauriAPI.getSettings();
+      expect(loaded.success).toBe(true);
+      if (!loaded.success) throw new Error('settings did not load');
+      const next: Record<string, unknown> = { ...loaded.settings };
+      mutate(next);
+      await expect(
+        window.tauriAPI.saveSettings(
+          next as unknown as Parameters<typeof window.tauriAPI.saveSettings>[0]
+        )
+      ).resolves.toEqual(expect.objectContaining({ success: true }));
+      const call = mockInvoke.mock.calls.find(([command]) => command === 'save_settings');
+      const args = call?.[1] as
+        { patch: string; baseValues: string; expectedRevision: number } | undefined;
+      expect(args).toBeDefined();
+      return {
+        patch: JSON.parse(args!.patch) as unknown,
+        baseValues: JSON.parse(args!.baseValues) as unknown,
+        expectedRevision: args!.expectedRevision,
+      };
+    }
+
+    it('sends a null patch when an optional settings key is explicitly undefined', async () => {
+      const { patch, baseValues, expectedRevision } = await saveAfterSettingsMutation(
+        (settings) => {
+          settings.customTheme = undefined;
+        }
+      );
+
+      expect(patch).toEqual({ customTheme: null });
+      expect(baseValues).toEqual({ customTheme });
+      expect(expectedRevision).toBe(7);
+    });
+
+    it('sends a null patch when an optional settings key is absent from the new settings', async () => {
+      const { patch, baseValues, expectedRevision } = await saveAfterSettingsMutation(
+        (settings) => {
+          delete settings.customTheme;
+        }
+      );
+
+      expect(patch).toEqual({ customTheme: null });
+      expect(baseValues).toEqual({ customTheme });
+      expect(expectedRevision).toBe(7);
+    });
+
+    it('sends a null home-settings patch when a baseline key is absent', async () => {
+      const baseline = { _revision: 2, showQuickAccess: true, compactCards: true };
+      mockInvoke.mockImplementation(async (command: string) => {
+        if (command === 'get_home_settings') return JSON.stringify(baseline);
+        if (command === 'save_home_settings') return { status: 'saved', settings: baseline };
+        return null;
+      });
+      await import('../tauri-api');
+      const loaded = await window.tauriAPI.getHomeSettings();
+      expect(loaded.success).toBe(true);
+      if (!loaded.success) throw new Error('home settings did not load');
+      const next: Record<string, unknown> = { ...loaded.settings };
+      delete next.compactCards;
+
+      await expect(
+        window.tauriAPI.saveHomeSettings(
+          next as unknown as Parameters<typeof window.tauriAPI.saveHomeSettings>[0]
+        )
+      ).resolves.toEqual(expect.objectContaining({ success: true }));
+
+      const call = mockInvoke.mock.calls.find(([command]) => command === 'save_home_settings');
+      const args = call?.[1] as
+        { patch: string; baseValues: string; expectedRevision: number } | undefined;
+      expect(args).toBeDefined();
+      expect(JSON.parse(args!.patch)).toEqual({ compactCards: null });
+      expect(JSON.parse(args!.baseValues)).toEqual({ compactCards: true });
+      expect(args!.expectedRevision).toBe(2);
     });
   });
 });

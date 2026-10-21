@@ -65,17 +65,26 @@ function getReleaseEntries(releaseDir) {
   }
   const entries = fs.readdirSync(releaseDir);
   if (entries.length === 0) throw new Error(`release directory is empty: ${releaseDir}`);
+  for (const entry of entries) {
+    const stat = fs.lstatSync(path.join(releaseDir, entry));
+    if (stat.isSymbolicLink()) {
+      throw new Error(`release directory contains unsupported symlink: ${entry}`);
+    }
+  }
   return entries;
 }
 
 function verifyCopiedPath(sourcePath, destinationPath) {
-  const source = fs.statSync(sourcePath);
+  const source = fs.lstatSync(sourcePath);
+  if (source.isSymbolicLink()) throw new Error(`source path is a symlink: ${sourcePath}`);
   let destination;
   try {
-    destination = fs.statSync(destinationPath);
+    destination = fs.lstatSync(destinationPath);
   } catch {
     throw new Error(`mirrored path is missing: ${destinationPath}`);
   }
+  if (destination.isSymbolicLink())
+    throw new Error(`destination path is a symlink: ${destinationPath}`);
   if (source.isDirectory() !== destination.isDirectory()) {
     throw new Error(`mirrored path type differs: ${destinationPath}`);
   }
@@ -106,11 +115,24 @@ function copyReleaseAssets(releaseDir = RELEASE_DIR, destination) {
   if (destinationForComparison.startsWith(releasePrefixForComparison)) {
     throw new Error('AFTER_PACK_LOC cannot be inside the release directory');
   }
+  if (fs.existsSync(resolvedDestination)) {
+    const destinationStat = fs.lstatSync(resolvedDestination);
+    if (destinationStat.isSymbolicLink() || !destinationStat.isDirectory()) {
+      throw new Error('AFTER_PACK_LOC must be a real directory');
+    }
+  }
   fs.mkdirSync(resolvedDestination, { recursive: true });
   const entries = getReleaseEntries(resolvedReleaseDir);
   for (const entry of entries) {
     const sourcePath = path.join(resolvedReleaseDir, entry);
     const destinationPath = path.join(resolvedDestination, entry);
+    try {
+      if (fs.lstatSync(destinationPath).isSymbolicLink()) {
+        throw new Error(`refusing to overwrite destination symlink: ${destinationPath}`);
+      }
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
     fs.cpSync(sourcePath, destinationPath, { recursive: true, force: true, errorOnExist: false });
     verifyCopiedPath(sourcePath, destinationPath);
   }

@@ -1,5 +1,6 @@
 import { clearHtml } from './rendererDom.js';
 import { escapeHtml } from './shared.js';
+import type { SupportedIconName } from './rendererUtils.js';
 import type { ShortcutBinding } from './shortcuts.js';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
@@ -10,7 +11,7 @@ interface Command {
   id: string;
   title: string;
   description?: string;
-  icon?: string;
+  icon?: SupportedIconName;
   keywords?: string[];
   shortcut?: ShortcutBinding;
   action: () => void;
@@ -186,7 +187,7 @@ export function createCommandPaletteController(deps: CommandPaletteDeps) {
       string,
       string,
       string,
-      string,
+      SupportedIconName,
       () => void,
       'r' | 'f' | undefined,
       string[] | undefined,

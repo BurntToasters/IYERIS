@@ -207,7 +207,7 @@ describe('NavigationController — extended3', () => {
       }
     });
 
-    it('Escape key on address input restores breadcrumb mode and blurs', () => {
+    it('Escape closes the history dropdown before restoring breadcrumb mode', () => {
       const deps = createDeps();
       const ctrl = createNavigationController(deps as any);
       ctrl.updateBreadcrumb('/workspace');
@@ -215,7 +215,14 @@ describe('NavigationController — extended3', () => {
 
       ctrl.toggleBreadcrumbMode();
       const input = document.getElementById('address-input') as HTMLInputElement;
+      const dropdown = document.getElementById('directory-history-dropdown')!;
       const blurSpy = vi.spyOn(input, 'blur');
+
+      // Focusing the address input opens history; the first Escape only closes it.
+      expect(dropdown.style.display).toBe('block');
+      dispatchKeydown(input, 'Escape');
+      expect(dropdown.style.display).toBe('none');
+      expect(blurSpy).not.toHaveBeenCalled();
 
       dispatchKeydown(input, 'Escape');
 

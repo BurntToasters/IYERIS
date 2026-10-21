@@ -745,7 +745,7 @@ export function createCompressExtractController(deps: CompressExtractDeps) {
     const archivePath = extractModalArchivePath;
     const trackRecent = extractModalTrackRecent;
     const passwordInput = document.getElementById('extract-password') as HTMLInputElement | null;
-    const password = passwordInput?.value.trim() || undefined;
+    const password = passwordInput?.value || undefined;
     hideExtractModal();
     await handleExtract(archivePath, baseFolder, trackRecent, password);
   }

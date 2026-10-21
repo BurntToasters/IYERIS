@@ -167,6 +167,7 @@ describe('rendererTabs — N2 stale cachedFiles must be deleted when listing is 
 
     // Switch to the first tab so it becomes current.
     ctrl.switchToTab(firstTabId);
+    await Promise.resolve();
     expect(deps.getActiveTabId()).toBe(firstTabId);
 
     // Now simulate a large listing for the first tab (exceeds cap of 3).
@@ -193,6 +194,7 @@ describe('rendererTabs — N2 stale cachedFiles must be deleted when listing is 
     const secondTabId = tabs[1]!.id;
 
     ctrl.switchToTab(firstTabId);
+    await Promise.resolve();
 
     // Small listing — well within cap.
     deps.setAllFiles([makeFile('/dir-a/file.txt')]);

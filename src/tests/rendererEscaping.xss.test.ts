@@ -504,9 +504,9 @@ describe('markdown sanitization boundary (real DOMPurify)', () => {
   ].join('\n');
 
   it('strips scripts, event handlers and javascript: urls from rendered markdown', async () => {
-    const { sanitizeMarkdownHtml } = await import('../shared');
+    const { sanitizeMarkdownHtml } = await import('../rendererMarkdown');
     const { marked } = await import('marked');
-    const rendered = sanitizeMarkdownHtml(
+    const rendered = await sanitizeMarkdownHtml(
       marked.parse(MALICIOUS_MARKDOWN, { async: false, breaks: true }) as string
     );
 
@@ -525,10 +525,10 @@ describe('markdown sanitization boundary (real DOMPurify)', () => {
   });
 
   it('is not the identity function this suite is guarding against', async () => {
-    const { sanitizeMarkdownHtml } = await import('../shared');
+    const { sanitizeMarkdownHtml } = await import('../rendererMarkdown');
     const dirty = '<img src=x onerror="globalThis.__xssFired = true">';
-    expect(sanitizeMarkdownHtml(dirty)).not.toBe(dirty);
-    expect(sanitizeMarkdownHtml(dirty)).not.toContain('onerror');
+    expect(await sanitizeMarkdownHtml(dirty)).not.toBe(dirty);
+    expect(await sanitizeMarkdownHtml(dirty)).not.toContain('onerror');
   });
 });
 

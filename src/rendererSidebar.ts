@@ -150,13 +150,22 @@ export function createSidebarController(deps: SidebarDeps) {
         const driveLabel = drive.label || drive.path;
         const driveItem = document.createElement('div');
         driveItem.className = 'nav-item';
+        driveItem.setAttribute('role', 'button');
+        driveItem.tabIndex = 0;
+        driveItem.setAttribute('aria-label', `Open ${driveLabel}`);
         driveItem.title = drive.path;
         // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
         driveItem.innerHTML = `
       <span class="nav-icon">${twemojiImg('save', 'twemoji')}</span>
       <span class="nav-label">${escapeHtml(driveLabel)}</span>
     `;
-        driveItem.addEventListener('click', () => deps.navigateTo(drive.path));
+        const openDrive = () => deps.navigateTo(drive.path);
+        driveItem.addEventListener('click', openDrive);
+        driveItem.addEventListener('keydown', (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          openDrive();
+        });
         drivesList.appendChild(driveItem);
       });
 

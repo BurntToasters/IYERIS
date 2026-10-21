@@ -34,6 +34,7 @@ export function createDefaultSettings(): Settings {
     searchHistory: [],
     savedSearches: [],
     directoryHistory: [],
+    additionalIndexLocations: [],
     recentTransferDestinations: [],
     enableIndexer: true,
     minimizeToTray: false,
@@ -185,6 +186,7 @@ function sanitizeCustomTheme(value: unknown): Settings['customTheme'] | undefine
     return undefined;
   }
   const isValidColor = (v: string) => {
+    if (v.length > 128) return false;
     const t = v.trim();
     if (/^#[0-9A-Fa-f]{3,8}$/.test(t)) return true;
     if (/^(?:rgba?|hsla?|oklch|color-mix)\s*\(/.test(t) && t.endsWith(')')) return true;
@@ -220,12 +222,12 @@ function sanitizeShortcuts(
 ): Record<string, string[]> {
   const result: Record<string, string[]> = { ...defaults };
   if (!isRecord(value)) return result;
-  for (const key of Object.keys(value)) {
+  for (const key of Object.keys(value).slice(0, 2000)) {
     if (RESERVED_KEYS.has(key)) continue;
     if (!Object.prototype.hasOwnProperty.call(defaults, key)) continue;
     const binding = value[key];
     if (!Array.isArray(binding)) continue;
-    result[key] = binding.filter((item) => typeof item === 'string');
+    result[key] = sanitizeStringArray(binding, 128, 4096).slice(0, 8);
   }
   return result;
 }
@@ -235,11 +237,12 @@ function sanitizeFolderIcons(value: unknown): Record<string, string> {
   if (!isRecord(value)) return result;
   const allowed = new Set<string>(FOLDER_ICON_ARRAY);
   const legacyCodepoint = /^[0-9a-f]{2,6}(?:-[0-9a-f]{2,6})*$/i;
-  for (const key of Object.keys(value)) {
-    if (RESERVED_KEYS.has(key)) continue;
+  for (const key of Object.keys(value).slice(0, 2000)) {
+    if (RESERVED_KEYS.has(key) || key.length > 4096) continue;
     const item = value[key];
     if (typeof item !== 'string') continue;
     const normalized = item.toLowerCase().trim();
+    if (normalized.length > 128) continue;
     if (allowed.has(normalized) || legacyCodepoint.test(normalized)) {
       result[key] = normalized;
     }
@@ -290,12 +293,15 @@ function sanitizeTabState(value: unknown): Settings['tabState'] | undefined {
 
   for (const tabValue of tabsRaw) {
     if (!isRecord(tabValue)) continue;
-    const id = typeof tabValue.id === 'string' ? tabValue.id : null;
-    const path = typeof tabValue.path === 'string' ? tabValue.path : null;
+    const id = typeof tabValue.id === 'string' && tabValue.id.length <= 128 ? tabValue.id : null;
+    const path =
+      typeof tabValue.path === 'string' && tabValue.path.length <= 4096 ? tabValue.path : null;
     if (!id || !path) continue;
-    const history = Array.isArray(tabValue.history) ? sanitizeStringArray(tabValue.history) : [];
+    const history = Array.isArray(tabValue.history)
+      ? sanitizeStringArray(tabValue.history, 4096, 512 * 1024).slice(0, 100)
+      : [];
     const selectedItems = Array.isArray(tabValue.selectedItems)
-      ? sanitizeStringArray(tabValue.selectedItems)
+      ? sanitizeStringArray(tabValue.selectedItems, 4096, 512 * 1024).slice(0, 1000)
       : [];
     const scrollPosition = sanitizeNumber(tabValue.scrollPosition) ?? 0;
     let historyIndex = sanitizeInt(tabValue.historyIndex, -1, null) ?? -1;
@@ -313,6 +319,7 @@ function sanitizeTabState(value: unknown): Settings['tabState'] | undefined {
       selectedItems,
       scrollPosition,
     });
+    if (tabs.length >= 100) break;
   }
 
   if (tabs.length === 0) return undefined;
@@ -335,6 +342,9 @@ export function sanitizeSettings(
     bookmarks: [...defaults.bookmarks],
     searchHistory: [...defaults.searchHistory],
     directoryHistory: [...defaults.directoryHistory],
+    additionalIndexLocations: defaults.additionalIndexLocations
+      ? [...defaults.additionalIndexLocations]
+      : [],
     recentTransferDestinations: defaults.recentTransferDestinations
       ? [...defaults.recentTransferDestinations]
       : [],
@@ -419,7 +429,7 @@ export function sanitizeSettings(
   // String settings
   if (typeof raw.startupPath === 'string') {
     const sp = raw.startupPath.trim();
-    if (sp === '' || /^[/~]/.test(sp) || /^[A-Za-z]:[\\/]/.test(sp)) {
+    if (sp.length <= 4096 && (sp === '' || /^[/~]/.test(sp) || /^[A-Za-z]:[\\/]/.test(sp))) {
       clean.startupPath = sp;
     }
   }
@@ -436,13 +446,20 @@ export function sanitizeSettings(
     }
   }
 
-  // Positive number settings
-  for (const key of [
-    'maxThumbnailSizeMB',
-    'maxPreviewSizeMB',
-    'sidebarWidth',
-    'previewPanelWidth',
+  // Size limits must stay aligned with renderer/native resource bounds. In
+  // particular, data-URL fallback reads are capped at 50 MiB in the backend.
+  for (const [key, maximum] of [
+    ['maxThumbnailSizeMB', 100],
+    ['maxPreviewSizeMB', 50],
   ] as const) {
+    const val = sanitizeNumber(raw[key]);
+    if (val !== null && val > 0) {
+      assignKey(clean, key, Math.min(val, maximum) as Settings[keyof Settings]);
+    }
+  }
+
+  // Other positive number settings have no file-read implications.
+  for (const key of ['sidebarWidth', 'previewPanelWidth'] as const) {
     const val = sanitizeNumber(raw[key]);
     if (val !== null && val > 0) assignKey(clean, key, val as Settings[keyof Settings]);
   }
@@ -464,6 +481,26 @@ export function sanitizeSettings(
     if (val !== null) assignKey(clean, key, val as Settings[keyof Settings]);
   }
 
+  if (Array.isArray(raw.additionalIndexLocations)) {
+    const locations: string[] = [];
+    for (const location of raw.additionalIndexLocations) {
+      if (typeof location !== 'string' || location.length === 0 || location.length > 4096) {
+        continue;
+      }
+      if (
+        !location.startsWith('/') &&
+        !/^[A-Za-z]:[\\/]/.test(location) &&
+        !/^\\\\[^\\]+\\[^\\]+/.test(location)
+      ) {
+        continue;
+      }
+      if (locations.includes(location)) continue;
+      locations.push(location);
+      if (locations.length === 64) break;
+    }
+    clean.additionalIndexLocations = locations;
+  }
+
   const customTheme = sanitizeCustomTheme(raw.customTheme);
   if (customTheme) clean.customTheme = customTheme;
 
@@ -476,7 +513,7 @@ export function sanitizeSettings(
     'recentFiles',
   ] as const) {
     if (Array.isArray(raw[key])) {
-      const sanitized = sanitizeStringArray(raw[key]);
+      const sanitized = sanitizeStringArray(raw[key], 4096, 2 * 1024 * 1024);
       const maxLen =
         key === 'bookmarks'
           ? 500
@@ -490,7 +527,7 @@ export function sanitizeSettings(
   }
 
   if (Array.isArray(raw.dashboardWidgets)) {
-    const sanitized = sanitizeStringArray(raw.dashboardWidgets)
+    const sanitized = sanitizeStringArray(raw.dashboardWidgets, 128, 4096)
       .filter((item) => DASHBOARD_WIDGET_VALUES.has(item))
       .filter((item, index, items) => items.indexOf(item) === index);
     if (sanitized.length > 0) {
@@ -512,6 +549,13 @@ export function sanitizeSettings(
 
   if (typeof raw._timestamp === 'number' && Number.isFinite(raw._timestamp)) {
     clean._timestamp = raw._timestamp;
+  }
+  if (
+    typeof raw._revision === 'number' &&
+    Number.isSafeInteger(raw._revision) &&
+    raw._revision >= 0
+  ) {
+    clean._revision = raw._revision;
   }
 
   if (Array.isArray(raw.savedSearches)) {
@@ -571,8 +615,12 @@ export function sanitizeSettings(
                 s.filters.maxSize >= 0
                   ? { maxSize: s.filters.maxSize }
                   : {}),
-                ...(typeof s.filters.dateFrom === 'string' ? { dateFrom: s.filters.dateFrom } : {}),
-                ...(typeof s.filters.dateTo === 'string' ? { dateTo: s.filters.dateTo } : {}),
+                ...(typeof s.filters.dateFrom === 'string' && s.filters.dateFrom.length <= 64
+                  ? { dateFrom: s.filters.dateFrom }
+                  : {}),
+                ...(typeof s.filters.dateTo === 'string' && s.filters.dateTo.length <= 64
+                  ? { dateTo: s.filters.dateTo }
+                  : {}),
               },
             }
           : {}),

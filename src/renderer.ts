@@ -61,12 +61,95 @@ function cacheDriveInfo(drives: DriveInfo[]): void {
   });
 }
 
-async function saveSettingsWithTimestamp(settings: Settings) {
+function cloneSettingsSnapshot(settings: Settings): Settings {
+  return sanitizeSettings(JSON.parse(JSON.stringify(settings)) as unknown);
+}
+
+function getSettingField(settings: Settings, key: string): unknown {
+  return Object.getOwnPropertyDescriptor(settings, key)?.value;
+}
+
+function changedSettingsKeys(current: Settings, baseline: Settings): string[] {
+  return Object.keys(current).filter((key) => {
+    if (key === '_revision' || key === '_timestamp') return false;
+    return (
+      JSON.stringify(getSettingField(current, key)) !==
+      JSON.stringify(getSettingField(baseline, key))
+    );
+  });
+}
+
+function presentSettingsConflict(conflictKeys: string[], fullReplacement = false): void {
+  const resolve = (resolution: 'keepLocal' | 'useLatest') => {
+    currentSettings = window.tauriAPI.resolveSettingsConflict(
+      currentSettings,
+      conflictKeys,
+      resolution
+    );
+    applySettings(currentSettings);
+    if (resolution === 'keepLocal') {
+      if (fullReplacement) {
+        void saveSettingsWithTimestamp(currentSettings, true).then((result) => {
+          if (!result.success && !result.conflictKeys) notifySettingsSaveError(result.error);
+        });
+      } else {
+        debouncedSaveSettings(0);
+      }
+    }
+  };
+  showToast(
+    'Another window changed settings you edited. Choose which values to keep.',
+    'Settings conflict',
+    'warning',
+    [
+      { label: 'Keep my changes', onClick: () => resolve('keepLocal') },
+      { label: 'Use latest', onClick: () => resolve('useLatest') },
+    ]
+  );
+}
+
+async function saveSettingsWithTimestamp(settings: Settings, replace = false) {
   if (isResettingSettings) {
-    return { success: true as const };
+    return { success: true as const, settings };
   }
-  settings._timestamp = Date.now();
-  return window.tauriAPI.saveSettings(settings);
+  const submitted = cloneSettingsSnapshot(settings);
+  const liveSnapshot = cloneSettingsSnapshot(currentSettings);
+  const result = await window.tauriAPI.saveSettings(settings, replace);
+  const changedAfterSubmit = changedSettingsKeys(currentSettings, liveSnapshot);
+
+  if (result.success) {
+    const merged: Record<string, unknown> = { ...result.settings };
+    for (const key of changedAfterSubmit) {
+      merged[key] = getSettingField(currentSettings, key);
+    }
+    currentSettings = sanitizeSettings(merged);
+    Object.assign(settings, currentSettings);
+    return { success: true as const, settings: currentSettings };
+  }
+
+  if (result.settings && result.conflictKeys) {
+    const merged: Record<string, unknown> = { ...result.settings };
+    if (replace) {
+      Object.assign(merged, submitted);
+      merged._revision = result.settings._revision;
+    } else {
+      const changedKeys = result.changedKeys ?? changedSettingsKeys(submitted, liveSnapshot);
+      for (const key of changedKeys) {
+        if (key !== 'settings' && Object.prototype.hasOwnProperty.call(settings, key)) {
+          merged[key] = getSettingField(settings, key);
+        }
+      }
+    }
+    for (const key of changedAfterSubmit) {
+      merged[key] = getSettingField(currentSettings, key);
+    }
+    currentSettings = sanitizeSettings(merged);
+    Object.assign(settings, currentSettings);
+    presentSettingsConflict(result.conflictKeys, replace);
+    return { ...result, settings: currentSettings };
+  }
+
+  return result;
 }
 
 let settingsSaveTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -94,7 +177,7 @@ function executeSettingsSave(): void {
   settingsSavePending = false;
   saveSettingsWithTimestamp(currentSettings)
     .then((result) => {
-      if (!result.success) {
+      if (!result.success && !result.conflictKeys) {
         notifySettingsSaveError(result.error);
       }
     })
@@ -119,13 +202,19 @@ function debouncedSaveSettings(delay: number = SETTINGS_SAVE_DEBOUNCE_MS) {
   }, delay);
 }
 
-function flushDebouncedSettingsSave(): void {
-  if (!settingsSaveTimeout) return;
-  clearTimeout(settingsSaveTimeout);
-  settingsSaveTimeout = null;
+function flushDebouncedSettingsSave(force = false): void {
+  const hasScheduledSave = settingsSaveTimeout !== null;
+  if (!hasScheduledSave && !force && !settingsSaveInFlight && !settingsSavePending) return;
+  if (settingsSaveTimeout) {
+    clearTimeout(settingsSaveTimeout);
+    settingsSaveTimeout = null;
+  }
   if (isResettingSettings) return;
-  currentSettings._timestamp = Date.now();
-  void window.tauriAPI.saveSettingsSync(currentSettings);
+  if (settingsSaveInFlight) {
+    settingsSavePending = true;
+    return;
+  }
+  executeSettingsSave();
 }
 
 const ipcCleanupFunctions: (() => void)[] = [];
@@ -373,24 +462,17 @@ const {
   setupBreadcrumbListeners,
   hideBreadcrumbMenu,
   addToDirectoryHistory,
-  showDirectoryHistoryDropdown,
   hideDirectoryHistoryDropdown,
-  clearDirectoryHistory,
   getBreadcrumbMenuElement,
   isBreadcrumbMenuOpen,
   initSearchListeners,
   closeSearch,
   openSearch,
-  performSearch,
   cleanupSearch,
-  showSearchHistoryDropdown,
   hideSearchHistoryDropdown,
-  clearSearchHistory,
   getSearchStatusText,
   isSearchModeActive,
   getSearchInputElement,
-  setSearchQuery,
-  focusSearchInput,
   updateContentSearchToggle,
   updateSearchPlaceholder,
   previewController,
@@ -815,7 +897,13 @@ async function saveSettings() {
 
   const result = await saveSettingsWithTimestamp(currentSettings);
   if (!result.success) {
-    showToast('Failed to save settings: ' + (result.error || 'Operation failed'), 'Error', 'error');
+    if (!result.conflictKeys) {
+      showToast(
+        'Failed to save settings: ' + (result.error || 'Operation failed'),
+        'Error',
+        'error'
+      );
+    }
     return;
   }
   try {
@@ -1711,21 +1799,7 @@ async function deleteSelected(permanent = false) {
       : `${successCount} item${successCount > 1 ? 's' : ''} moved to ${platformOS === 'win32' ? 'Recycle Bin' : 'Trash'}`;
     if (!permanent) {
       await updateUndoRedoState();
-      showToast(
-        msg,
-        'Success',
-        'success',
-        canUndo
-          ? [
-              {
-                label: 'Undo',
-                onClick: () => {
-                  void performUndo();
-                },
-              },
-            ]
-          : undefined
-      );
+      showToast(msg, 'Success', 'success');
     } else {
       showToast(msg, 'Success', 'success');
     }
@@ -1802,9 +1876,11 @@ function setupMoreActionsMenu() {
   const btnEl = btn;
 
   function closeMenu() {
+    const restoreFocus = menuEl.contains(document.activeElement);
     menuEl.style.display = 'none';
     btnEl.setAttribute('aria-expanded', 'false');
     menuEl.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
+    if (restoreFocus) btnEl.focus({ preventScroll: true });
   }
 
   btn.addEventListener('click', (e) => {
@@ -1892,7 +1968,6 @@ function setupMoreActionsMenu() {
     } else if (e.key === 'Escape') {
       e.preventDefault();
       closeMenu();
-      btn.focus();
     }
   });
 }
@@ -2083,6 +2158,27 @@ async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
     .catch(ignoreError);
 }
 
+late.getOrderedFiles = () => {
+  if (currentSettings.dualPaneEnabled && currentSettings.activePane === 'right')
+    return dualPane.getSecondaryPaneItems();
+  if (viewMode === 'column')
+    return Array.from(getActiveFileGridScope()?.querySelectorAll<HTMLElement>('.file-item') ?? [])
+      .map((item) => late.getFileByPath(item.dataset.path || ''))
+      .filter((item): item is FileItem => item !== undefined);
+  return fileRenderController.getOrderedFiles();
+};
+late.ensureItemRendered = (path) => {
+  if (
+    viewMode !== 'column' &&
+    !(currentSettings.dualPaneEnabled && currentSettings.activePane === 'right')
+  )
+    return fileRenderController.ensureItemRendered(path);
+  return (
+    Array.from(getActiveFileGridScope()?.querySelectorAll<HTMLElement>('.file-item') ?? []).find(
+      (item) => item.dataset.path === path
+    ) ?? null
+  );
+};
 late.navigateTo = navigateTo;
 late.refresh = refresh;
 late.renderFiles = renderFiles;
@@ -2168,15 +2264,15 @@ async function applyViewMode() {
 
 const VIEW_TOGGLE_CONFIG: Record<ViewMode, { svg: string; title: string }> = {
   list: {
-    svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/></svg>`,
+    svg: `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="3" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1"/><rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1"/></svg>`,
     title: 'Switch to Column View',
   },
   column: {
-    svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/></svg>`,
+    svg: `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="1" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1"/><rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1"/></svg>`,
     title: 'Switch to Grid View',
   },
   grid: {
-    svg: `<svg width="16" height="16" viewBox="0 0 16 16"><rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/></svg>`,
+    svg: `<svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" focusable="false"><rect x="2" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="2" width="5" height="5" fill="currentColor" rx="1"/><rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1"/><rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1"/></svg>`,
     title: 'Switch to List View',
   },
 };
@@ -2344,16 +2440,7 @@ for (const [id, handler] of [
   });
 }
 
-function bindHistoryDropdownOnFocus(element: HTMLElement | null, showDropdown: () => void): void {
-  if (!element) return;
-  element.addEventListener('focus', () => {
-    if (currentSettings.enableSearchHistory) showDropdown();
-  });
-}
-
 const searchInputElement = getSearchInputElement();
-bindHistoryDropdownOnFocus(searchInputElement, showSearchHistoryDropdown);
-bindHistoryDropdownOnFocus(addressInput, showDirectoryHistoryDropdown);
 
 dualPane.setupListeners();
 
@@ -2374,38 +2461,6 @@ document.addEventListener('mousedown', (e) => {
   }
   if (!isClickInsideDirectoryDropdown && !isClickOnAddressInput) {
     hideDirectoryHistoryDropdown();
-  }
-
-  const historyItem = target.closest<HTMLElement>('.history-item');
-  if (historyItem) {
-    if (historyItem.dataset.query) {
-      e.preventDefault();
-      setSearchQuery(historyItem.dataset.query);
-      setTimeout(() => focusSearchInput(), 0);
-      hideSearchHistoryDropdown();
-      performSearch();
-      return;
-    }
-    if (historyItem.dataset.path) {
-      e.preventDefault();
-      navigateTo(historyItem.dataset.path);
-      hideDirectoryHistoryDropdown();
-      return;
-    }
-  }
-
-  const historyClear = target.closest<HTMLElement>('.history-clear');
-  if (historyClear) {
-    let clearAction: (() => void) | null = null;
-    if (historyClear.dataset.action === 'clear-search') {
-      clearAction = clearSearchHistory;
-    } else if (historyClear.dataset.action === 'clear-directory') {
-      clearAction = clearDirectoryHistory;
-    }
-    if (clearAction) {
-      e.preventDefault();
-      clearAction();
-    }
   }
 });
 
@@ -2437,7 +2492,6 @@ document.addEventListener('mousedown', (e) => {
 })();
 
 window.addEventListener('beforeunload', () => {
-  flushDebouncedSettingsSave();
   stopIndexStatusPolling();
   cleanupSearch();
   cleanupHoverCard();
@@ -2469,13 +2523,8 @@ window.addEventListener('beforeunload', () => {
         activeTabId,
       };
     }
-    currentSettings._timestamp = Date.now();
-    void window.tauriAPI.saveSettingsSync(currentSettings);
   }
-  if (settingsSaveTimeout) {
-    clearTimeout(settingsSaveTimeout);
-    settingsSaveTimeout = null;
-  }
+  flushDebouncedSettingsSave(true);
   cleanupTabs();
   cleanupOperationQueue();
 

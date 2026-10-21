@@ -1,90 +1,100 @@
 #!/usr/bin/env node
 
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { isDirectExecution } from './direct-execution.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const repoRoot = path.join(__dirname, '..');
-const pkgPath = path.join(repoRoot, 'package.json');
-const xmlPath = path.join(repoRoot, 'run.rosie.iyeris.metainfo.xml');
+const repoRoot = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
-function formatDate(date) {
+function writeFileAtomic(filePath, content) {
+  const temporaryPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  let ownsTemporaryPath = false;
+  try {
+    fs.writeFileSync(temporaryPath, content, { encoding: 'utf8', flag: 'wx' });
+    ownsTemporaryPath = true;
+    fs.renameSync(temporaryPath, filePath);
+  } finally {
+    if (ownsTemporaryPath) {
+      try {
+        fs.unlinkSync(temporaryPath);
+      } catch {
+        // The rename succeeded, so there is no temporary file left to clean.
+      }
+    }
+  }
+}
+
+export function formatDate(date) {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 }
 
-function run({ now = new Date() } = {}) {
-  if (!fs.existsSync(pkgPath)) throw new Error(`package.json not found at ${pkgPath}`);
-  if (!fs.existsSync(xmlPath)) throw new Error(`AppStream metadata not found at ${xmlPath}`);
+function withReleaseDate(tag, date) {
+  if (/\bdate="[^"]*"/u.test(tag)) return tag.replace(/\bdate="[^"]*"/u, `date="${date}"`);
+  return tag.replace(/<release\b[^>]*>/u, (openingTag) =>
+    openingTag.endsWith('/>')
+      ? openingTag.replace(/\s*\/>$/u, ` date="${date}"/>`)
+      : openingTag.replace(/>$/u, ` date="${date}">`)
+  );
+}
 
-  let pkg;
-  try {
-    pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-  } catch (error) {
-    throw new Error(`Failed to parse package.json: ${error?.message || error}`, { cause: error });
-  }
-
-  const version = pkg.version;
-  if (!version) throw new Error('package.json has no version field');
-
-  const dateStr = formatDate(now);
-  const xml = fs.readFileSync(xmlPath, 'utf8');
-
-  const releasesLineMatch = xml.match(/^(\s*)<releases>\s*$/m);
-  if (!releasesLineMatch) throw new Error('Could not find <releases> block in AppStream metadata');
-
-  const baseIndent = releasesLineMatch[1] || '';
+export function updateMetainfoXml(xml, version, { now = new Date(), refreshDate = false } = {}) {
+  const sectionMatch = xml.match(/^(\s*)<releases>\s*$([\s\S]*?)^\s*<\/releases>\s*$/mu);
+  if (!sectionMatch) throw new Error('Could not locate <releases> block in AppStream metadata');
+  const baseIndent = sectionMatch[1] || '';
   const releaseIndent = `${baseIndent}  `;
-  const newReleaseTag = `${releaseIndent}<release version="${version}" date="${dateStr}"/>`;
+  const date = formatDate(now);
+  const tags =
+    sectionMatch[2].match(/<release\b[^>]*\/>|<release\b[^>]*>[\s\S]*?<\/release>/gu) || [];
+  const versionPattern = /\bversion="([^"]+)"/u;
+  let currentTag = null;
+  const remaining = [];
 
-  const releasesSectionRegex = /<releases>[\s\S]*?<\/releases>/;
-  const releasesSectionMatch = xml.match(releasesSectionRegex);
-  if (!releasesSectionMatch) throw new Error('Could not locate releases section');
-
-  const releaseTagRegex = /<release\b[^>]*\/>|<release\b[^>]*>[\s\S]*?<\/release>/g;
-  const releaseVersionRegex = /version="([^"]+)"/;
-  const existingReleaseTags = releasesSectionMatch[0].match(releaseTagRegex) || [];
-
-  const rebuiltEntries = [];
-  let replacedCurrentVersion = false;
-  for (const rawTag of existingReleaseTags) {
+  for (const rawTag of tags) {
     const tag = rawTag.trim();
-    const versionMatch = tag.match(releaseVersionRegex);
-    const tagVersion = versionMatch ? versionMatch[1] : '';
-    if (tagVersion === version) {
-      if (!replacedCurrentVersion) {
-        rebuiltEntries.push(newReleaseTag.trim());
-        replacedCurrentVersion = true;
-      }
-      continue;
+    if (tag.match(versionPattern)?.[1] === version) {
+      if (!currentTag) currentTag = refreshDate ? withReleaseDate(tag, date) : tag;
+    } else {
+      remaining.push(tag);
     }
-    rebuiltEntries.push(tag);
   }
-  if (!replacedCurrentVersion) rebuiltEntries.unshift(newReleaseTag.trim());
 
-  const updatedSection = `<releases>\n${rebuiltEntries.map((tag) => `${releaseIndent}${tag}`).join('\n')}\n${baseIndent}</releases>`;
-  if (updatedSection === releasesSectionMatch[0]) return { updated: false, version, date: dateStr };
+  currentTag ||= `<release version="${version}" date="${date}"/>`;
+  const entries = [currentTag, ...remaining];
+  const updatedSection = `${baseIndent}<releases>\n${entries
+    .map((tag) => `${releaseIndent}${tag}`)
+    .join('\n')}\n${baseIndent}</releases>`;
+  const originalSection = sectionMatch[0];
+  const updatedXml = xml.replace(originalSection, updatedSection);
+  return { xml: updatedXml, updated: updatedXml !== xml, version, date };
+}
 
-  const updatedXml = xml.replace(releasesSectionRegex, updatedSection);
-  fs.writeFileSync(xmlPath, updatedXml, 'utf8');
-  return { updated: true, version, date: dateStr };
+export function run({ now = new Date(), refreshDate = false, root = repoRoot } = {}) {
+  const packagePath = path.join(root, 'package.json');
+  const xmlPath = path.join(root, 'run.rosie.iyeris.metainfo.xml');
+  const packageJson = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
+  if (!packageJson.version) throw new Error('package.json has no version field');
+  const result = updateMetainfoXml(fs.readFileSync(xmlPath, 'utf8'), packageJson.version, {
+    now,
+    refreshDate,
+  });
+  if (result.updated) writeFileAtomic(xmlPath, result.xml);
+  return result;
 }
 
 if (isDirectExecution(import.meta.url)) {
   try {
-    const result = run();
-    if (result.updated)
-      console.log(`Updated AppStream release to ${result.version} (${result.date})`);
-    else console.log('AppStream metadata already up to date');
+    const result = run({ refreshDate: process.argv.includes('--refresh-date') });
+    console.log(
+      result.updated
+        ? `Updated AppStream release ${result.version}`
+        : `AppStream release ${result.version} already current`
+    );
   } catch (error) {
     console.error(`Failed: ${error?.message || error}`);
-    process.exit(1);
+    process.exitCode = 1;
   }
 }
-
-export { formatDate, run };

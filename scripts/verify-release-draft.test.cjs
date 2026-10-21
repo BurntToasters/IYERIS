@@ -33,15 +33,16 @@ test('prerelease policy requires beta manifests, checksums, and signatures', () 
   }
 });
 
-test('stable policy retains MSI assets without beta-channel checksums', () => {
+test('stable policy retains MSI assets and beta aliases for beta clients', () => {
   const stableAssets = expectedStableAssets();
 
-  assert.equal(stableAssets.size, 45);
+  assert.equal(stableAssets.size, 60);
   assert.equal(stableAssets.has('IYERIS-Win-x64-Enterprise.msi'), true);
   assert.equal(stableAssets.has('IYERIS-Win-arm64-Enterprise.msi'), true);
   for (const target of BETA_TARGETS) {
-    assert.equal(stableAssets.has(`latest-${target}.json`), false);
-    assert.equal(stableAssets.has(`SHA256SUMS-${target}.txt`), false);
+    assert.equal(stableAssets.has(`latest-${target}.json`), true);
+    assert.equal(stableAssets.has(`SHA256SUMS-${target}.txt`), true);
+    assert.equal(stableAssets.has(`SHA256SUMS-${target}.txt.asc`), true);
   }
 });
 
@@ -82,6 +83,31 @@ test('prerelease validation requires draft and prerelease flags', () => {
   assert.deepEqual(errors, [
     `${tag} is not a draft release`,
     `${tag} is not marked as a prerelease`,
+  ]);
+});
+
+test('release validation can require a pinned build commit and GitHub digests', () => {
+  const completeAssets = assetsFrom(expectedPrereleaseAssets()).map((asset) => ({
+    ...asset,
+    digest: `sha256:${'a'.repeat(64)}`,
+  }));
+  const errors = validateReleaseDraft(
+    { draft: true, prerelease: true, tag_name: tag, target_commitish: 'old-commit' },
+    completeAssets,
+    { prerelease: true, tag, targetCommit: 'expected-commit', requireDigests: true }
+  );
+
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /expected build commit/);
+
+  completeAssets[0].digest = 'sha256:not-a-digest';
+  const digestErrors = validateReleaseDraft(
+    { draft: true, prerelease: true, tag_name: tag, target_commitish: 'expected-commit' },
+    completeAssets,
+    { prerelease: true, tag, targetCommit: 'expected-commit', requireDigests: true }
+  );
+  assert.deepEqual(digestErrors, [
+    `asset has no valid GitHub SHA-256 digest: ${completeAssets[0].name}`,
   ]);
 });
 

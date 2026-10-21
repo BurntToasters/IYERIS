@@ -22,6 +22,33 @@ function sha256File(filePath) {
   return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex');
 }
 
+function releaseWorkingTreeSha256(root) {
+  const status = gitPorcelainStatus(root);
+  const paths = parsePorcelainPaths(status);
+  const files = paths
+    .map((filePath) => {
+      const absolutePath = path.join(root, filePath);
+      let digest = 'missing';
+      try {
+        const stat = fs.statSync(absolutePath);
+        digest = stat.isFile()
+          ? sha256File(absolutePath)
+          : `${stat.isDirectory() ? 'directory' : 'other'}:${stat.size}:${stat.mtimeMs}`;
+      } catch {
+        // Keep a stable marker for deleted paths; the porcelain status still
+        // binds the path and deletion state into the fingerprint.
+      }
+      return `${filePath}\0${digest}`;
+    })
+    .sort();
+  return crypto
+    .createHash('sha256')
+    .update(status)
+    .update('\0')
+    .update(files.join('\0'))
+    .digest('hex');
+}
+
 function currentReleaseIdentity(root = defaultRoot) {
   const packageJson = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
   return {
@@ -33,6 +60,7 @@ function currentReleaseIdentity(root = defaultRoot) {
     rustc: command('rustc', ['--version'], root),
     packageLockSha256: sha256File(path.join(root, 'package-lock.json')),
     cargoLockSha256: sha256File(path.join(root, 'src-tauri', 'Cargo.lock')),
+    workingTreeSha256: releaseWorkingTreeSha256(root),
   };
 }
 
@@ -267,6 +295,7 @@ export {
   clearQualityGateProof,
   createReleaseSession,
   currentReleaseIdentity,
+  releaseWorkingTreeSha256,
   isAcceptableReleaseWorkingTree,
   parsePorcelainPaths,
   recordSuccessfulQualityGate,

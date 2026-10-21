@@ -16,6 +16,7 @@ type DuplicateFinderDeps = {
   onModalClose: (modal: HTMLElement) => void;
   refresh: (reason?: string) => void;
   navigateTo: (pathValue: string) => Promise<void> | void;
+  cancelScan?: () => Promise<unknown>;
   generateOperationId?: () => string;
   addOperation?: (
     id: string,
@@ -59,6 +60,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
   let initialized = false;
   let scanRequestId = 0;
   let scanInProgress = false;
+  let scanCancellationBarrier: Promise<unknown> | null = null;
   let deleteInProgress = false;
 
   let currentRootPath = '';
@@ -225,8 +227,26 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
     syncSummaryAndActions();
   }
 
-  function closeDuplicateFinderModal(): void {
+  async function closeDuplicateFinderModal(): Promise<void> {
     if (!modal) return;
+    scanRequestId += 1;
+    if (scanInProgress) {
+      scanInProgress = false;
+      if (scanBtn) scanBtn.disabled = false;
+      let cancellationResult: unknown;
+      try {
+        // Invoke synchronously so the native cancellation request is issued
+        // before a close/reopen cycle can start another scan.
+        cancellationResult = deps.cancelScan?.();
+      } catch {
+        cancellationResult = undefined;
+      }
+      const cancelPromise = Promise.resolve(cancellationResult).catch(() => undefined);
+      scanCancellationBarrier = cancelPromise;
+      void cancelPromise.finally(() => {
+        if (scanCancellationBarrier === cancelPromise) scanCancellationBarrier = null;
+      });
+    }
     modal.style.display = 'none';
     deps.onModalClose(modal);
   }
@@ -463,6 +483,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
   }
 
   async function runDuplicateScan(): Promise<void> {
+    if (scanCancellationBarrier) await scanCancellationBarrier;
     if (!ensureElements() || !minSizeInput || !includeHiddenToggle || !scanBtn) return;
     if (scanInProgress || deleteInProgress) return;
 
@@ -511,7 +532,7 @@ export function createDuplicateFinderController(deps: DuplicateFinderDeps) {
 
       if (result.partial) {
         deps.showToast(
-          'Scan stopped early after hashing limit. Results may be incomplete.',
+          'Scan stopped early at a safety limit. Results may be incomplete.',
           'Duplicate Finder',
           'warning'
         );

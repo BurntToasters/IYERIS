@@ -1,26 +1,153 @@
+use crate::cancellation::{is_cancelled, CancellationRegistry, CancellationToken};
 use crate::undo;
 use serde::Serialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::{Read, Seek};
+use std::io::{ErrorKind, Read, Seek};
 use std::path::{Path, PathBuf};
 #[cfg(target_os = "linux")]
 use std::process::Command;
 use std::sync::Mutex;
+use std::sync::TryLockError;
+#[cfg(target_os = "linux")]
+use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 
-static ACTIVE_CHECKSUMS: std::sync::LazyLock<Mutex<HashSet<String>>> =
-    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
-static ACTIVE_FILE_OPERATIONS: std::sync::LazyLock<Mutex<HashSet<String>>> =
-    std::sync::LazyLock::new(|| Mutex::new(HashSet::new()));
+/// Open a regular file without following a final symlink. The path is
+/// canonicalized before this helper is called, but the final component can
+/// still be swapped by another process between validation and open.
+pub(crate) fn open_regular_read(path: &Path) -> Result<fs::File, String> {
+    // Reject device files/FIFOs before opening. A blocking open on a FIFO can
+    // otherwise hang a renderer worker forever, and device reads can expose
+    // unbounded or sensitive streams. The post-open check covers a final
+    // component replacement between lstat and open.
+    let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Refusing to read a non-regular file".to_string());
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        #[cfg(target_os = "linux")]
+        const O_NOFOLLOW: i32 = 0x20000;
+        #[cfg(target_os = "linux")]
+        const O_NONBLOCK: i32 = 0x800;
+        #[cfg(target_os = "macos")]
+        const O_NOFOLLOW: i32 = 0x100;
+        #[cfg(target_os = "macos")]
+        const O_NONBLOCK: i32 = 0x4;
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        const O_NOFOLLOW: i32 = 0;
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        const O_NONBLOCK: i32 = 0;
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(O_NOFOLLOW | O_NONBLOCK)
+            .open(path)
+            .map_err(|error| error.to_string())?;
+        let opened_metadata = file.metadata().map_err(|error| error.to_string())?;
+        if !opened_metadata.is_file() {
+            return Err("Refusing to read a non-regular file".to_string());
+        }
+        Ok(file)
+    }
+    #[cfg(target_os = "windows")]
+    {
+        // OPEN_REPARSE_POINT prevents a final Windows symlink/junction from
+        // being followed between lstat and open. Reject reparse-point handles
+        // after opening as an additional race-safe check.
+        use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+        const FILE_FLAG_OPEN_REPARSE_POINT: u32 = 0x0020_0000;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
+        let file = fs::OpenOptions::new()
+            .read(true)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)
+            .map_err(|error| error.to_string())?;
+        let opened_metadata = file.metadata().map_err(|error| error.to_string())?;
+        if opened_metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+            || !opened_metadata.is_file()
+        {
+            return Err("Refusing to read a non-regular file".to_string());
+        }
+        Ok(file)
+    }
+    #[cfg(not(any(unix, target_os = "windows")))]
+    {
+        let metadata = fs::symlink_metadata(path).map_err(|error| error.to_string())?;
+        if metadata.file_type().is_symlink() || !metadata.is_file() {
+            return Err("Refusing to read a non-regular file".to_string());
+        }
+        fs::File::open(path).map_err(|error| error.to_string())
+    }
+}
+
+static ACTIVE_CHECKSUMS: std::sync::LazyLock<CancellationRegistry> =
+    std::sync::LazyLock::new(CancellationRegistry::default);
+static ACTIVE_DUPLICATE_SCANS: std::sync::LazyLock<CancellationRegistry> =
+    std::sync::LazyLock::new(CancellationRegistry::default);
+// File copies/moves can spend seconds in recursive scans. Keep cancellation
+// reads lock-free in those hot loops; the registry mutex is touched only when
+// an operation is registered, cancelled, or finished.
+static ACTIVE_FILE_OPERATIONS: std::sync::LazyLock<CancellationRegistry> =
+    std::sync::LazyLock::new(CancellationRegistry::default);
 
 static FILE_OP_LOCK: std::sync::LazyLock<Mutex<()>> = std::sync::LazyLock::new(|| Mutex::new(()));
+
+/// Serialize every filesystem mutation (including undo/redo). Poison is
+/// recoverable: a panic must not permanently disable file operations.
+pub(crate) fn mutation_lock() -> Result<std::sync::MutexGuard<'static, ()>, String> {
+    FILE_OP_LOCK.lock().or_else(|poisoned| {
+        log::warn!("[FileOps] mutation lock poisoned; recovering");
+        Ok(poisoned.into_inner())
+    })
+}
+
+/// Wait for the mutation lock in short intervals so queued file operations can
+/// observe cancellation without first entering the serialized mutation phase.
+pub(crate) fn mutation_lock_cancellable(
+    token: Option<&CancellationToken>,
+) -> Result<std::sync::MutexGuard<'static, ()>, String> {
+    const POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(10);
+    loop {
+        if is_cancelled(token) {
+            return Err("Operation cancelled".to_string());
+        }
+        match FILE_OP_LOCK.try_lock() {
+            Ok(guard) => {
+                if is_cancelled(token) {
+                    drop(guard);
+                    return Err("Operation cancelled".to_string());
+                }
+                return Ok(guard);
+            }
+            Err(TryLockError::WouldBlock) => std::thread::sleep(POLL_INTERVAL),
+            Err(TryLockError::Poisoned(poisoned)) => {
+                log::warn!("[FileOps] mutation lock poisoned; recovering");
+                let guard = poisoned.into_inner();
+                if is_cancelled(token) {
+                    drop(guard);
+                    return Err("Operation cancelled".to_string());
+                }
+                return Ok(guard);
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) fn try_mutation_lock() -> Result<std::sync::MutexGuard<'static, ()>, String> {
+    FILE_OP_LOCK.try_lock().map_err(|error| error.to_string())
+}
 
 const DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_READ_FILE_CONTENT_LIMIT_BYTES: u64 = 64 * 1024 * 1024;
 const DEFAULT_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
 const MAX_FILE_DATA_URL_LIMIT_BYTES: u64 = 50 * 1024 * 1024;
+const MAX_MUTATION_ITEMS: usize = 10_000;
+const MAX_MUTATION_PATH_BYTES: usize = 8 * 1024 * 1024;
+const MAX_CLIPBOARD_TEXT_BYTES: usize = 16 * 1024 * 1024;
 const SENSITIVE_READ_DIR_NAMES: &[&str] = &[
     ".ssh",
     ".gnupg",
@@ -44,6 +171,49 @@ const SENSITIVE_READ_FILE_NAMES: &[&str] = &[
     "login.keychain",
 ];
 const SENSITIVE_READ_EXTENSIONS: &[&str] = &["pem", "key", "pfx", "p12"];
+
+fn validate_mutation_list<T: AsRef<str>>(paths: &[T], label: &str) -> Result<(), String> {
+    if paths.len() > MAX_MUTATION_ITEMS {
+        return Err(format!(
+            "{} contains too many items (max {})",
+            label, MAX_MUTATION_ITEMS
+        ));
+    }
+    let total_bytes: usize = paths.iter().map(|path| path.as_ref().len()).sum();
+    if total_bytes > MAX_MUTATION_PATH_BYTES {
+        return Err(format!(
+            "{} paths exceed aggregate size limit (max {} bytes)",
+            label, MAX_MUTATION_PATH_BYTES
+        ));
+    }
+    Ok(())
+}
+
+fn validate_conflict_resolutions(
+    resolutions: Option<&HashMap<String, String>>,
+) -> Result<(), String> {
+    let Some(resolutions) = resolutions else {
+        return Ok(());
+    };
+    if resolutions.len() > MAX_MUTATION_ITEMS {
+        return Err(format!(
+            "Conflict resolutions contain too many items (max {})",
+            MAX_MUTATION_ITEMS
+        ));
+    }
+    let total_bytes = resolutions.iter().fold(0usize, |total, (name, choice)| {
+        total
+            .saturating_add(name.len())
+            .saturating_add(choice.len())
+    });
+    if total_bytes > MAX_MUTATION_PATH_BYTES {
+        return Err(format!(
+            "Conflict resolutions exceed aggregate size limit (max {} bytes)",
+            MAX_MUTATION_PATH_BYTES
+        ));
+    }
+    Ok(())
+}
 
 #[cfg(target_os = "windows")]
 fn resolve_windows_shortcut_on_com_thread(path: &Path) -> Result<String, String> {
@@ -159,24 +329,36 @@ enum OpenTarget {
 }
 
 pub(crate) fn ensure_safe_preview_read_path(path: &Path) -> Result<(), String> {
-    for component in path.components() {
-        let std::path::Component::Normal(value) = component else {
-            continue;
-        };
-        let name = value.to_string_lossy().to_lowercase();
-        if SENSITIVE_READ_DIR_NAMES.contains(&name.as_str())
-            || SENSITIVE_READ_FILE_NAMES.contains(&name.as_str())
-        {
-            return Err(format!(
-                "Preview blocked for sensitive path component: {}",
-                value.to_string_lossy()
-            ));
+    fn check_path(path: &Path) -> Result<(), String> {
+        for component in path.components() {
+            let std::path::Component::Normal(value) = component else {
+                continue;
+            };
+            let name = value.to_string_lossy().to_lowercase();
+            if SENSITIVE_READ_DIR_NAMES.contains(&name.as_str())
+                || SENSITIVE_READ_FILE_NAMES.contains(&name.as_str())
+            {
+                return Err(format!(
+                    "Preview blocked for sensitive path component: {}",
+                    value.to_string_lossy()
+                ));
+            }
         }
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if SENSITIVE_READ_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
+                return Err("Preview blocked for sensitive file type".to_string());
+            }
+        }
+        Ok(())
     }
-    if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
-        if SENSITIVE_READ_EXTENSIONS.contains(&ext.to_lowercase().as_str()) {
-            return Err("Preview blocked for sensitive file type".to_string());
-        }
+
+    // Check the user-visible path first, then the resolved target. The latter
+    // closes the symlink escape where a harmless-looking link points into .ssh
+    // or to a key/certificate file. Keep lexical checking for missing paths so
+    // callers receive the same policy error before an eventual I/O error.
+    check_path(path)?;
+    if let Ok(canonical) = path.canonicalize() {
+        check_path(&canonical)?;
     }
     Ok(())
 }
@@ -277,11 +459,6 @@ fn resolve_item_is_directory(path: &Path, meta: &fs::Metadata) -> bool {
     }
 }
 
-fn checksum_operation_is_active(operation_id: &str) -> Result<bool, String> {
-    let active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
-    Ok(active.contains(operation_id))
-}
-
 fn read_file_chunks<FChunk, FActive, FProgress>(
     file: &mut fs::File,
     file_size: u64,
@@ -310,8 +487,13 @@ where
             break;
         }
 
+        let n_u64 = n as u64;
+        if read_total.saturating_add(n_u64) > file_size {
+            return Err("File changed while hashing; retry checksum".to_string());
+        }
+
         on_chunk(&buf[..n]);
-        read_total += n as u64;
+        read_total += n_u64;
 
         if read_total >= next_progress_emit || read_total == file_size {
             let percent = if file_size > 0 {
@@ -326,11 +508,21 @@ where
         }
     }
 
+    if read_total != file_size {
+        return Err("File changed while hashing; retry checksum".to_string());
+    }
+
     Ok(())
 }
 
 #[tauri::command]
 pub async fn open_file(file_path: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || open_file_sync(file_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn open_file_sync(file_path: String) -> Result<(), String> {
     log::debug!("[FileOps] open_file: {}", file_path);
     match parse_open_target(&file_path)? {
         OpenTarget::FilePath(path) => {
@@ -359,32 +551,49 @@ pub async fn open_file(file_path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn create_folder(parent_path: String, folder_name: String) -> Result<String, String> {
     log::debug!("[FileOps] create_folder: {}/{}", parent_path, folder_name);
-    let parent = crate::validate_existing_path(&parent_path, "Parent")?;
-    let folder_name = validate_child_name(&folder_name, "Folder name")?;
-    let new_path = parent.join(&folder_name);
-    fs::create_dir(&new_path).map_err(|e| format!("Failed to create folder: {}", e))?;
-    undo::push_create_action(&new_path, true)?;
-    Ok(new_path.to_string_lossy().to_string())
+    tokio::task::spawn_blocking(move || {
+        let _lock = mutation_lock()?;
+        let parent = validate_mutation_destination(&parent_path)?;
+        let folder_name = validate_child_name(&folder_name, "Folder name")?;
+        let new_path = parent.join(&folder_name);
+        fs::create_dir(&new_path).map_err(|e| format!("Failed to create folder: {}", e))?;
+        undo::push_create_action(&new_path, true)?;
+        Ok(new_path.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn create_file(parent_path: String, file_name: String) -> Result<String, String> {
     log::debug!("[FileOps] create_file: {}/{}", parent_path, file_name);
-    let parent = crate::validate_existing_path(&parent_path, "Parent")?;
-    let file_name = validate_child_name(&file_name, "File name")?;
-    let new_path = parent.join(&file_name);
-    fs::OpenOptions::new()
-        .write(true)
-        .create_new(true)
-        .open(&new_path)
-        .map_err(|e| format!("Failed to create file: {}", e))?;
-    undo::push_create_action(&new_path, false)?;
-    Ok(new_path.to_string_lossy().to_string())
+    tokio::task::spawn_blocking(move || {
+        let _lock = mutation_lock()?;
+        let parent = validate_mutation_destination(&parent_path)?;
+        let file_name = validate_child_name(&file_name, "File name")?;
+        let new_path = parent.join(&file_name);
+        fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&new_path)
+            .map_err(|e| format!("Failed to create file: {}", e))?;
+        undo::push_create_action(&new_path, false)?;
+        Ok(new_path.to_string_lossy().to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn delete_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] delete_item: {}", item_path);
+    tokio::task::spawn_blocking(move || delete_item_inner(item_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn delete_item_inner(item_path: String) -> Result<(), String> {
+    let _lock = mutation_lock()?;
     let path = crate::validate_existing_path(&item_path, "Item")?;
     crate::ensure_not_root_path(&path, "delete")?;
     // Use symlink_metadata (lstat): a symlink that points at a directory must
@@ -408,6 +617,13 @@ pub async fn delete_item(item_path: String) -> Result<(), String> {
 #[tauri::command]
 pub async fn trash_item(item_path: String) -> Result<(), String> {
     log::debug!("[FileOps] trash_item: {}", item_path);
+    tokio::task::spawn_blocking(move || trash_item_inner(item_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn trash_item_inner(item_path: String) -> Result<(), String> {
+    let _lock = mutation_lock()?;
     let path = crate::validate_existing_path(&item_path, "Item")?;
     crate::ensure_not_root_path(&path, "trash")?;
     let result = trash::delete(&path).map_err(|e| format!("Failed to trash item: {}", e));
@@ -419,6 +635,12 @@ pub async fn trash_item(item_path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn open_trash() -> Result<(), String> {
+    tokio::task::spawn_blocking(open_trash_sync)
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn open_trash_sync() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
         crate::native_macos::open_path(std::path::Path::new(&format!(
@@ -444,37 +666,45 @@ pub async fn open_trash() -> Result<(), String> {
 #[tauri::command]
 pub async fn rename_item(old_path: String, new_name: String) -> Result<String, String> {
     log::debug!("[FileOps] rename_item: {} -> {}", old_path, new_name);
+    tokio::task::spawn_blocking(move || rename_item_inner(old_path, new_name))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn rename_item_inner(old_path: String, new_name: String) -> Result<String, String> {
+    let _lock = mutation_lock()?;
     let path = crate::validate_existing_path(&old_path, "Item")?;
     let new_name = validate_child_name(&new_name, "New name")?;
     let parent = path.parent().ok_or("Cannot determine parent directory")?;
+    let parent_meta = fs::symlink_metadata(parent)
+        .map_err(|e| format!("Failed to access parent directory: {}", e))?;
+    if parent_meta.file_type().is_symlink() || !parent_meta.is_dir() {
+        return Err("Refusing to rename through an unsafe parent directory".to_string());
+    }
     let canonical_parent = parent
         .canonicalize()
         .map_err(|e| format!("Cannot resolve parent directory: {}", e))?;
-    // H6: canonicalize the source as well and verify that its canonical
-    // parent matches the canonical parent we just computed. Otherwise
-    // a path like `/tmp/userdir/link -> /etc` would have parent=link, and
-    // canonicalize(parent) would resolve to /etc, letting a rename land
-    // in a privileged directory the user merely happens to have a symlink to.
-    let canonical_source = path
-        .canonicalize()
-        .map_err(|e| format!("Cannot resolve source path: {}", e))?;
-    let canonical_source_parent = canonical_source
-        .parent()
-        .ok_or("Cannot determine canonical source parent")?;
-    if canonical_source_parent != canonical_parent {
-        return Err(
-            "Refusing to rename: source resolves outside its apparent parent (symlink trick)"
-                .to_string(),
-        );
+    let source_meta =
+        fs::symlink_metadata(&path).map_err(|e| format!("Failed to access item: {}", e))?;
+    // H6: for real files/dirs, canonicalize the source and verify that its
+    // canonical parent matches. Skip this for the symlink itself so renaming a
+    // link does not follow the target.
+    if !source_meta.file_type().is_symlink() {
+        let canonical_source = path
+            .canonicalize()
+            .map_err(|e| format!("Cannot resolve source path: {}", e))?;
+        let canonical_source_parent = canonical_source
+            .parent()
+            .ok_or("Cannot determine canonical source parent")?;
+        if canonical_source_parent != canonical_parent {
+            return Err(
+                "Refusing to rename: source resolves outside its apparent parent (symlink trick)"
+                    .to_string(),
+            );
+        }
     }
     let new_path = canonical_parent.join(&new_name);
-    fs::rename(&path, &new_path).map_err(|e| {
-        if e.kind() == std::io::ErrorKind::AlreadyExists {
-            "A file or folder with that name already exists".to_string()
-        } else {
-            format!("Failed to rename: {}", e)
-        }
-    })?;
+    rename_no_replace(&path, &new_path)?;
     undo::push_rename_action(&path, &new_path)?;
     Ok(new_path.to_string_lossy().to_string())
 }
@@ -488,6 +718,8 @@ pub async fn copy_items(
     operation_id: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    validate_mutation_list(&source_paths, "Source list")?;
+    validate_conflict_resolutions(conflict_resolutions.as_ref())?;
     log::debug!(
         "[FileOps] copy_items: {} items -> {}",
         source_paths.len(),
@@ -508,47 +740,69 @@ pub async fn copy_items(
                     .as_nanos()
             )
         });
-        register_file_operation(&progress_operation_id)?;
+        let cancellation = register_file_operation(&progress_operation_id)?;
         // Guard ensures the id is unregistered on every exit path below.
-        let _active_guard = ActiveOpGuard(progress_operation_id.clone());
-        let _lock = FILE_OP_LOCK
-            .lock()
-            .map_err(|e| format!("File operation lock error: {}", e))?;
+        let _active_guard = ActiveOpGuard {
+            operation_id: progress_operation_id.clone(),
+            token: cancellation.clone(),
+        };
+        let mut lock = Some(mutation_lock_cancellable(Some(&cancellation))?);
         // Re-check: the user may have cancelled while we waited for the lock.
-        ensure_file_operation_active(&progress_operation_id)?;
-        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
+        ensure_file_operation_active(Some(&cancellation))?;
+        let dest = validate_mutation_destination(&dest_path)?;
         let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
         let resolutions = conflict_resolutions.unwrap_or_default();
         let planned = plan_file_operations(&source_paths, &dest, &behavior, "copy", &resolutions)?;
         let total = planned.len();
-        let mut copied_paths: Vec<PathBuf> = Vec::new();
+        if planned.is_empty() {
+            return Ok(());
+        }
+        let recovery_sources = planned
+            .iter()
+            .map(|item| item.source_path.clone())
+            .collect::<Vec<_>>();
+        let recovery_destinations = planned
+            .iter()
+            .map(|item| item.dest_path.clone())
+            .collect::<Vec<_>>();
+        let recovery_record_id = crate::recovery::begin_operation(
+            "copy",
+            Some(&progress_operation_id),
+            &recovery_sources,
+            &recovery_destinations,
+        )?;
+        let mut copy_entries = Vec::new();
         let mut backups: HashMap<String, OverwriteBackup> = HashMap::new();
 
         let operation = (|| -> Result<(), String> {
             for (index, item) in planned.iter().enumerate() {
-                ensure_file_operation_active(&progress_operation_id)?;
-                ensure_overwrite_backup(&mut backups, item)?;
-                ensure_file_operation_active(&progress_operation_id)?;
+                ensure_file_operation_active(Some(&cancellation))?;
+                ensure_overwrite_backup(&mut backups, item, recovery_record_id.as_deref())?;
+                ensure_file_operation_active(Some(&cancellation))?;
 
-                // Track the destination BEFORE writing so a partially-written
-                // file/folder (e.g. a cancelled mid-folder copy) is cleaned up
-                // by remove_paths_reversed on error.
-                copied_paths.push(item.dest_path.clone());
-
-                let source_meta =
-                    fs::symlink_metadata(&item.source_path).map_err(|e| e.to_string())?;
-                if source_meta.file_type().is_symlink() {
-                    copy_symlink_path(&item.source_path, &item.dest_path)?;
-                } else if source_meta.is_dir() {
-                    crate::fs_utils::copy_dir_recursive_cancellable(
-                        &item.source_path,
-                        &item.dest_path,
-                        &|| !is_file_operation_active_bool(&progress_operation_id),
-                    )?;
-                } else {
-                    fs::copy(&item.source_path, &item.dest_path)
-                        .map_err(|e| format!("Failed to copy {}: {}", item.item_name, e))?;
-                }
+                let cancelled = || is_cancelled(Some(&cancellation));
+                let entry = copy_entry_checked_with_recovery(
+                    &item.source_path,
+                    &item.dest_path,
+                    &cancelled,
+                    &mut |staged| {
+                        // Hashing a private workspace does not need the global
+                        // mutation lock. Drop it so other operations can proceed
+                        // during large fingerprints, then reacquire before publish.
+                        drop(lock.take());
+                        let recorded = undo::record_copy_entry(
+                            &item.source_path,
+                            &item.dest_path,
+                            staged,
+                            &cancelled,
+                        );
+                        lock = Some(mutation_lock_cancellable(Some(&cancellation))?);
+                        ensure_file_operation_active(Some(&cancellation))?;
+                        recorded
+                    },
+                    recovery_record_id.as_deref(),
+                )?;
+                copy_entries.push(entry);
 
                 let _ = app.emit(
                     "file-operation-progress",
@@ -564,17 +818,58 @@ pub async fn copy_items(
             Ok(())
         })();
 
+        if lock.is_none() {
+            lock = Some(mutation_lock_cancellable(Some(&cancellation))?);
+        }
+        let _lock = lock;
+
         if let Err(error) = operation {
-            remove_paths_reversed(&copied_paths);
-            restore_overwrite_backups(&backups, false);
-            cleanup_backups(&backups);
-            return Err(error);
+            let mut recovery_errors = rollback_published_copies_with_recovery(
+                &copy_entries,
+                recovery_record_id.as_deref(),
+            );
+            recovery_errors.extend(restore_overwrite_backups(&backups));
+            if recovery_errors.is_empty() {
+                if let Err(journal_error) = crate::recovery::complete(recovery_record_id.as_deref())
+                {
+                    recovery_errors
+                        .push(format!("Recovery journal update failed: {}", journal_error));
+                }
+            }
+            if !recovery_errors.is_empty() {
+                crate::recovery::record_error(
+                    recovery_record_id.as_deref(),
+                    &recovery_errors.join("; "),
+                );
+            }
+            return Err(with_recovery_errors(error, recovery_errors));
         }
 
-        cleanup_backups(&backups);
-
-        for item in &planned {
-            let _ = undo::push_create_action(&item.dest_path, item.is_directory);
+        let backup_entries = retained_backup_entries(&backups);
+        if let Err(error) = undo::push_recorded_copy_action_with_recovery(
+            copy_entries,
+            backup_entries.clone(),
+            recovery_record_id.clone(),
+        ) {
+            crate::recovery::record_error(
+                recovery_record_id.as_deref(),
+                &format!("Copy completed, but undo could not be recorded: {}", error),
+            );
+            return Err(format!(
+                "Copy completed, but undo could not be recorded: {}",
+                error
+            ));
+        }
+        if !backup_entries.is_empty() {
+            crate::recovery::mark_history_owned(
+                recovery_record_id.as_deref(),
+                &backups
+                    .values()
+                    .map(|backup| backup.backup_path.clone())
+                    .collect::<Vec<_>>(),
+            )?;
+        } else {
+            crate::recovery::complete(recovery_record_id.as_deref())?;
         }
 
         Ok(())
@@ -583,11 +878,128 @@ pub async fn copy_items(
     .map_err(|e| format!("Copy operation failed: {}", e))?
 }
 
-fn copy_dir_recursive(src: &Path, dest: &Path) -> Result<(), String> {
-    crate::fs_utils::copy_dir_recursive(src, dest)
+/// Copy into a private sibling workspace and publish without replacing any entry.
+/// Failure cleanup is restricted to the workspace that this call created.
+pub(crate) fn copy_entry_exclusive(
+    source: &Path,
+    destination: &Path,
+    cancelled: &impl Fn() -> bool,
+) -> Result<(), String> {
+    copy_entry_checked(source, destination, cancelled, &mut |_| Ok(()))
 }
 
-fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
+fn copy_entry_checked<T>(
+    source: &Path,
+    destination: &Path,
+    cancelled: &impl Fn() -> bool,
+    before_publish: &mut impl FnMut(&Path) -> Result<T, String>,
+) -> Result<T, String> {
+    copy_entry_checked_with_recovery(source, destination, cancelled, before_publish, None)
+}
+
+fn copy_entry_checked_with_recovery<T>(
+    source: &Path,
+    destination: &Path,
+    cancelled: &impl Fn() -> bool,
+    before_publish: &mut impl FnMut(&Path) -> Result<T, String>,
+    recovery_record_id: Option<&str>,
+) -> Result<T, String> {
+    let parent = destination
+        .parent()
+        .ok_or("Copy destination has no parent")?;
+    let mut workspace = None;
+    for attempt in 0..128 {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let candidate = parent.join(format!(".iyeris-copy-{nonce}-{attempt}"));
+        let builder = fs::DirBuilder::new();
+        #[cfg(unix)]
+        let mut builder = builder;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        match builder.create(&candidate) {
+            Ok(()) => {
+                workspace = Some(candidate);
+                break;
+            }
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error.to_string()),
+        }
+    }
+    let workspace = workspace.ok_or("Cannot reserve copy workspace")?;
+    let workspace_identity = match undo::path_identity(&workspace) {
+        Ok(identity) => identity,
+        Err(error) => {
+            let _ = fs::remove_dir(&workspace);
+            return Err(error);
+        }
+    };
+    let staged = workspace.join("content");
+    let result = (|| {
+        crate::recovery::record_paths_buffered(
+            recovery_record_id,
+            crate::recovery::RecoveryPaths {
+                staging: vec![workspace.clone()],
+                ..crate::recovery::RecoveryPaths::default()
+            },
+        )?;
+        let metadata = fs::symlink_metadata(source).map_err(|error| error.to_string())?;
+        if metadata.file_type().is_symlink() {
+            copy_symlink_path(source, &staged)?;
+        } else if metadata.is_dir() {
+            crate::fs_utils::copy_dir_recursive_cancellable(source, &staged, cancelled)?;
+        } else {
+            crate::fs_utils::copy_file_cancellable(source, &staged, cancelled)?;
+        }
+        if cancelled() {
+            return Err("Operation cancelled".to_string());
+        }
+        let recorded = before_publish(&staged)?;
+        if cancelled() {
+            return Err("Operation cancelled".to_string());
+        }
+        rename_exclusive(&staged, destination).map_err(|error| error.to_string())?;
+        Ok(recorded)
+    })();
+    let cleanup_result = match fs::symlink_metadata(&workspace) {
+        Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.to_string()),
+        Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
+            Err("Copy workspace was replaced by a non-directory entry".to_string())
+        }
+        Ok(_) => match undo::path_identity(&workspace) {
+            Ok(identity) if identity == workspace_identity => {
+                fs::remove_dir_all(&workspace).map_err(|error| error.to_string())
+            }
+            Ok(_) => Err("Copy workspace identity changed; preserving it".to_string()),
+            Err(error) => Err(format!("Cannot verify copy workspace identity: {}", error)),
+        },
+    };
+    if let Err(cleanup_error) = cleanup_result {
+        let message = format!(
+            "Copy workspace cleanup failed at {}: {}",
+            workspace.display(),
+            cleanup_error
+        );
+        crate::recovery::record_error(recovery_record_id, &message);
+        match result {
+            Ok(value) => {
+                log::error!("{}", message);
+                Ok(value)
+            }
+            Err(error) => Err(format!("{}; {}", error, message)),
+        }
+    } else {
+        result
+    }
+}
+
+pub(crate) fn copy_symlink_path(source: &Path, target: &Path) -> Result<(), String> {
     let link_target = fs::read_link(source).map_err(|e| e.to_string())?;
 
     #[cfg(unix)]
@@ -643,6 +1055,8 @@ pub async fn move_items(
     operation_id: Option<String>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
+    validate_mutation_list(&source_paths, "Source list")?;
+    validate_conflict_resolutions(conflict_resolutions.as_ref())?;
     log::debug!(
         "[FileOps] move_items: {} items -> {}",
         source_paths.len(),
@@ -661,19 +1075,37 @@ pub async fn move_items(
                     .as_nanos()
             )
         });
-        register_file_operation(&progress_operation_id)?;
+        let cancellation = register_file_operation(&progress_operation_id)?;
         // Guard ensures the id is unregistered on every exit path below.
-        let _active_guard = ActiveOpGuard(progress_operation_id.clone());
-        let _lock = FILE_OP_LOCK
-            .lock()
-            .map_err(|e| format!("File operation lock error: {}", e))?;
+        let _active_guard = ActiveOpGuard {
+            operation_id: progress_operation_id.clone(),
+            token: cancellation.clone(),
+        };
+        let _lock = mutation_lock_cancellable(Some(&cancellation))?;
         // Re-check: the user may have cancelled while we waited for the lock.
-        ensure_file_operation_active(&progress_operation_id)?;
-        let dest = crate::validate_existing_path(&dest_path, "Destination")?;
+        ensure_file_operation_active(Some(&cancellation))?;
+        let dest = validate_mutation_destination(&dest_path)?;
         let behavior = conflict_behavior.unwrap_or_else(|| "ask".to_string());
         let resolutions = conflict_resolutions.unwrap_or_default();
         let planned = plan_file_operations(&source_paths, &dest, &behavior, "move", &resolutions)?;
         let total = planned.len();
+        if planned.is_empty() {
+            return Ok(());
+        }
+        let recovery_sources = planned
+            .iter()
+            .map(|item| item.source_path.clone())
+            .collect::<Vec<_>>();
+        let recovery_destinations = planned
+            .iter()
+            .map(|item| item.dest_path.clone())
+            .collect::<Vec<_>>();
+        let recovery_record_id = crate::recovery::begin_operation(
+            "move",
+            Some(&progress_operation_id),
+            &recovery_sources,
+            &recovery_destinations,
+        )?;
         let mut moved_paths: Vec<String> = Vec::new();
         let mut original_paths: Vec<String> = Vec::new();
         let mut completed_moves: Vec<CompletedMove> = Vec::new();
@@ -681,10 +1113,15 @@ pub async fn move_items(
 
         let operation = (|| -> Result<(), String> {
             for (index, item) in planned.iter().enumerate() {
-                ensure_file_operation_active(&progress_operation_id)?;
-                ensure_overwrite_backup(&mut backups, item)?;
-                ensure_file_operation_active(&progress_operation_id)?;
-                move_path_with_fallback(&item.source_path, &item.dest_path)?;
+                ensure_file_operation_active(Some(&cancellation))?;
+                ensure_overwrite_backup(&mut backups, item, recovery_record_id.as_deref())?;
+                ensure_file_operation_active(Some(&cancellation))?;
+                move_path_with_fallback_cancellable_and_recovery(
+                    &item.source_path,
+                    &item.dest_path,
+                    &|| is_cancelled(Some(&cancellation)),
+                    recovery_record_id.as_deref(),
+                )?;
 
                 moved_paths.push(item.dest_path.to_string_lossy().to_string());
                 original_paths.push(item.source_path.to_string_lossy().to_string());
@@ -708,72 +1145,110 @@ pub async fn move_items(
         })();
 
         if let Err(error) = operation {
-            rollback_moves(&completed_moves);
-            restore_overwrite_backups(&backups, true);
-            cleanup_backups(&backups);
-            return Err(error);
+            let mut recovery_errors =
+                rollback_moves(&completed_moves, recovery_record_id.as_deref());
+            recovery_errors.extend(restore_overwrite_backups(&backups));
+            crate::recovery::record_error(
+                recovery_record_id.as_deref(),
+                &with_recovery_errors(error.clone(), recovery_errors.clone()),
+            );
+            return Err(with_recovery_errors(error, recovery_errors));
         }
 
-        cleanup_backups(&backups);
-        undo::push_move_action(moved_paths, original_paths, dest_path)?;
+        let item_fingerprints = match moved_paths
+            .iter()
+            .map(|path| undo::path_fingerprint(Path::new(path), &|| false))
+            .collect::<Result<Vec<_>, _>>()
+        {
+            Ok(fingerprints) => fingerprints,
+            Err(error) => {
+                let mut recovery_errors =
+                    rollback_moves(&completed_moves, recovery_record_id.as_deref());
+                recovery_errors.extend(restore_overwrite_backups(&backups));
+                crate::recovery::record_error(
+                    recovery_record_id.as_deref(),
+                    &with_recovery_errors(error.clone(), recovery_errors.clone()),
+                );
+                return Err(with_recovery_errors(error, recovery_errors));
+            }
+        };
+        let backup_entries = retained_backup_entries(&backups);
+        if let Err(error) = undo::push_move_action_with_recovery(
+            moved_paths,
+            original_paths,
+            dest_path,
+            backup_entries.clone(),
+            Some(item_fingerprints),
+            recovery_record_id.clone(),
+        ) {
+            crate::recovery::record_error(
+                recovery_record_id.as_deref(),
+                &format!("Move completed, but undo could not be recorded: {}", error),
+            );
+            return Err(format!(
+                "Move completed, but undo could not be recorded: {}",
+                error
+            ));
+        }
+        if !backup_entries.is_empty() {
+            crate::recovery::mark_history_owned(
+                recovery_record_id.as_deref(),
+                &backups
+                    .values()
+                    .map(|backup| backup.backup_path.clone())
+                    .collect::<Vec<_>>(),
+            )?;
+        } else {
+            crate::recovery::complete(recovery_record_id.as_deref())?;
+        }
         Ok(())
     })
     .await
     .map_err(|e| format!("Move operation failed: {}", e))?
 }
 
-fn register_file_operation(operation_id: &str) -> Result<(), String> {
-    let mut active = ACTIVE_FILE_OPERATIONS
-        .lock()
-        .map_err(|e| format!("File operation state lock error: {}", e))?;
-    active.insert(operation_id.to_string());
-    Ok(())
+fn register_file_operation(operation_id: &str) -> Result<CancellationToken, String> {
+    ACTIVE_FILE_OPERATIONS
+        .register(operation_id)
+        .ok_or_else(|| "File operation ID cannot be empty".to_string())
 }
 
-fn unregister_file_operation(operation_id: &str) {
-    if let Ok(mut active) = ACTIVE_FILE_OPERATIONS.lock() {
-        active.remove(operation_id);
-    }
-}
-
-fn ensure_file_operation_active(operation_id: &str) -> Result<(), String> {
-    let active = ACTIVE_FILE_OPERATIONS
-        .lock()
-        .map_err(|e| format!("File operation state lock error: {}", e))?;
-    if active.contains(operation_id) {
+fn ensure_file_operation_active(token: Option<&CancellationToken>) -> Result<(), String> {
+    if !is_cancelled(token) {
         Ok(())
     } else {
         Err("Operation cancelled".to_string())
     }
 }
 
-/// Boolean variant — used by the cancellable dir-copy callback where an
-/// `Err` return is not available (closure returns `bool`, not `Result`).
-fn is_file_operation_active_bool(operation_id: &str) -> bool {
-    ACTIVE_FILE_OPERATIONS
-        .lock()
-        .map(|set| set.contains(operation_id))
-        .unwrap_or(true) // on lock poisoning assume still active
-}
-
 /// RAII guard that unregisters an operation id on drop, so the id is removed
 /// from ACTIVE_FILE_OPERATIONS on every exit path (early `?`, cancel, panic),
 /// not just the happy path. Registered before the FILE_OP_LOCK wait so a
 /// cancel issued while queued is observed once we acquire the lock.
-struct ActiveOpGuard(String);
+struct ActiveOpGuard {
+    operation_id: String,
+    token: CancellationToken,
+}
 impl Drop for ActiveOpGuard {
     fn drop(&mut self) {
-        unregister_file_operation(&self.0);
+        ACTIVE_FILE_OPERATIONS.finish(&self.operation_id, Some(&self.token));
     }
 }
 
 #[tauri::command]
-pub async fn cancel_file_operation(operation_id: String) -> Result<(), String> {
-    unregister_file_operation(&operation_id);
+pub async fn cancel_file_operation(
+    operation_id: String,
+    window: tauri::WebviewWindow,
+) -> Result<(), String> {
+    ACTIVE_FILE_OPERATIONS.cancel(&operation_id);
+    ACTIVE_DUPLICATE_SCANS.cancel_existing(&operation_id);
+    if operation_id == DUPLICATE_SCAN_OPERATION_ID {
+        ACTIVE_DUPLICATE_SCANS.cancel_existing(&duplicate_scan_operation_id(window.label()));
+    }
     Ok(())
 }
 
-fn remove_existing_path(path: &Path) -> Result<(), String> {
+pub(crate) fn remove_existing_path(path: &Path) -> Result<(), String> {
     let meta = match fs::symlink_metadata(path) {
         Ok(meta) => meta,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
@@ -803,6 +1278,284 @@ fn normalize_case_key(path: &Path) -> String {
 
 fn path_entry_exists(path: &Path) -> bool {
     fs::symlink_metadata(path).is_ok()
+}
+
+const NAME_COLLISION_MESSAGE: &str = "A file or folder with that name already exists";
+
+pub(crate) fn same_dir_entry(left: &Path, right: &Path) -> bool {
+    #[cfg(unix)]
+    {
+        let Ok(left_meta) = fs::symlink_metadata(left) else {
+            return false;
+        };
+        let Ok(right_meta) = fs::symlink_metadata(right) else {
+            return false;
+        };
+        use std::os::unix::fs::MetadataExt;
+        left_meta.dev() == right_meta.dev() && left_meta.ino() == right_meta.ino()
+    }
+    #[cfg(windows)]
+    {
+        // Keep this branch on stable Rust. `std::os::windows::fs::MetadataExt`
+        // exposes file-index/volume methods behind the unstable
+        // `windows_by_handle` feature, so they cannot be used by release
+        // builds. Batch rename targets are built from the same validated
+        // parent path; case-insensitive lexical identity handles the
+        // important case-only rename without following symlinks.
+        left.to_string_lossy()
+            .replace('/', "\\")
+            .eq_ignore_ascii_case(&right.to_string_lossy().replace('/', "\\"))
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        left == right
+    }
+}
+
+fn map_rename_io_error(error: std::io::Error) -> String {
+    if error.kind() == ErrorKind::AlreadyExists {
+        NAME_COLLISION_MESSAGE.to_string()
+    } else {
+        format!("Failed to rename: {}", error)
+    }
+}
+
+#[cfg(unix)]
+fn path_to_cstring(path: &Path) -> std::io::Result<std::ffi::CString> {
+    use std::os::unix::ffi::OsStrExt;
+    std::ffi::CString::new(path.as_os_str().as_bytes())
+        .map_err(|_| std::io::Error::new(ErrorKind::InvalidInput, "path contains interior NUL"))
+}
+
+#[cfg(target_os = "linux")]
+pub(crate) fn rename_exclusive(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::raw::c_char;
+    const AT_FDCWD: i32 = -100;
+    const RENAME_NOREPLACE: u32 = 1;
+    extern "C" {
+        fn renameat2(
+            olddirfd: i32,
+            oldpath: *const c_char,
+            newdirfd: i32,
+            newpath: *const c_char,
+            flags: u32,
+        ) -> i32;
+    }
+    let from_c = path_to_cstring(from)?;
+    let to_c = path_to_cstring(to)?;
+    // SAFETY: both paths are owned C strings valid for the duration of the call.
+    let rc = unsafe {
+        renameat2(
+            AT_FDCWD,
+            from_c.as_ptr(),
+            AT_FDCWD,
+            to_c.as_ptr(),
+            RENAME_NOREPLACE,
+        )
+    };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub(crate) fn rename_exclusive(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::raw::c_char;
+    const RENAME_EXCL: u32 = 0x0004;
+    extern "C" {
+        fn renamex_np(old: *const c_char, new: *const c_char, flags: u32) -> i32;
+    }
+    let from_c = path_to_cstring(from)?;
+    let to_c = path_to_cstring(to)?;
+    // SAFETY: both paths are owned C strings valid for the duration of the call.
+    let rc = unsafe { renamex_np(from_c.as_ptr(), to_c.as_ptr(), RENAME_EXCL) };
+    if rc == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+#[cfg(windows)]
+pub(crate) fn rename_exclusive(from: &Path, to: &Path) -> std::io::Result<()> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::core::PCWSTR;
+    use windows::Win32::Storage::FileSystem::{MoveFileExW, MOVE_FILE_FLAGS};
+
+    let from_wide: Vec<u16> = from
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    let to_wide: Vec<u16> = to
+        .as_os_str()
+        .encode_wide()
+        .chain(std::iter::once(0))
+        .collect();
+    // SAFETY: both buffers are valid NUL-terminated wide strings we own.
+    unsafe {
+        MoveFileExW(
+            PCWSTR(from_wide.as_ptr()),
+            PCWSTR(to_wide.as_ptr()),
+            MOVE_FILE_FLAGS(0),
+        )
+    }
+    .map_err(|_| std::io::Error::last_os_error())
+}
+
+#[cfg(not(any(target_os = "linux", target_os = "macos", windows)))]
+pub(crate) fn rename_exclusive(from: &Path, to: &Path) -> std::io::Result<()> {
+    if path_entry_exists(to) && !same_dir_entry(from, to) {
+        return Err(std::io::Error::new(
+            ErrorKind::AlreadyExists,
+            NAME_COLLISION_MESSAGE,
+        ));
+    }
+    fs::rename(from, to)
+}
+
+pub(crate) fn rename_no_replace(from: &Path, to: &Path) -> Result<(), String> {
+    if from == to || same_dir_entry(from, to) {
+        return fs::rename(from, to).map_err(map_rename_io_error);
+    }
+    rename_exclusive(from, to).map_err(map_rename_io_error)
+}
+
+pub(crate) fn reserve_staging_rename(original: &Path) -> Result<PathBuf, String> {
+    reserve_staging_rename_with_recovery(original, None)
+}
+
+pub(crate) fn reserve_staging_rename_with_recovery(
+    original: &Path,
+    recovery_record_id: Option<&str>,
+) -> Result<PathBuf, String> {
+    let parent = original
+        .parent()
+        .ok_or_else(|| "Cannot determine parent directory".to_string())?;
+    let stem = original
+        .file_name()
+        .map(|name| name.to_string_lossy().replace(['/', '\\'], "_"))
+        .unwrap_or_else(|| "item".to_string());
+    for attempt in 0..128u32 {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos();
+        let temp_path = parent.join(format!(".iyeris-rename-tmp-{attempt}-{nonce}-{stem}"));
+        crate::recovery::record_paths(
+            recovery_record_id,
+            crate::recovery::RecoveryPaths {
+                staging: vec![temp_path.clone()],
+                ..crate::recovery::RecoveryPaths::default()
+            },
+        )?;
+        match rename_exclusive(original, &temp_path) {
+            Ok(()) => return Ok(temp_path),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(format!("Batch rename staging failed: {}", error)),
+        }
+    }
+    Err("Could not reserve a unique staging path".to_string())
+}
+
+/// Stage every source before publishing a rename cycle. Recovery never replaces
+/// an occupied entry; unresolved content remains at its reported staging path.
+pub(crate) fn rename_batch_transaction(paths: &[(PathBuf, PathBuf)]) -> Result<(), String> {
+    rename_batch_transaction_with_recovery(paths, None)
+}
+
+pub(crate) fn rename_batch_transaction_with_recovery(
+    paths: &[(PathBuf, PathBuf)],
+    recovery_record_id: Option<&str>,
+) -> Result<(), String> {
+    let paths: Vec<_> = paths.iter().filter(|(from, to)| from != to).collect();
+    let mut sources = HashSet::new();
+    let mut targets = HashSet::new();
+    for (from, to) in &paths {
+        if !sources.insert(normalize_case_key(from)) || !targets.insert(normalize_case_key(to)) {
+            return Err("Batch rename contains duplicate sources or targets".to_string());
+        }
+        fs::symlink_metadata(from)
+            .map_err(|e| format!("Cannot inspect {}: {}", from.display(), e))?;
+    }
+    for (from, to) in &paths {
+        if path_entry_exists(to)
+            && !sources.contains(&normalize_case_key(to))
+            && !same_dir_entry(from, to)
+        {
+            return Err(format!("Destination already exists: {}", to.display()));
+        }
+    }
+    let mut staged = Vec::new();
+    let mut published = 0;
+    let result = (|| {
+        for (from, _) in &paths {
+            staged.push(reserve_staging_rename_with_recovery(
+                from,
+                recovery_record_id,
+            )?);
+        }
+        for ((_, to), temp) in paths.iter().zip(&staged) {
+            rename_exclusive(temp, to).map_err(map_rename_io_error)?;
+            published += 1;
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let mut recovery_errors = Vec::new();
+        let mut recoverable = vec![true; staged.len()];
+        for index in (0..published).rev() {
+            if let Err(error) = rename_exclusive(&paths[index].1, &staged[index]) {
+                recoverable[index] = false;
+                recovery_errors.push(format!(
+                    "Cannot recover rename: {}. Content retained at {}",
+                    error,
+                    paths[index].1.display()
+                ));
+            }
+        }
+        for (index, temp) in staged.iter().enumerate() {
+            if recoverable[index] {
+                if let Err(error) = rename_exclusive(temp, &paths[index].0) {
+                    recovery_errors.push(format!(
+                        "Cannot restore rename: {}. Content retained at {}",
+                        error,
+                        temp.display()
+                    ));
+                }
+            }
+        }
+        return Err(with_recovery_errors(error, recovery_errors));
+    }
+    Ok(())
+}
+
+fn duplicate_scan_operation_id(window_label: &str) -> String {
+    format!("{window_label}::{DUPLICATE_SCAN_OPERATION_ID}")
+}
+
+fn is_hidden_entry(name: &str, path: &Path) -> bool {
+    if name.starts_with('.') {
+        return true;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::fs::MetadataExt;
+        if let Ok(meta) = fs::symlink_metadata(path) {
+            return meta.file_attributes() & 0x2 != 0;
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = path;
+    false
+}
+
+fn allow_duplicate_walk_entry(entry: &walkdir::DirEntry, include_hidden: bool) -> bool {
+    include_hidden
+        || entry.depth() == 0
+        || !is_hidden_entry(&entry.file_name().to_string_lossy(), entry.path())
 }
 
 fn create_renamed_target(dest: &Path, original_name: &str, reserved: &HashSet<String>) -> PathBuf {
@@ -856,12 +1609,11 @@ fn resolve_conflict_target(
 }
 
 #[derive(Clone)]
-struct PlannedFileOperation {
-    source_path: PathBuf,
-    dest_path: PathBuf,
+pub(crate) struct PlannedFileOperation {
+    pub(crate) source_path: PathBuf,
+    pub(crate) dest_path: PathBuf,
     item_name: String,
-    is_directory: bool,
-    overwrite: bool,
+    pub(crate) overwrite: bool,
 }
 
 #[derive(Clone)]
@@ -874,9 +1626,10 @@ struct CompletedMove {
 struct OverwriteBackup {
     dest_path: PathBuf,
     backup_path: PathBuf,
+    fingerprint: String,
 }
 
-fn plan_file_operations(
+pub(crate) fn plan_file_operations(
     source_paths: &[String],
     dest: &Path,
     behavior: &str,
@@ -889,12 +1642,26 @@ fn plan_file_operations(
 
     let mut planned: Vec<PlannedFileOperation> = Vec::new();
     let mut reserved: HashSet<String> = HashSet::new();
-    let dest_real = fs::canonicalize(dest).unwrap_or_else(|_| dest.to_path_buf());
+    let dest_real = fs::canonicalize(dest).map_err(|error| {
+        format!(
+            "Refusing to {}: cannot safely resolve destination {}: {}",
+            operation,
+            dest.display(),
+            error
+        )
+    })?;
     let behavior_normalized = behavior.to_ascii_lowercase();
 
     for source in source_paths {
         let src = crate::validate_existing_path(source, "Source")?;
         let metadata = fs::symlink_metadata(&src).map_err(|e| e.to_string())?;
+        if !metadata.file_type().is_symlink() && !metadata.is_file() && !metadata.is_dir() {
+            return Err(format!(
+                "Cannot {} special filesystem entry: {}",
+                operation,
+                src.display()
+            ));
+        }
         let item_name = src
             .file_name()
             .map(|name| name.to_string_lossy().to_string())
@@ -910,13 +1677,19 @@ fn plan_file_operations(
         }
 
         if metadata.is_dir() {
-            if let Ok(source_real) = fs::canonicalize(&src) {
-                if dest_real == source_real || dest_real.starts_with(&source_real) {
-                    return Err(format!(
-                        "Cannot {} \"{}\" into itself or a subfolder",
-                        operation, item_name
-                    ));
-                }
+            let source_real = fs::canonicalize(&src).map_err(|error| {
+                format!(
+                    "Refusing to {}: cannot safely resolve source {}: {}",
+                    operation,
+                    src.display(),
+                    error
+                )
+            })?;
+            if dest_real == source_real || dest_real.starts_with(&source_real) {
+                return Err(format!(
+                    "Cannot {} \"{}\" into itself or a subfolder",
+                    operation, item_name
+                ));
             }
         }
 
@@ -979,12 +1752,22 @@ fn plan_file_operations(
             source_path: src,
             dest_path: resolved.0,
             item_name,
-            is_directory: metadata.is_dir(),
             overwrite: resolved.1,
         });
     }
 
     Ok(planned)
+}
+
+pub(crate) fn validate_mutation_destination(raw: &str) -> Result<PathBuf, String> {
+    let path = crate::validate_existing_path(raw, "Destination")?;
+    let metadata = fs::symlink_metadata(&path)
+        .map_err(|error| format!("Cannot inspect destination: {}", error))?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
+        return Err("Destination must be a real directory".to_string());
+    }
+    path.canonicalize()
+        .map_err(|error| format!("Cannot safely resolve destination: {}", error))
 }
 
 fn is_cross_device_error(err: &std::io::Error) -> bool {
@@ -1002,15 +1785,41 @@ fn is_cross_device_error(err: &std::io::Error) -> bool {
     }
 }
 
-fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
+#[cfg(test)]
+pub(crate) fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
+    move_path_with_fallback_cancellable(source, target, &|| false)
+}
+
+#[cfg(test)]
+fn move_path_with_fallback_cancellable(
+    source: &Path,
+    target: &Path,
+    is_cancelled: &impl Fn() -> bool,
+) -> Result<(), String> {
+    move_path_with_fallback_cancellable_and_recovery(source, target, is_cancelled, None)
+}
+
+pub(crate) fn move_path_with_fallback_cancellable_and_recovery(
+    source: &Path,
+    target: &Path,
+    is_cancelled: &impl Fn() -> bool,
+    recovery_record_id: Option<&str>,
+) -> Result<(), String> {
+    if is_cancelled() {
+        return Err("Operation cancelled".to_string());
+    }
     let source_meta = fs::symlink_metadata(source).map_err(|e| e.to_string())?;
     let is_symlink = source_meta.file_type().is_symlink();
     let is_directory = source_meta.is_dir();
 
     if let Some(parent) = target.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+        let parent_meta = fs::symlink_metadata(parent)
+            .map_err(|e| format!("Failed to inspect destination directory: {}", e))?;
+        if parent_meta.file_type().is_symlink() || !parent_meta.is_dir() {
+            return Err("Refusing to move through an unsafe destination directory".to_string());
+        }
     }
-    match fs::rename(source, target) {
+    match rename_exclusive(source, target) {
         Ok(_) => return Ok(()),
         Err(error) if !is_cross_device_error(&error) => {
             return Err(format!(
@@ -1023,33 +1832,69 @@ fn move_path_with_fallback(source: &Path, target: &Path) -> Result<(), String> {
         Err(_) => {}
     }
 
-    if is_symlink {
-        copy_symlink_path(source, target)?;
-        if let Err(e) = remove_symlink_path(source) {
-            let _ = remove_existing_path(target);
-            return Err(format!(
-                "Failed to remove source symlink after cross-device move: {}",
-                e
-            ));
-        }
+    copy_then_remove_source_with_recovery(
+        source,
+        target,
+        is_symlink,
+        is_directory,
+        is_cancelled,
+        recovery_record_id,
+    )
+}
+
+#[cfg(test)]
+fn copy_then_remove_source(
+    source: &Path,
+    target: &Path,
+    is_symlink: bool,
+    is_directory: bool,
+    cancelled: &impl Fn() -> bool,
+) -> Result<(), String> {
+    copy_then_remove_source_with_recovery(source, target, is_symlink, is_directory, cancelled, None)
+}
+
+fn copy_then_remove_source_with_recovery(
+    source: &Path,
+    target: &Path,
+    is_symlink: bool,
+    is_directory: bool,
+    cancelled: &impl Fn() -> bool,
+    recovery_record_id: Option<&str>,
+) -> Result<(), String> {
+    // Reserve the original entry so a new occupant at its old path is never
+    // deleted during cross-volume cleanup. Restore it on failed/cancelled copy.
+    let staged_source = reserve_staging_rename_with_recovery(source, recovery_record_id)?;
+    if let Err(error) = copy_entry_checked_with_recovery(
+        &staged_source,
+        target,
+        cancelled,
+        &mut |_| Ok(()),
+        recovery_record_id,
+    ) {
+        return match rename_exclusive(&staged_source, source) {
+            Ok(()) => Err(error),
+            Err(recovery) => Err(format!(
+                "{error}; source recovery failed: {recovery}; source retained at {}",
+                staged_source.display()
+            )),
+        };
+    }
+    crate::recovery::record_paths(
+        recovery_record_id,
+        crate::recovery::RecoveryPaths {
+            staging: vec![staged_source.clone()],
+            ..crate::recovery::RecoveryPaths::default()
+        },
+    )?;
+    let cleanup = if is_symlink {
+        remove_symlink_path(&staged_source)
     } else if is_directory {
-        copy_dir_recursive(source, target)?;
-        if let Err(e) = fs::remove_dir_all(source) {
-            let _ = fs::remove_dir_all(target);
-            return Err(format!(
-                "Failed to remove source after cross-device move: {}",
-                e
-            ));
-        }
+        fs::remove_dir_all(&staged_source).map_err(|error| error.to_string())
     } else {
-        fs::copy(source, target).map_err(|e| e.to_string())?;
-        if let Err(e) = fs::remove_file(source) {
-            let _ = fs::remove_file(target);
-            return Err(format!(
-                "Failed to remove source after cross-device move: {}",
-                e
-            ));
-        }
+        fs::remove_file(&staged_source).map_err(|error| error.to_string())
+    };
+    if let Err(error) = cleanup {
+        return Err(format!("Source cleanup incomplete: {error}. Complete copy retained at {}; remaining source retained at {}", target.display(), staged_source.display()));
     }
     Ok(())
 }
@@ -1085,63 +1930,226 @@ fn create_backup_path(dest_path: &Path) -> Result<PathBuf, String> {
 fn ensure_overwrite_backup(
     backups: &mut HashMap<String, OverwriteBackup>,
     operation: &PlannedFileOperation,
+    recovery_record_id: Option<&str>,
 ) -> Result<(), String> {
     if !operation.overwrite {
         return Ok(());
     }
 
     let key = normalize_case_key(&operation.dest_path);
-    if backups.contains_key(&key) || !path_entry_exists(&operation.dest_path) {
+    if backups.contains_key(&key) {
         return Ok(());
     }
+    match fs::symlink_metadata(&operation.dest_path) {
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(()),
+        Err(error) => {
+            return Err(format!(
+                "Cannot inspect overwrite destination {}: {}",
+                operation.dest_path.display(),
+                error
+            ));
+        }
+        Ok(_) => {}
+    }
 
+    let fingerprint = undo::path_fingerprint(&operation.dest_path, &|| false)?;
     let backup_path = create_backup_path(&operation.dest_path)?;
-    move_path_with_fallback(&operation.dest_path, &backup_path)?;
+    crate::recovery::record_paths(
+        recovery_record_id,
+        crate::recovery::RecoveryPaths {
+            backups: vec![backup_path.clone()],
+            ..crate::recovery::RecoveryPaths::default()
+        },
+    )?;
+    rename_exclusive(&operation.dest_path, &backup_path).map_err(|error| {
+        format!(
+            "Failed to retain overwrite destination {}: {}",
+            operation.dest_path.display(),
+            error
+        )
+    })?;
     backups.insert(
-        key,
+        key.clone(),
         OverwriteBackup {
             dest_path: operation.dest_path.clone(),
-            backup_path,
+            backup_path: backup_path.clone(),
+            fingerprint: fingerprint.clone(),
         },
     );
+    if let Err(error) = undo::verify_copy(&backup_path, &fingerprint) {
+        crate::recovery::record_error(recovery_record_id, &error);
+        return Err(format!(
+            "Overwrite destination changed while being retained: {}; original retained at {}",
+            error,
+            backup_path.display()
+        ));
+    }
     Ok(())
 }
 
-fn restore_overwrite_backups(
+fn retained_backup_entries(
     backups: &HashMap<String, OverwriteBackup>,
-    skip_if_destination_exists: bool,
-) {
+) -> Vec<undo::OverwriteBackupEntry> {
+    backups
+        .values()
+        .map(|backup| undo::OverwriteBackupEntry {
+            original_path: backup.dest_path.to_string_lossy().into_owned(),
+            backup_path: backup.backup_path.to_string_lossy().into_owned(),
+            fingerprint: backup.fingerprint.clone(),
+        })
+        .collect()
+}
+
+fn restore_overwrite_backups(backups: &HashMap<String, OverwriteBackup>) -> Vec<String> {
+    let mut errors = Vec::new();
     for backup in backups.values() {
-        if !path_entry_exists(&backup.backup_path) {
+        match fs::symlink_metadata(&backup.backup_path) {
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => {
+                errors.push(format!(
+                    "Cannot inspect overwrite backup {}; preserving it: {}",
+                    backup.backup_path.display(),
+                    error
+                ));
+                continue;
+            }
+            Ok(_) => {}
+        }
+        if let Err(error) = undo::verify_copy(&backup.backup_path, &backup.fingerprint) {
+            errors.push(format!(
+                "Overwrite backup changed and was retained at {}: {}",
+                backup.backup_path.display(),
+                error
+            ));
             continue;
         }
-        if skip_if_destination_exists && path_entry_exists(&backup.dest_path) {
+        match fs::symlink_metadata(&backup.dest_path) {
+            Ok(_) => {
+                errors.push(format!(
+                    "Destination occupied; original retained at {}",
+                    backup.backup_path.display()
+                ));
+                continue;
+            }
+            Err(error) if error.kind() == ErrorKind::NotFound => {}
+            Err(error) => {
+                errors.push(format!(
+                    "Cannot inspect destination {}; original retained at {}: {}",
+                    backup.dest_path.display(),
+                    backup.backup_path.display(),
+                    error
+                ));
+                continue;
+            }
+        }
+        if let Err(error) = rename_exclusive(&backup.backup_path, &backup.dest_path) {
+            errors.push(format!(
+                "Restore failed: {}. Original retained at {}",
+                error,
+                backup.backup_path.display()
+            ));
+        }
+    }
+    errors
+}
+
+fn with_recovery_errors(error: String, recovery_errors: Vec<String>) -> String {
+    if recovery_errors.is_empty() {
+        error
+    } else {
+        format!("{}\n{}", error, recovery_errors.join("\n"))
+    }
+}
+
+#[cfg(test)]
+fn rollback_published_copies(entries: &[undo::CopyEntry]) -> Vec<String> {
+    rollback_published_copies_with_recovery(entries, None)
+}
+
+fn rollback_published_copies_with_recovery(
+    entries: &[undo::CopyEntry],
+    recovery_record_id: Option<&str>,
+) -> Vec<String> {
+    let mut errors = Vec::new();
+    for entry in entries.iter().rev() {
+        let destination = PathBuf::from(&entry.dest_path);
+        match fs::symlink_metadata(&destination) {
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => {
+                errors.push(format!(
+                    "Cannot inspect copied destination {}; retained for recovery: {}",
+                    destination.display(),
+                    error
+                ));
+                continue;
+            }
+            Ok(_) => {}
+        }
+
+        let quarantine =
+            match reserve_staging_rename_with_recovery(&destination, recovery_record_id) {
+                Ok(path) => path,
+                Err(error) => {
+                    errors.push(format!(
+                        "Cannot quarantine copied destination {}; retained for recovery: {}",
+                        destination.display(),
+                        error
+                    ));
+                    continue;
+                }
+            };
+        if let Err(error) = undo::verify_copy(&quarantine, &entry.fingerprint) {
+            let recovery = if path_entry_exists(&destination) {
+                Err(format!(
+                    "destination is now occupied; entry retained at {}",
+                    quarantine.display()
+                ))
+            } else {
+                rename_exclusive(&quarantine, &destination).map_err(|restore| {
+                    format!(
+                        "restore failed: {}; entry retained at {}",
+                        restore,
+                        quarantine.display()
+                    )
+                })
+            };
+            let recovery = match recovery {
+                Ok(()) => format!("entry restored at {}", destination.display()),
+                Err(recovery_error) => recovery_error,
+            };
+            errors.push(format!(
+                "Copied destination changed or was replaced at {}; preserving it. {}; {}",
+                destination.display(),
+                error,
+                recovery
+            ));
             continue;
         }
-        if path_entry_exists(&backup.dest_path) {
-            let _ = remove_existing_path(&backup.dest_path);
-        }
-        let _ = move_path_with_fallback(&backup.backup_path, &backup.dest_path);
-    }
-}
-
-fn cleanup_backups(backups: &HashMap<String, OverwriteBackup>) {
-    for backup in backups.values() {
-        if path_entry_exists(&backup.backup_path) {
-            let _ = remove_existing_path(&backup.backup_path);
+        if let Err(error) = remove_existing_path(&quarantine) {
+            errors.push(format!(
+                "Copy rollback cleanup failed; content retained at {}: {}",
+                quarantine.display(),
+                error
+            ));
         }
     }
+    errors
 }
 
-fn remove_paths_reversed(paths: &[PathBuf]) {
-    for path in paths.iter().rev() {
-        let _ = remove_existing_path(path);
-    }
-}
-
-fn rollback_moves(completed: &[CompletedMove]) {
+fn rollback_moves(completed: &[CompletedMove], recovery_record_id: Option<&str>) -> Vec<String> {
+    let mut errors = Vec::new();
     for item in completed.iter().rev() {
-        if let Err(e) = move_path_with_fallback(&item.dest_path, &item.source_path) {
+        if let Err(e) = move_path_with_fallback_cancellable_and_recovery(
+            &item.dest_path,
+            &item.source_path,
+            &|| false,
+            recovery_record_id,
+        ) {
+            errors.push(format!(
+                "Rollback failed: {}. Moved content retained at {}",
+                e,
+                item.dest_path.display()
+            ));
             log::error!(
                 "[FileOps] Rollback failed: {} -> {}: {}",
                 item.dest_path.display(),
@@ -1150,10 +2158,17 @@ fn rollback_moves(completed: &[CompletedMove]) {
             );
         }
     }
+    errors
 }
 
 #[tauri::command]
 pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, String> {
+    tokio::task::spawn_blocking(move || get_item_properties_sync(item_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn get_item_properties_sync(item_path: String) -> Result<ItemProperties, String> {
     log::debug!("[FileOps] get_item_properties: {}", item_path);
     let path = crate::validate_existing_path(&item_path, "Item")?;
     let meta = fs::symlink_metadata(&path).map_err(|e| e.to_string())?;
@@ -1250,6 +2265,13 @@ pub async fn get_item_properties(item_path: String) -> Result<ItemProperties, St
 
 #[tauri::command]
 pub async fn set_permissions(item_path: String, mode: u32) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || set_permissions_sync(item_path, mode))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn set_permissions_sync(item_path: String, mode: u32) -> Result<(), String> {
+    let _lock = mutation_lock()?;
     let path = crate::validate_existing_path(&item_path, "Item")?;
 
     // M3: refuse to operate on symlinks. `fs::set_permissions` follows symlinks,
@@ -1280,6 +2302,13 @@ pub async fn set_permissions(item_path: String, mode: u32) -> Result<(), String>
 
 #[tauri::command]
 pub async fn set_attributes(item_path: String, attrs: serde_json::Value) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || set_attributes_sync(item_path, attrs))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn set_attributes_sync(item_path: String, attrs: serde_json::Value) -> Result<(), String> {
+    let _lock = mutation_lock()?;
     let path = crate::validate_existing_path(&item_path, "Item")?;
     let read_only = attrs.get("readOnly").and_then(|value| value.as_bool());
     let hidden = attrs.get("hidden").and_then(|value| value.as_bool());
@@ -1324,16 +2353,19 @@ pub async fn read_file_content(
 ) -> Result<serde_json::Value, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
     ensure_safe_preview_read_path(&path)?;
+    let path = path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve preview path: {}", e))?;
     let limit = max_size
         .unwrap_or(DEFAULT_READ_FILE_CONTENT_LIMIT_BYTES)
         .min(MAX_READ_FILE_CONTENT_LIMIT_BYTES);
 
     tokio::task::spawn_blocking(move || {
-        let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
+        let mut file = open_regular_read(&path)?;
+        let meta = file.metadata().map_err(|e| e.to_string())?;
         let file_len = meta.len();
         let is_truncated = file_len > limit;
         let read_len = if is_truncated { limit } else { file_len };
-        let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
         let mut buffer = vec![0u8; read_len as usize];
         use std::io::Read;
         file.read_exact(&mut buffer)
@@ -1352,16 +2384,31 @@ pub async fn read_file_content(
 pub async fn get_file_data_url(file_path: String, max_size: Option<u64>) -> Result<String, String> {
     let path = crate::validate_existing_path(&file_path, "File")?;
     ensure_safe_preview_read_path(&path)?;
+    let path = path
+        .canonicalize()
+        .map_err(|e| format!("Failed to resolve preview path: {}", e))?;
     let limit = max_size
         .unwrap_or(DEFAULT_FILE_DATA_URL_LIMIT_BYTES)
         .min(MAX_FILE_DATA_URL_LIMIT_BYTES);
 
     tokio::task::spawn_blocking(move || {
-        let meta = fs::metadata(&path).map_err(|e| e.to_string())?;
+        // Keep the size check and read on one open handle. A metadata-then-read
+        // by path sequence can be raced by a file replacement or growth and
+        // defeat the data-URL memory bound.
+        let file = open_regular_read(&path)?;
+        let meta = file.metadata().map_err(|e| e.to_string())?;
         if meta.len() > limit {
             return Err("File too large for data URL".into());
         }
-        let data = fs::read(&path).map_err(|e| e.to_string())?;
+        let capacity =
+            usize::try_from(limit.min(meta.len()).saturating_add(1)).unwrap_or(usize::MAX);
+        let mut data = Vec::with_capacity(capacity);
+        file.take(limit.saturating_add(1))
+            .read_to_end(&mut data)
+            .map_err(|e| e.to_string())?;
+        if data.len() as u64 > limit {
+            return Err("File too large for data URL".into());
+        }
         let ext = path
             .extension()
             .and_then(|e| e.to_str())
@@ -1421,7 +2468,7 @@ fn base64_encode(data: &[u8]) -> String {
 }
 
 fn sample_blake3(path: &Path, sample_size: usize) -> Result<String, String> {
-    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+    let mut file = open_regular_read(path)?;
     let mut hasher = blake3::Hasher::new();
     let mut buf = vec![0u8; sample_size.min(256 * 1024)];
     let n = file.read(&mut buf).map_err(|e| e.to_string())?;
@@ -1429,46 +2476,135 @@ fn sample_blake3(path: &Path, sample_size: usize) -> Result<String, String> {
     Ok(hasher.finalize().to_hex().to_string())
 }
 
-fn full_blake3(path: &Path) -> Result<String, String> {
-    let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
+#[cfg(test)]
+fn full_blake3_reader<R: Read>(
+    reader: &mut R,
+    cancellation: Option<&CancellationToken>,
+) -> Result<String, String> {
     let mut hasher = blake3::Hasher::new();
     let mut buf = [0u8; 8192];
     loop {
-        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if is_cancelled(cancellation) {
+            return Err("Duplicate scan cancelled".to_string());
+        }
+        let n = reader.read(&mut buf).map_err(|e| e.to_string())?;
         if n == 0 {
             break;
+        }
+        if is_cancelled(cancellation) {
+            return Err("Duplicate scan cancelled".to_string());
         }
         hasher.update(&buf[..n]);
     }
     Ok(hasher.finalize().to_hex().to_string())
 }
 
+fn full_blake3(
+    path: &Path,
+    expected_size: u64,
+    cancellation: Option<&CancellationToken>,
+) -> Result<String, String> {
+    let mut file = open_regular_read(path)?;
+    let opened_size = file.metadata().map_err(|e| e.to_string())?.len();
+    if opened_size != expected_size {
+        return Err("Duplicate candidate changed while hashing".to_string());
+    }
+    if opened_size > DUPLICATE_HASH_MAX_FILE_BYTES {
+        return Err("Duplicate candidate exceeds hash size limit".to_string());
+    }
+
+    // Hash from the same opened handle whose size was checked. Detect growth
+    // and shrink races so a result is never grouped under stale metadata, and
+    // cap the stream so an attacker cannot grow a file into an unbounded read.
+    let mut hasher = blake3::Hasher::new();
+    let mut buf = [0u8; 8192];
+    let mut read_total = 0u64;
+    loop {
+        if is_cancelled(cancellation) {
+            return Err("Duplicate scan cancelled".to_string());
+        }
+        let n = file.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        let n_u64 = n as u64;
+        if read_total.saturating_add(n_u64) > expected_size {
+            return Err("Duplicate candidate changed while hashing".to_string());
+        }
+        hasher.update(&buf[..n]);
+        read_total += n_u64;
+    }
+    if read_total != expected_size {
+        return Err("Duplicate candidate changed while hashing".to_string());
+    }
+    Ok(hasher.finalize().to_hex().to_string())
+}
+
 // M4: cap individual files we will hash during duplicate detection.
-// Hashing a 50 GB file end-to-end blocks a worker thread for a long time
-// and can OOM when many large candidates exist. Files larger than this
-// are still listed as same-size matches but are NOT compared by content.
+// Hashing a multi-gigabyte file end-to-end blocks a worker thread for a long
+// time and can exhaust the duplicate scan budget when many large candidates
+// exist. Files larger than this are skipped from duplicate comparison.
 const DUPLICATE_HASH_MAX_FILE_BYTES: u64 = 4 * 1024 * 1024 * 1024; // 4 GiB
                                                                    // Cap on total bytes hashed in a single duplicate-finder run as a safety net.
 const DUPLICATE_HASH_TOTAL_BYTES_LIMIT: u64 = 64 * 1024 * 1024 * 1024; // 64 GiB
+const DUPLICATE_SCAN_MAX_ENTRIES: usize = 1_000_000;
+const DUPLICATE_SCAN_OPERATION_ID: &str = "duplicate-scan";
 
 #[tauri::command]
 pub async fn find_duplicate_files(
+    window: tauri::WebviewWindow,
     dir_path: String,
     min_size: Option<u64>,
     include_hidden: Option<bool>,
 ) -> Result<DuplicateFindResult, String> {
-    let root = crate::validate_existing_path(&dir_path, "Directory")?;
+    // Register before validation so a close/cancel arriving while the command
+    // is setting up cannot be lost. Namespace by window so one finder cannot
+    // cancel another window's scan; IPC still uses "duplicate-scan".
+    let operation_id = duplicate_scan_operation_id(window.label());
+    let cancellation = ACTIVE_DUPLICATE_SCANS
+        .register(&operation_id)
+        .ok_or_else(|| "Duplicate scan operation ID is too long".to_string())
+        .map(Some)?;
+    let root = match crate::validate_existing_path(&dir_path, "Directory") {
+        Ok(path) => path,
+        Err(error) => {
+            ACTIVE_DUPLICATE_SCANS.finish(&operation_id, cancellation.as_ref());
+            return Err(error);
+        }
+    };
     if !root.is_dir() {
+        ACTIVE_DUPLICATE_SCANS.finish(&operation_id, cancellation.as_ref());
         return Err("Path is not a directory".to_string());
     }
 
     let threshold = min_size.unwrap_or(1);
     let include_hidden = include_hidden.unwrap_or(false);
 
-    tokio::task::spawn_blocking(move || {
+    // Per-window single-flight: starting a new scan or closing the finder in
+    // this window cancels that window's previous scan. IPC still uses the
+    // "duplicate-scan" operation id.
+    let scan_cancellation = cancellation.clone();
+    let result = tokio::task::spawn_blocking(move || {
         let mut by_size: HashMap<u64, Vec<PathBuf>> = HashMap::new();
+        let mut scan_partial = false;
 
-        for entry in walkdir::WalkDir::new(&root).follow_links(false) {
+        for (visited, entry) in walkdir::WalkDir::new(&root)
+            .follow_links(false)
+            .into_iter()
+            .filter_entry(|entry| allow_duplicate_walk_entry(entry, include_hidden))
+            .enumerate()
+        {
+            if is_cancelled(scan_cancellation.as_ref()) {
+                return Err("Duplicate scan cancelled".to_string());
+            }
+            if visited >= DUPLICATE_SCAN_MAX_ENTRIES {
+                scan_partial = true;
+                log::warn!(
+                    "[FileOps] find_duplicate_files: entry limit reached ({}), returning partial results",
+                    DUPLICATE_SCAN_MAX_ENTRIES
+                );
+                break;
+            }
             let entry = match entry {
                 Ok(value) => value,
                 Err(_) => continue,
@@ -1478,13 +2614,8 @@ pub async fn find_duplicate_files(
                 continue;
             }
 
-            let file_name = entry.file_name().to_string_lossy();
-            if !include_hidden && file_name.starts_with('.') {
-                continue;
-            }
-
             let path = entry.path();
-            let size = match fs::metadata(path) {
+            let size = match fs::symlink_metadata(path) {
                 Ok(meta) => meta.len(),
                 Err(_) => continue,
             };
@@ -1516,6 +2647,9 @@ pub async fn find_duplicate_files(
 
             let mut by_fast_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
             for candidate in candidates {
+                if is_cancelled(scan_cancellation.as_ref()) {
+                    return Err("Duplicate scan cancelled".to_string());
+                }
                 let fast_hash = sample_blake3(&candidate, 64 * 1024)?;
                 by_fast_hash.entry(fast_hash).or_default().push(candidate);
             }
@@ -1527,10 +2661,13 @@ pub async fn find_duplicate_files(
 
                 let mut by_full_hash: HashMap<String, Vec<PathBuf>> = HashMap::new();
                 for candidate in fast_candidates {
+                    if is_cancelled(scan_cancellation.as_ref()) {
+                        return Err("Duplicate scan cancelled".to_string());
+                    }
                     // M4: bail if we've already hashed more than the total cap.
                     // Returns the partial groups computed so far rather than
                     // failing the whole command — the user still gets results.
-                    if total_hashed_bytes > DUPLICATE_HASH_TOTAL_BYTES_LIMIT {
+                    if size > DUPLICATE_HASH_TOTAL_BYTES_LIMIT.saturating_sub(total_hashed_bytes) {
                         log::warn!(
                             "[FileOps] find_duplicate_files: total hash budget exceeded ({} bytes), returning partial results",
                             total_hashed_bytes
@@ -1540,7 +2677,22 @@ pub async fn find_duplicate_files(
                             partial: true,
                         });
                     }
-                    let full_hash = full_blake3(&candidate)?;
+                    let full_hash = match full_blake3(&candidate, size, scan_cancellation.as_ref()) {
+                        Ok(hash) => hash,
+                        Err(error) if error == "Duplicate scan cancelled" => return Err(error),
+                        Err(error) => {
+                            // Files may disappear or mutate while a long scan
+                            // is in progress. Skip that candidate rather than
+                            // failing the entire result set; cancellation
+                            // remains the only fatal path.
+                            log::debug!(
+                                "[FileOps] skipping duplicate candidate {}: {}",
+                                candidate.display(),
+                                error
+                            );
+                            continue;
+                        }
+                    };
                     total_hashed_bytes = total_hashed_bytes.saturating_add(size);
                     by_full_hash.entry(full_hash).or_default().push(candidate);
                 }
@@ -1566,15 +2718,40 @@ pub async fn find_duplicate_files(
         groups.sort_by(|a, b| b.size.cmp(&a.size).then(a.hash.cmp(&b.hash)));
         Ok(DuplicateFindResult {
             groups,
-            partial: false,
+            partial: scan_partial,
         })
     })
     .await
-    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string());
+    ACTIVE_DUPLICATE_SCANS.finish(&operation_id, cancellation.as_ref());
+    result?
 }
 
 #[tauri::command]
 pub async fn batch_rename(items: Vec<serde_json::Value>) -> Result<Vec<serde_json::Value>, String> {
+    if items.len() > MAX_MUTATION_ITEMS {
+        return Err(format!(
+            "Rename list contains too many items (max {})",
+            MAX_MUTATION_ITEMS
+        ));
+    }
+    let encoded_size = items
+        .iter()
+        .map(|item| item.to_string().len())
+        .sum::<usize>();
+    if encoded_size > MAX_MUTATION_PATH_BYTES {
+        return Err(format!(
+            "Rename list exceeds aggregate size limit (max {} bytes)",
+            MAX_MUTATION_PATH_BYTES
+        ));
+    }
+    tokio::task::spawn_blocking(move || batch_rename_inner(items))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn batch_rename_inner(items: Vec<serde_json::Value>) -> Result<Vec<serde_json::Value>, String> {
+    let _lock = mutation_lock()?;
     struct RenameOp {
         old_path_str: String,
         old_path: PathBuf,
@@ -1586,7 +2763,7 @@ pub async fn batch_rename(items: Vec<serde_json::Value>) -> Result<Vec<serde_jso
 
     // Phase 0: validate all items upfront and build the full plan
     let mut plan: Vec<Result<RenameOp, (String, String)>> = Vec::new();
-    let mut old_path_set: HashSet<PathBuf> = HashSet::new();
+    let mut target_counts: HashMap<String, usize> = HashMap::new();
 
     for item in &items {
         let old_path_str = match item["oldPath"].as_str() {
@@ -1624,6 +2801,23 @@ pub async fn batch_rename(items: Vec<serde_json::Value>) -> Result<Vec<serde_jso
                 continue;
             }
         };
+        let parent_meta = match fs::symlink_metadata(parent) {
+            Ok(meta) => meta,
+            Err(e) => {
+                plan.push(Err((
+                    old_path_str,
+                    format!("Failed to access parent directory: {}", e),
+                )));
+                continue;
+            }
+        };
+        if parent_meta.file_type().is_symlink() || !parent_meta.is_dir() {
+            plan.push(Err((
+                old_path_str,
+                "Refusing to rename through an unsafe parent directory".to_string(),
+            )));
+            continue;
+        }
         let canonical_parent = match parent.canonicalize() {
             Ok(p) => p,
             Err(e) => {
@@ -1634,42 +2828,47 @@ pub async fn batch_rename(items: Vec<serde_json::Value>) -> Result<Vec<serde_jso
                 continue;
             }
         };
-        let canonical_source = match old_path.canonicalize() {
-            Ok(p) => p,
+        let source_meta = match fs::symlink_metadata(&old_path) {
+            Ok(meta) => meta,
             Err(e) => {
-                plan.push(Err((
-                    old_path_str,
-                    format!("Cannot resolve source path: {}", e),
-                )));
+                plan.push(Err((old_path_str, format!("Failed to access item: {}", e))));
                 continue;
             }
         };
-        let canonical_source_parent = match canonical_source.parent() {
-            Some(p) => p,
-            None => {
+        if !source_meta.file_type().is_symlink() {
+            let canonical_source = match old_path.canonicalize() {
+                Ok(p) => p,
+                Err(e) => {
+                    plan.push(Err((
+                        old_path_str,
+                        format!("Cannot resolve source path: {}", e),
+                    )));
+                    continue;
+                }
+            };
+            let canonical_source_parent = match canonical_source.parent() {
+                Some(p) => p,
+                None => {
+                    plan.push(Err((
+                        old_path_str,
+                        "Cannot determine canonical source parent".to_string(),
+                    )));
+                    continue;
+                }
+            };
+            if canonical_source_parent != canonical_parent {
                 plan.push(Err((
                     old_path_str,
-                    "Cannot determine canonical source parent".to_string(),
+                    "Refusing to rename: source resolves outside its apparent parent (symlink trick)"
+                        .to_string(),
                 )));
                 continue;
             }
-        };
-        if canonical_source_parent != canonical_parent {
-            plan.push(Err((
-                old_path_str,
-                "Refusing to rename: source resolves outside its apparent parent (symlink trick)"
-                    .to_string(),
-            )));
-            continue;
         }
-        let new_path = match old_path.parent() {
-            Some(parent) => parent.join(&new_name),
-            None => {
-                plan.push(Err((old_path_str, "Cannot determine parent".to_string())));
-                continue;
-            }
-        };
-        old_path_set.insert(old_path.clone());
+        let new_path = parent.join(&new_name);
+        *target_counts
+            .entry(normalize_case_key(&new_path))
+            .or_insert(0) += 1;
         plan.push(Ok(RenameOp {
             old_path_str,
             old_path,
@@ -1677,93 +2876,51 @@ pub async fn batch_rename(items: Vec<serde_json::Value>) -> Result<Vec<serde_jso
         }));
     }
 
-    // Phase 1: pre-move any source files whose destination is also a source being renamed
-    // (prevents swap/chain renames from clobbering file content)
-    let mut temp_map: HashMap<PathBuf, PathBuf> = HashMap::new();
-    for op in plan.iter().filter_map(|r| r.as_ref().ok()) {
-        if op.new_path != op.old_path
-            && path_entry_exists(&op.new_path)
-            && old_path_set.contains(&op.new_path)
-            && !temp_map.contains_key(&op.new_path)
-        {
-            let temp_path = op.new_path.with_file_name(format!(
-                ".iyeris-rename-tmp-{}",
-                op.new_path
-                    .file_name()
-                    .unwrap_or_default()
-                    .to_string_lossy()
-            ));
-            if let Err(e) = fs::rename(&op.new_path, &temp_path) {
-                // Roll back any temp renames already completed
-                for (orig, temp) in &temp_map {
-                    let _ = fs::rename(temp, orig);
-                }
-                return Err(format!("Batch rename staging failed: {}", e));
-            }
-            temp_map.insert(op.new_path.clone(), temp_path);
-        }
-    }
-
-    // Phase 2: execute all renames (validation errors are passed through as-is)
-    for plan_entry in &plan {
-        match plan_entry {
-            Err((old_path_str, error)) => {
-                results.push(serde_json::json!({
-                    "oldPath": old_path_str,
-                    "success": false,
-                    "error": error,
-                }));
-            }
-            Ok(op) => {
-                // True conflict: destination exists and is not being renamed away
+    let duplicate_indexes: Vec<usize> = plan
+        .iter()
+        .enumerate()
+        .filter_map(|(index, entry)| match entry {
+            Ok(op)
                 if op.new_path != op.old_path
-                    && path_entry_exists(&op.new_path)
-                    && !old_path_set.contains(&op.new_path)
-                {
-                    results.push(serde_json::json!({
-                        "oldPath": op.old_path_str,
-                        "success": false,
-                        "error": format!("Destination already exists: {}", op.new_path.display()),
-                    }));
-                    continue;
-                }
-                // Use the temp path if this source was pre-moved during phase 1
-                let actual_src = temp_map
-                    .get(&op.old_path)
-                    .cloned()
-                    .unwrap_or_else(|| op.old_path.clone());
-                match fs::rename(&actual_src, &op.new_path) {
-                    Ok(_) => {
-                        let new_path_string = op.new_path.to_string_lossy().to_string();
-                        completed_renames.push((op.old_path_str.clone(), new_path_string.clone()));
-                        results.push(serde_json::json!({
-                            "oldPath": op.old_path_str,
-                            "newPath": new_path_string,
-                            "success": true,
-                        }));
-                    }
-                    Err(e) => results.push(serde_json::json!({
-                        "oldPath": op.old_path_str,
-                        "success": false,
-                        "error": e.to_string(),
-                    })),
-                }
+                    && !same_dir_entry(&op.old_path, &op.new_path)
+                    && target_counts
+                        .get(&normalize_case_key(&op.new_path))
+                        .copied()
+                        .unwrap_or(0)
+                        > 1 =>
+            {
+                Some(index)
             }
+            _ => None,
+        })
+        .collect();
+    for index in duplicate_indexes {
+        if let Ok(op) = &plan[index] {
+            plan[index] = Err((
+                op.old_path_str.clone(),
+                format!("Duplicate target name: {}", op.new_path.display()),
+            ));
         }
     }
 
-    // Phase 3: restore any staged temp files whose Phase 2 rename was skipped or failed
-    // and whose original slot is now free (not occupied by a successful rename from this batch).
-    for (original_path, temp_path) in &temp_map {
-        if path_entry_exists(temp_path) && !path_entry_exists(original_path) {
-            if let Err(e) = fs::rename(temp_path, original_path) {
-                log::warn!(
-                    "[FileOps] batch_rename: failed to restore staged temp {:?} to {:?}: {}",
-                    temp_path,
-                    original_path,
-                    e
-                );
-                let _ = fs::remove_file(temp_path);
+    let renames = plan
+        .iter()
+        .filter_map(|entry| entry.as_ref().ok())
+        .map(|op| (op.old_path.clone(), op.new_path.clone()))
+        .collect::<Vec<_>>();
+    let transaction = rename_batch_transaction(&renames);
+    for entry in plan {
+        match entry {
+            Err((old_path, error)) => results.push(serde_json::json!({"oldPath": old_path, "success": false, "error": error})),
+            Ok(op) => match &transaction {
+                Ok(()) => {
+                    let new_path = op.new_path.to_string_lossy().to_string();
+                    if op.old_path != op.new_path {
+                        completed_renames.push((op.old_path_str.clone(), new_path.clone()));
+                    }
+                    results.push(serde_json::json!({"oldPath": op.old_path_str, "newPath": new_path, "success": true}));
+                }
+                Err(error) => results.push(serde_json::json!({"oldPath": op.old_path_str, "success": false, "error": error})),
             }
         }
     }
@@ -1776,36 +2933,57 @@ pub async fn batch_rename(items: Vec<serde_json::Value>) -> Result<Vec<serde_jso
 
 #[tauri::command]
 pub async fn create_symlink(target_path: String, link_path: String) -> Result<(), String> {
-    let target = crate::validate_existing_path(&target_path, "Target")?;
-    let link = crate::validate_path(&link_path, "Link")?;
+    tokio::task::spawn_blocking(move || {
+        let _lock = mutation_lock()?;
+        let target = crate::validate_existing_path(&target_path, "Target")?;
+        let link = crate::validate_path(&link_path, "Link")?;
+        let parent = link
+            .parent()
+            .ok_or_else(|| "Link path has no parent directory".to_string())?;
+        let parent_meta = fs::symlink_metadata(parent)
+            .map_err(|e| format!("Failed to access link parent directory: {}", e))?;
+        if parent_meta.file_type().is_symlink() || !parent_meta.is_dir() {
+            return Err(
+                "Refusing to create a symlink through an unsafe parent directory".to_string(),
+            );
+        }
 
-    #[cfg(unix)]
-    {
-        std::os::unix::fs::symlink(&target, &link)
-            .map_err(|e| format!("Failed to create symlink: {}", e))
-    }
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&target, &link)
+                .map_err(|e| format!("Failed to create symlink: {}", e))
+        }
 
-    #[cfg(target_os = "windows")]
-    {
-        let result = if target.is_dir() {
-            std::os::windows::fs::symlink_dir(&target, &link)
-        } else {
-            std::os::windows::fs::symlink_file(&target, &link)
-        };
-        result.map_err(|e| {
-            if e.raw_os_error() == Some(1314) {
-                "Creating symlinks requires administrator privileges on Windows. \
-                 Run the app as administrator or enable Developer Mode in Windows Settings."
-                    .to_string()
+        #[cfg(target_os = "windows")]
+        {
+            let result = if target.is_dir() {
+                std::os::windows::fs::symlink_dir(&target, &link)
             } else {
-                format!("Failed to create symlink: {}", e)
-            }
-        })
-    }
+                std::os::windows::fs::symlink_file(&target, &link)
+            };
+            result.map_err(|e| {
+                if e.raw_os_error() == Some(1314) {
+                    "Creating symlinks requires administrator privileges on Windows. \
+                     Run the app as administrator or enable Developer Mode in Windows Settings."
+                        .to_string()
+                } else {
+                    format!("Failed to create symlink: {}", e)
+                }
+            })
+        }
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn resolve_shortcut(shortcut_path: String) -> Result<String, String> {
+    tokio::task::spawn_blocking(move || resolve_shortcut_sync(shortcut_path))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+fn resolve_shortcut_sync(shortcut_path: String) -> Result<String, String> {
     let path = crate::validate_existing_path(&shortcut_path, "Shortcut")?;
 
     #[cfg(target_os = "windows")]
@@ -1827,18 +3005,49 @@ pub fn set_clipboard(
     app: tauri::AppHandle,
     clipboard_data: Option<serde_json::Value>,
 ) -> Result<(), String> {
-    log::debug!("[Clipboard] set_clipboard: {:?}", clipboard_data);
-    let mut cb = state.clipboard.lock().map_err(|e| e.to_string())?;
-    if let Some(data) = clipboard_data {
-        cb.operation = data["operation"].as_str().map(String::from);
-        cb.paths = data["paths"]
+    // Never log clipboard payloads: paths can contain sensitive filenames and
+    // the renderer is allowed to update this state frequently.
+    log::debug!(
+        "[Clipboard] set_clipboard: {}",
+        if clipboard_data.is_some() {
+            "set"
+        } else {
+            "clear"
+        }
+    );
+    let (operation, paths) = if let Some(data) = clipboard_data {
+        let operation = data["operation"].as_str().map(str::to_ascii_lowercase);
+        if let Some(value) = operation.as_deref() {
+            if !matches!(value, "copy" | "cut") {
+                return Err("Clipboard operation must be copy or cut".to_string());
+            }
+        }
+        let paths = data["paths"]
             .as_array()
             .map(|arr| {
-                arr.iter()
+                if arr.len() > MAX_MUTATION_ITEMS {
+                    return Err(format!(
+                        "Clipboard contains too many items (max {})",
+                        MAX_MUTATION_ITEMS
+                    ));
+                }
+                Ok(arr
+                    .iter()
                     .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
+                    .collect::<Vec<_>>())
             })
+            .transpose()?
             .unwrap_or_default();
+        validate_mutation_list(&paths, "Clipboard")?;
+        (operation, paths)
+    } else {
+        (None, Vec::new())
+    };
+
+    let mut cb = state.clipboard.lock().map_err(|e| e.to_string())?;
+    if operation.is_some() {
+        cb.operation = operation;
+        cb.paths = paths;
     } else {
         cb.operation = None;
         cb.paths.clear();
@@ -1991,6 +3200,9 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
         .map(|line| line.trim())
         .filter(|line| !line.is_empty())
     {
+        if paths.len() >= MAX_MUTATION_ITEMS {
+            break;
+        }
         let candidate = if let Some(path) = decode_file_uri_path(line) {
             Some(path)
         } else if is_absolute_path_like(line) {
@@ -2000,6 +3212,9 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
         };
 
         if let Some(path) = candidate {
+            if path.len() > MAX_MUTATION_PATH_BYTES {
+                continue;
+            }
             let key = normalize_case_key(Path::new(&path));
             if seen.insert(key) {
                 paths.push(path);
@@ -2010,215 +3225,77 @@ fn parse_clipboard_paths(text: &str) -> Vec<String> {
     paths
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::io::Write;
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    fn make_test_temp_dir(prefix: &str) -> PathBuf {
-        let mut dir = std::env::temp_dir();
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        dir.push(format!(
-            "iyeris-{}-{}-{}",
-            prefix,
-            std::process::id(),
-            nonce
-        ));
-        fs::create_dir_all(&dir).unwrap();
-        dir
-    }
-
-    #[test]
-    fn percent_decode_lossy_decodes_hex_sequences() {
-        assert_eq!(percent_decode_lossy("Alpha%20Beta"), "Alpha Beta");
-        assert_eq!(percent_decode_lossy("%2fpath%2Ffile"), "/path/file");
-    }
-
-    #[test]
-    fn preferred_drop_effect_distinguishes_explorer_cut_and_copy() {
-        assert_eq!(
-            clipboard_operation_from_preferred_drop_effect(Some(1)),
-            Some("copy")
-        );
-        assert_eq!(
-            clipboard_operation_from_preferred_drop_effect(Some(2)),
-            Some("cut")
-        );
-    }
-
-    #[test]
-    fn preferred_drop_effect_ignores_unknown_or_missing_values() {
-        assert_eq!(clipboard_operation_from_preferred_drop_effect(None), None);
-        assert_eq!(
-            clipboard_operation_from_preferred_drop_effect(Some(0)),
-            None
-        );
-        assert_eq!(
-            clipboard_operation_from_preferred_drop_effect(Some(4)),
-            None
-        );
-    }
-
-    #[test]
-    fn preview_read_guard_rejects_sensitive_paths() {
-        assert!(ensure_safe_preview_read_path(Path::new("/home/me/.ssh/id_rsa")).is_err());
-        assert!(ensure_safe_preview_read_path(Path::new("/home/me/.aws/config")).is_err());
-        assert!(ensure_safe_preview_read_path(Path::new("/home/me/cert.pem")).is_err());
-    }
-
-    #[test]
-    fn preview_read_guard_allows_normal_paths() {
-        assert!(ensure_safe_preview_read_path(Path::new("/home/me/Documents/readme.txt")).is_ok());
-        assert!(ensure_safe_preview_read_path(Path::new("/tmp/photo.png")).is_ok());
-    }
-
-    #[cfg(target_os = "windows")]
-    #[test]
-    fn decode_file_uri_path_supports_windows_drive_and_unc() {
-        assert_eq!(
-            decode_file_uri_path("file:///C:/Program%20Files/IYERIS/test.txt"),
-            Some("C:\\Program Files\\IYERIS\\test.txt".to_string())
-        );
-        assert_eq!(
-            decode_file_uri_path("file://localhost/C:/Windows"),
-            Some("C:\\Windows".to_string())
-        );
-        assert_eq!(
-            decode_file_uri_path("file://server/share/folder%20a"),
-            Some("\\\\server\\share\\folder a".to_string())
-        );
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    #[test]
-    fn decode_file_uri_path_supports_unix_and_network_forms() {
-        assert_eq!(
-            decode_file_uri_path("file:///home/user/My%20File.txt"),
-            Some("/home/user/My File.txt".to_string())
-        );
-        assert_eq!(
-            decode_file_uri_path("file://localhost/tmp/example"),
-            Some("/tmp/example".to_string())
-        );
-        assert_eq!(
-            decode_file_uri_path("file://server/share/folder"),
-            Some("//server/share/folder".to_string())
-        );
-    }
-
-    #[test]
-    fn plan_file_operations_rejects_copy_overwrite_onto_self() {
-        let dir = make_test_temp_dir("copy-self");
-        let file_path = dir.join("sample.txt");
-        fs::write(&file_path, "abc").unwrap();
-
-        let planned = plan_file_operations(
-            &[file_path.to_string_lossy().to_string()],
-            &dir,
-            "overwrite",
-            "copy",
-            &HashMap::new(),
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-        assert!(planned.is_err());
-        assert!(planned
-            .err()
-            .unwrap()
-            .to_ascii_lowercase()
-            .contains("onto itself"));
-    }
-
-    #[test]
-    fn plan_file_operations_rejects_move_overwrite_onto_self() {
-        let dir = make_test_temp_dir("move-self");
-        let file_path = dir.join("sample.txt");
-        fs::write(&file_path, "abc").unwrap();
-
-        let planned = plan_file_operations(
-            &[file_path.to_string_lossy().to_string()],
-            &dir,
-            "overwrite",
-            "move",
-            &HashMap::new(),
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-        assert!(planned.is_err());
-        assert!(planned
-            .err()
-            .unwrap()
-            .to_ascii_lowercase()
-            .contains("onto itself"));
-    }
-
-    #[test]
-    fn read_file_chunks_stops_when_cancelled_mid_stream() {
-        let dir = make_test_temp_dir("checksum-cancel");
-        let file_path = dir.join("sample.bin");
-        let mut file = fs::File::create(&file_path).unwrap();
-        file.write_all(&vec![b'x'; 32 * 1024]).unwrap();
-        drop(file);
-
-        let mut file = fs::File::open(&file_path).unwrap();
-        let mut saw_chunks = 0usize;
-        let mut should_continue_calls = 0usize;
-        let result = read_file_chunks(
-            &mut file,
-            32 * 1024,
-            |_| {
-                saw_chunks += 1;
-            },
-            || {
-                should_continue_calls += 1;
-                Ok(should_continue_calls < 3)
-            },
-            |_| {},
-        );
-
-        let _ = fs::remove_dir_all(&dir);
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Checksum cancelled");
-        assert!(saw_chunks > 0);
-        assert!(saw_chunks < 4);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn get_item_properties_treats_symlinked_directory_as_directory() {
-        use std::os::unix::fs::symlink;
-
-        let dir = make_test_temp_dir("symlink-dir-props");
-        let target_dir = dir.join("target");
-        let link_dir = dir.join("target-link");
-        fs::create_dir(&target_dir).unwrap();
-        symlink(&target_dir, &link_dir).unwrap();
-
-        let runtime = tokio::runtime::Runtime::new().unwrap();
-        let props = runtime
-            .block_on(get_item_properties(link_dir.to_string_lossy().to_string()))
-            .unwrap();
-
-        let _ = fs::remove_dir_all(&dir);
-        assert!(props.is_symlink);
-        assert!(props.is_directory);
-    }
+#[cfg_attr(not(any(target_os = "windows", target_os = "macos")), allow(dead_code))]
+fn bound_clipboard_paths(paths: Vec<String>) -> Vec<String> {
+    let mut total = 0usize;
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            if path.len() > MAX_MUTATION_PATH_BYTES
+                || total.saturating_add(path.len()) > MAX_MUTATION_PATH_BYTES
+            {
+                return None;
+            }
+            total = total.saturating_add(path.len());
+            Some(path)
+        })
+        .take(MAX_MUTATION_ITEMS)
+        .collect()
 }
+
+#[cfg(test)]
+#[path = "file_operations_tests.rs"]
+mod tests;
+
+#[cfg(target_os = "linux")]
+const CLIPBOARD_COMMAND_TIMEOUT: Duration = Duration::from_secs(2);
 
 #[cfg(target_os = "linux")]
 fn run_command_capture(command: &str, args: &[&str]) -> Option<String> {
     let mut cmd = Command::new(command);
     cmd.args(args);
-    let output = cmd.output().ok()?;
-    if !output.status.success() {
+    cmd.stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    let mut child = cmd.spawn().ok()?;
+    let Some(stdout) = child.stdout.take() else {
+        let _ = child.kill();
+        let _ = child.wait();
+        return None;
+    };
+    let reader = std::thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let result = stdout
+            .take((MAX_CLIPBOARD_TEXT_BYTES as u64).saturating_add(1))
+            .read_to_end(&mut bytes);
+        (result, bytes)
+    });
+    let deadline = Instant::now() + CLIPBOARD_COMMAND_TIMEOUT;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) if Instant::now() >= deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return None;
+            }
+            Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                let _ = reader.join();
+                return None;
+            }
+        }
+    };
+    let (read_result, bytes) = reader.join().ok()?;
+    if read_result.is_err() || bytes.len() > MAX_CLIPBOARD_TEXT_BYTES {
         return None;
     }
-    Some(String::from_utf8_lossy(&output.stdout).to_string())
+    if !status.success() {
+        return None;
+    }
+    Some(String::from_utf8_lossy(&bytes).to_string())
 }
 
 #[cfg(target_os = "windows")]
@@ -2247,6 +3324,7 @@ fn get_windows_system_clipboard_files() -> (Vec<String>, Option<&'static str>) {
                 return (Vec::new(), None);
             }
 
+            let count = count.min(MAX_MUTATION_ITEMS as u32);
             let mut paths = Vec::with_capacity(count as usize);
             for i in 0..count {
                 let len = DragQueryFileW(hdrop, i, None);
@@ -2326,6 +3404,10 @@ fn get_windows_system_clipboard_text_paths() -> Vec<String> {
                 let _ = GlobalUnlock(hglobal);
                 return Vec::new();
             }
+            if max_units > MAX_CLIPBOARD_TEXT_BYTES / std::mem::size_of::<u16>() {
+                let _ = GlobalUnlock(hglobal);
+                return Vec::new();
+            }
 
             let wide = ptr as *const u16;
             let mut len = 0usize;
@@ -2402,14 +3484,17 @@ fn get_system_clipboard_files_internal() -> (Vec<String>, Option<&'static str>) 
     {
         let (files, operation) = get_windows_system_clipboard_files();
         if !files.is_empty() {
-            return (files, operation);
+            return (bound_clipboard_paths(files), operation);
         }
-        (get_windows_system_clipboard_text_paths(), None)
+        (
+            bound_clipboard_paths(get_windows_system_clipboard_text_paths()),
+            None,
+        )
     }
 
     #[cfg(target_os = "macos")]
     {
-        let files = crate::native_macos::clipboard_file_paths();
+        let files = bound_clipboard_paths(crate::native_macos::clipboard_file_paths());
         if !files.is_empty() {
             return (files, None);
         }
@@ -2453,11 +3538,16 @@ fn clipboard_paths_match(paths_a: &[String], paths_b: &[String]) -> bool {
 }
 
 #[tauri::command]
-pub fn get_system_clipboard_data(
+pub async fn get_system_clipboard_data(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<serde_json::Value, String> {
     log::debug!("[Clipboard] get_system_clipboard_data");
-    let (system_paths, system_operation) = get_system_clipboard_files_internal();
+    // Clipboard backends shell out on Linux and call native APIs elsewhere.
+    // Keep that potentially blocking work off the command/UI thread.
+    let (system_paths, system_operation) =
+        tokio::task::spawn_blocking(get_system_clipboard_files_internal)
+            .await
+            .map_err(|error| error.to_string())?;
     if !system_paths.is_empty() {
         let cb = state.clipboard.lock().map_err(|e| e.to_string())?;
         let operation = match system_operation {
@@ -2479,11 +3569,13 @@ pub fn get_system_clipboard_data(
 }
 
 #[tauri::command]
-pub fn get_system_clipboard_files(
+pub async fn get_system_clipboard_files(
     state: tauri::State<'_, crate::AppState>,
 ) -> Result<Vec<String>, String> {
     log::debug!("[Clipboard] get_system_clipboard_files");
-    let (system_paths, _) = get_system_clipboard_files_internal();
+    let (system_paths, _) = tokio::task::spawn_blocking(get_system_clipboard_files_internal)
+        .await
+        .map_err(|error| error.to_string())?;
     if !system_paths.is_empty() {
         return Ok(system_paths);
     }
@@ -2492,11 +3584,23 @@ pub fn get_system_clipboard_files(
 }
 
 #[tauri::command]
-pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
+pub async fn write_to_system_clipboard(text: String) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || write_to_system_clipboard_sync(text))
+        .await
+        .map_err(|error| error.to_string())?
+}
+
+fn write_to_system_clipboard_sync(text: String) -> Result<(), String> {
     log::debug!(
         "[Clipboard] write_to_system_clipboard ({} chars)",
         text.len()
     );
+    if text.len() > MAX_CLIPBOARD_TEXT_BYTES {
+        return Err(format!(
+            "Clipboard text exceeds the {} byte limit",
+            MAX_CLIPBOARD_TEXT_BYTES
+        ));
+    }
     #[cfg(target_os = "windows")]
     {
         write_windows_system_clipboard_text(&text)
@@ -2513,14 +3617,46 @@ pub fn write_to_system_clipboard(text: String) -> Result<(), String> {
             let mut cmd = Command::new(cmd_name);
             cmd.args(args).stdin(std::process::Stdio::piped());
             let mut child = cmd.spawn().map_err(|e| e.to_string())?;
-            if let Some(mut stdin) = child.stdin.take() {
+            let Some(mut stdin) = child.stdin.take() else {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("Clipboard helper did not expose stdin".to_string());
+            };
+            let bytes = text.as_bytes().to_vec();
+            let writer = std::thread::spawn(move || {
                 use std::io::Write;
-                stdin
-                    .write_all(text.as_bytes())
-                    .map_err(|e| e.to_string())?;
+                let result = stdin.write_all(&bytes);
+                drop(stdin);
+                result
+            });
+            let deadline = Instant::now() + CLIPBOARD_COMMAND_TIMEOUT;
+            let status = loop {
+                match child.try_wait() {
+                    Ok(Some(status)) => break status,
+                    Ok(None) if Instant::now() >= deadline => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        let _ = writer.join();
+                        return Err("Clipboard helper timed out".to_string());
+                    }
+                    Ok(None) => std::thread::sleep(Duration::from_millis(10)),
+                    Err(error) => {
+                        let _ = child.kill();
+                        let _ = child.wait();
+                        let _ = writer.join();
+                        return Err(error.to_string());
+                    }
+                }
+            };
+            writer
+                .join()
+                .map_err(|_| "Clipboard writer thread panicked".to_string())?
+                .map_err(|e| e.to_string())?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("Clipboard helper exited with {}", status))
             }
-            child.wait().map_err(|e| e.to_string())?;
-            Ok(())
         };
 
         if try_copy("wl-copy", &[]).is_ok() {
@@ -2547,6 +3683,7 @@ pub fn set_drag_data(
     state: tauri::State<'_, crate::AppState>,
     paths: Vec<String>,
 ) -> Result<(), String> {
+    validate_mutation_list(&paths, "Drag list")?;
     for path in &paths {
         crate::validate_existing_path(path, "Drag item")?;
     }
@@ -2575,21 +3712,105 @@ pub async fn calculate_checksum(
     algorithms: Vec<String>,
     webview: tauri::WebviewWindow,
 ) -> Result<serde_json::Value, String> {
-    let path = crate::validate_existing_path(&file_path, "File")?;
-    ensure_safe_preview_read_path(&path)?; // don't hash secrets (ssh keys, .pem, etc.)
+    if operation_id.is_empty() {
+        return Err("Checksum operation ID is required".to_string());
+    }
+    let cancellation = ACTIVE_CHECKSUMS
+        .register(&operation_id)
+        .ok_or_else(|| "Checksum operation ID is too long".to_string())?;
 
+    const MAX_CHECKSUM_ALGORITHMS: usize = 16;
+    const MAX_CHECKSUM_ALGORITHM_BYTES: usize = 4096;
+    if algorithms.len() > MAX_CHECKSUM_ALGORITHMS
+        || algorithms.iter().map(String::len).sum::<usize>() > MAX_CHECKSUM_ALGORITHM_BYTES
     {
-        let mut active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
-        active.insert(operation_id.clone());
+        ACTIVE_CHECKSUMS.finish(&operation_id, Some(&cancellation));
+        return Err(format!(
+            "Too many checksum algorithms (max {})",
+            MAX_CHECKSUM_ALGORITHMS
+        ));
+    }
+
+    let path = match crate::validate_existing_path(&file_path, "File") {
+        Ok(path) => path,
+        Err(error) => {
+            ACTIVE_CHECKSUMS.finish(&operation_id, Some(&cancellation));
+            return Err(error);
+        }
+    };
+    if let Err(error) = ensure_safe_preview_read_path(&path) {
+        ACTIVE_CHECKSUMS.finish(&operation_id, Some(&cancellation));
+        return Err(error);
+    } // don't hash secrets (ssh keys, .pem, etc.)
+    let path = match path.canonicalize() {
+        Ok(path) => path,
+        Err(error) => {
+            ACTIVE_CHECKSUMS.finish(&operation_id, Some(&cancellation));
+            return Err(format!("Failed to resolve checksum path: {}", error));
+        }
+    };
+
+    let normalized_algorithms: Vec<String> = algorithms
+        .iter()
+        .map(|algorithm| algorithm.to_ascii_lowercase())
+        .collect();
+    if normalized_algorithms.is_empty() {
+        ACTIVE_CHECKSUMS.finish(&operation_id, Some(&cancellation));
+        return Err("At least one checksum algorithm is required".to_string());
+    }
+    for algorithm in &normalized_algorithms {
+        if !matches!(
+            algorithm.as_str(),
+            "sha256" | "sha512" | "md5" | "crc32" | "blake3"
+        ) {
+            ACTIVE_CHECKSUMS.finish(&operation_id, Some(&cancellation));
+            return Err(format!("Unknown algorithm: {}", algorithm));
+        }
     }
 
     let op_id = operation_id.clone();
+    let scan_cancellation = cancellation.clone();
     let result = tokio::task::spawn_blocking(move || {
         use md5::Md5;
         use sha2::{Digest, Sha256, Sha512};
 
+        enum HasherState {
+            Sha256(Sha256),
+            Sha512(Sha512),
+            Md5(Md5),
+            Crc32(crc32fast::Hasher),
+            Blake3(Box<blake3::Hasher>),
+        }
+
+        impl HasherState {
+            fn update(&mut self, chunk: &[u8]) {
+                match self {
+                    Self::Sha256(hasher) => hasher.update(chunk),
+                    Self::Sha512(hasher) => hasher.update(chunk),
+                    Self::Md5(hasher) => hasher.update(chunk),
+                    Self::Crc32(hasher) => hasher.update(chunk),
+                    Self::Blake3(hasher) => {
+                        hasher.update(chunk);
+                    }
+                }
+            }
+
+            fn finalize(self) -> String {
+                match self {
+                    Self::Sha256(hasher) => hex::encode(hasher.finalize()),
+                    Self::Sha512(hasher) => hex::encode(hasher.finalize()),
+                    Self::Md5(hasher) => hex::encode(hasher.finalize()),
+                    Self::Crc32(hasher) => format!("{:08x}", hasher.finalize()),
+                    Self::Blake3(hasher) => hasher.finalize().to_hex().to_string(),
+                }
+            }
+        }
+
         const MAX_CHECKSUM_SIZE: u64 = 4 * 1024 * 1024 * 1024; // 4 GB
-        let file_size = fs::metadata(&path).map_err(|e| e.to_string())?.len();
+                                                               // Open once, without following a swapped symlink or special file, and
+                                                               // derive the size from that same handle to avoid a metadata/open race.
+        let mut file = open_regular_read(&path)?;
+        let file_size = file.metadata().map_err(|e| e.to_string())?.len();
         if file_size > MAX_CHECKSUM_SIZE {
             return Err(format!(
                 "File too large for checksum ({} MB, max {} MB)",
@@ -2597,134 +3818,67 @@ pub async fn calculate_checksum(
                 MAX_CHECKSUM_SIZE / (1024 * 1024)
             ));
         }
-        let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
-        let mut results = serde_json::Map::new();
-
-        for algo in &algorithms {
-            if !checksum_operation_is_active(&op_id)? {
-                return Err("Checksum cancelled".to_string());
+        let mut states: Vec<(String, HasherState)> = Vec::new();
+        for algorithm in &normalized_algorithms {
+            if states.iter().any(|(name, _)| name == algorithm) {
+                continue;
             }
-
-            let hash = match algo.to_lowercase().as_str() {
-                "sha256" => {
-                    let mut hasher = Sha256::new();
-                    read_file_chunks(
-                        &mut file,
-                        file_size,
-                        |chunk| {
-                            hasher.update(chunk);
-                        },
-                        || checksum_operation_is_active(&op_id),
-                        |percent| {
-                            let _ = webview.emit(
-                                "checksum-progress",
-                                serde_json::json!({
-                                    "operationId": op_id, "percent": percent, "algorithm": algo
-                                }),
-                            );
-                        },
-                    )?;
-                    hex::encode(hasher.finalize())
-                }
-                "sha512" => {
-                    let mut hasher = Sha512::new();
-                    read_file_chunks(
-                        &mut file,
-                        file_size,
-                        |chunk| {
-                            hasher.update(chunk);
-                        },
-                        || checksum_operation_is_active(&op_id),
-                        |percent| {
-                            let _ = webview.emit(
-                                "checksum-progress",
-                                serde_json::json!({
-                                    "operationId": op_id, "percent": percent, "algorithm": algo
-                                }),
-                            );
-                        },
-                    )?;
-                    hex::encode(hasher.finalize())
-                }
-                "md5" => {
-                    let mut hasher = Md5::new();
-                    read_file_chunks(
-                        &mut file,
-                        file_size,
-                        |chunk| {
-                            hasher.update(chunk);
-                        },
-                        || checksum_operation_is_active(&op_id),
-                        |percent| {
-                            let _ = webview.emit(
-                                "checksum-progress",
-                                serde_json::json!({
-                                    "operationId": op_id, "percent": percent, "algorithm": algo
-                                }),
-                            );
-                        },
-                    )?;
-                    hex::encode(hasher.finalize())
-                }
-                "crc32" => {
-                    let mut hasher = crc32fast::Hasher::new();
-                    read_file_chunks(
-                        &mut file,
-                        file_size,
-                        |chunk| {
-                            hasher.update(chunk);
-                        },
-                        || checksum_operation_is_active(&op_id),
-                        |percent| {
-                            let _ = webview.emit(
-                                "checksum-progress",
-                                serde_json::json!({
-                                    "operationId": op_id, "percent": percent, "algorithm": algo
-                                }),
-                            );
-                        },
-                    )?;
-                    format!("{:08x}", hasher.finalize())
-                }
-                "blake3" => {
-                    let mut hasher = blake3::Hasher::new();
-                    read_file_chunks(
-                        &mut file,
-                        file_size,
-                        |chunk| {
-                            hasher.update(chunk);
-                        },
-                        || checksum_operation_is_active(&op_id),
-                        |percent| {
-                            let _ = webview.emit(
-                                "checksum-progress",
-                                serde_json::json!({
-                                    "operationId": op_id, "percent": percent, "algorithm": algo
-                                }),
-                            );
-                        },
-                    )?;
-                    hasher.finalize().to_hex().to_string()
-                }
-                _ => return Err(format!("Unknown algorithm: {}", algo)),
+            let state = match algorithm.as_str() {
+                "sha256" => HasherState::Sha256(Sha256::new()),
+                "sha512" => HasherState::Sha512(Sha512::new()),
+                "md5" => HasherState::Md5(Md5::new()),
+                "crc32" => HasherState::Crc32(crc32fast::Hasher::new()),
+                "blake3" => HasherState::Blake3(Box::new(blake3::Hasher::new())),
+                _ => unreachable!("algorithms validated before spawn"),
             };
-            results.insert(algo.clone(), serde_json::Value::String(hash));
+            states.push((algorithm.clone(), state));
+        }
+
+        let progress_algorithms = algorithms.clone();
+        read_file_chunks(
+            &mut file,
+            file_size,
+            |chunk| {
+                for (_, state) in &mut states {
+                    state.update(chunk);
+                }
+            },
+            || Ok(!is_cancelled(Some(&scan_cancellation))),
+            |percent| {
+                for algorithm in &progress_algorithms {
+                    let _ = webview.emit(
+                        "checksum-progress",
+                        serde_json::json!({
+                            "operationId": op_id, "percent": percent, "algorithm": algorithm
+                        }),
+                    );
+                }
+            },
+        )?;
+
+        let hashes: HashMap<String, String> = states
+            .into_iter()
+            .map(|(algorithm, state)| (algorithm, state.finalize()))
+            .collect();
+        let mut results = serde_json::Map::new();
+        for (original, normalized) in algorithms.iter().zip(normalized_algorithms.iter()) {
+            let hash = hashes
+                .get(normalized)
+                .ok_or_else(|| format!("Unknown algorithm: {}", original))?;
+            results.insert(original.clone(), serde_json::Value::String(hash.clone()));
         }
 
         Ok(serde_json::Value::Object(results))
     })
     .await;
 
-    if let Ok(mut active) = ACTIVE_CHECKSUMS.lock() {
-        active.remove(&operation_id);
-    }
+    ACTIVE_CHECKSUMS.finish(&operation_id, Some(&cancellation));
 
     result.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
 pub async fn cancel_checksum_calculation(operation_id: String) -> Result<(), String> {
-    let mut active = ACTIVE_CHECKSUMS.lock().map_err(|e| e.to_string())?;
-    active.remove(&operation_id);
+    ACTIVE_CHECKSUMS.cancel(&operation_id);
     Ok(())
 }

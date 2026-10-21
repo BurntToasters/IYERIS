@@ -66,9 +66,18 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
 
   hljsLoading = new Promise((resolve) => {
     let settled = false;
+    let timeout: ReturnType<typeof setTimeout> | null = null;
+    let script: HTMLScriptElement | null = null;
+    let onLoad: (() => void) | null = null;
+    let onError: (() => void) | null = null;
     const settle = (value: HighlightJs | null, clearLoading = false): void => {
       if (settled) return;
       settled = true;
+      if (timeout) clearTimeout(timeout);
+      if (script && onLoad && onError) {
+        script.removeEventListener('load', onLoad);
+        script.removeEventListener('error', onError);
+      }
       if (clearLoading) {
         hljsLoading = null;
       }
@@ -84,9 +93,16 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
       document.head.appendChild(link);
     }
 
-    const existingScript = document.querySelector(
+    let existingScript = document.querySelector(
       'script[data-highlightjs="core"]'
     ) as HTMLScriptElement | null;
+    if (existingScript && existingScript.dataset.highlightjsState === 'failed') {
+      // A previous attempt may have left a terminal marker without an event
+      // for this caller to observe. Remove it and start a fresh load instead
+      // of waiting for the timeout on a script that can never fire again.
+      existingScript.remove();
+      existingScript = null;
+    }
     if (existingScript) {
       const existingGlobal = (window as Window & { hljs?: HighlightJs }).hljs;
       if (existingGlobal) {
@@ -95,32 +111,59 @@ export async function loadHighlightJs(): Promise<HighlightJs | null> {
         return;
       }
 
-      const onLoad = () => {
+      script = existingScript;
+      onLoad = () => {
+        script?.setAttribute('data-highlightjs-state', 'loaded');
         const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
-        hljs = globalHljs;
-        settle(hljs);
+        if (globalHljs) {
+          hljs = globalHljs;
+          settle(hljs);
+        } else {
+          script?.remove();
+          settle(null, true);
+        }
       };
-      const onError = () => {
+      onError = () => {
+        script?.setAttribute('data-highlightjs-state', 'failed');
+        script?.remove();
         settle(null, true);
       };
-
-      existingScript.addEventListener('load', onLoad, { once: true });
-      existingScript.addEventListener('error', onError, { once: true });
-      return;
+      script.addEventListener('load', onLoad);
+      script.addEventListener('error', onError);
+    } else {
+      script = document.createElement('script');
+      script.src = '/vendor/highlight.js';
+      script.dataset.highlightjs = 'core';
+      script.dataset.highlightjsState = 'loading';
+      onLoad = () => {
+        script?.setAttribute('data-highlightjs-state', 'loaded');
+        const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
+        if (globalHljs) {
+          hljs = globalHljs;
+          settle(hljs);
+        } else {
+          script?.remove();
+          settle(null, true);
+        }
+      };
+      onError = () => {
+        script?.setAttribute('data-highlightjs-state', 'failed');
+        script?.remove();
+        settle(null, true);
+      };
+      script.addEventListener('load', onLoad);
+      script.addEventListener('error', onError);
     }
 
-    const script = document.createElement('script');
-    script.src = '/vendor/highlight.js';
-    script.dataset.highlightjs = 'core';
-    script.onload = () => {
-      const globalHljs = (window as Window & { hljs?: HighlightJs }).hljs || null;
-      hljs = globalHljs;
-      settle(hljs);
-    };
-    script.onerror = () => {
+    // A script element inserted by another owner may already have fired its
+    // terminal event before we observed it. Always bound the wait so a failed
+    // vendor load cannot leave every future preview awaiting forever.
+    timeout = setTimeout(() => {
+      script?.setAttribute('data-highlightjs-state', 'failed');
+      script?.remove();
       settle(null, true);
-    };
-    document.head.appendChild(script);
+    }, 15_000);
+    if (!existingScript && script) document.head.appendChild(script);
   });
 
   return hljsLoading;

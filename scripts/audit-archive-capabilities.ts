@@ -1,12 +1,12 @@
 /**
- * Archive format capability audit — run with: npx tsx scripts/audit-archive-capabilities.ts
+ * Archive format capability audit — run with: npm run audit:archive-capabilities
  */
 import {
   EXTRACTABLE_COMPOUND_SUFFIXES,
   isExtractableArchivePath,
   isListableArchivePath,
   supportsExtractPassword,
-} from '../src/archiveFormatCapabilities';
+} from '../src/archiveFormatCapabilities.ts';
 import {
   BACKEND_COMPRESS_METHODS,
   BACKEND_SUPPORTED_OPTIONS,
@@ -14,7 +14,7 @@ import {
   getVisibleCompressMethods,
   getVisibleCompressUi,
   type CompressFormat,
-} from '../src/compressFormatCapabilities';
+} from '../src/compressFormatCapabilities.ts';
 
 const COMPRESS_FORMATS: CompressFormat[] = ['7z', 'zip', 'tar.gz'];
 

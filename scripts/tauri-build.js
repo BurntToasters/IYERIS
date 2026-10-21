@@ -1,4 +1,4 @@
-import { execFileSync, execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -260,7 +260,7 @@ function assertSigningIdentityAvailable() {
   let identitiesOutput;
 
   try {
-    identitiesOutput = execSync('security find-identity -v -p codesigning', {
+    identitiesOutput = execFileSync('security', ['find-identity', '-v', '-p', 'codesigning'], {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     });
@@ -319,10 +319,12 @@ assertTauriSigningConfigured();
 assertWindowsSigningConfigured();
 stripMsiBundleForPrereleaseWindows();
 
-const tauriBuildArgs = args.join(' ').trim();
-const tauriBuildCommand = tauriBuildArgs
-  ? `npx --no-install tauri build ${tauriBuildArgs} -- --locked`
-  : 'npx --no-install tauri build -- --locked';
-execSync(tauriBuildCommand, { stdio: 'inherit' });
+// Keep user/CI arguments as argv. Shell interpolation here made a path or
+// custom Tauri argument containing metacharacters executable by the build
+// shell, and also broke paths containing spaces on Windows.
+const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+execFileSync(npxCommand, ['--no-install', 'tauri', 'build', ...args, '--', '--locked'], {
+  stdio: 'inherit',
+});
 signFinalWindowsRuntimeArtifacts();
 verifyWindowsArtifacts();

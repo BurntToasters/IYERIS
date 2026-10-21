@@ -75,10 +75,16 @@ export function createFileRenderController(config: FileRenderConfig) {
   const filePathMap: Map<string, FileItem> = new Map();
   let virtualizedRenderToken = 0;
   let virtualizedItems: FileItem[] = [];
-  let virtualizedRenderIndex = 0;
+  let orderedFiles: FileItem[] = [];
   let virtualizedSearchQuery: string | undefined;
-  let virtualizedObserver: IntersectionObserver | null = null;
-  let virtualizedSentinel: HTMLElement | null = null;
+  let virtualRoot: HTMLElement | null = null;
+  let virtualResize: ResizeObserver | null = null;
+  let virtualFrame: number | null = null;
+  let windowStart = -1;
+  let rowHeight = 0;
+  // Which view mode produced the cached rowHeight, so switching grid/list never
+  // reuses the other mode's row height.
+  let rowHeightListMode: boolean | null = null;
 
   let renderItemIndex = 0;
   const animationCleanupItems: HTMLElement[] = [];
@@ -89,85 +95,97 @@ export function createFileRenderController(config: FileRenderConfig) {
   let disableThumbnailRendering = false;
 
   function resetVirtualizedRender(): void {
-    if (virtualizedObserver) {
-      virtualizedObserver.disconnect();
-      virtualizedObserver = null;
-    }
+    virtualRoot?.removeEventListener('scroll', scheduleWindow);
+    virtualResize?.disconnect();
+    virtualResize = null;
+    virtualRoot = null;
+    if (virtualFrame !== null) cancelAnimationFrame(virtualFrame);
+    virtualFrame = null;
     virtualizedItems = [];
-    virtualizedRenderIndex = 0;
+    orderedFiles = [];
     virtualizedSearchQuery = undefined;
-    if (virtualizedSentinel && virtualizedSentinel.parentElement) {
-      virtualizedSentinel.parentElement.removeChild(virtualizedSentinel);
-    }
-    virtualizedSentinel = null;
+    windowStart = -1;
+    rowHeight = 0;
+    rowHeightListMode = null;
   }
 
-  function getVirtualizedObserver(): IntersectionObserver | null {
-    const root = document.getElementById('file-view');
-    if (!root) return null;
-    if (virtualizedObserver) return virtualizedObserver;
-
-    virtualizedObserver = new IntersectionObserver(
-      (entries) => {
-        const entry = entries.find((item) => item.isIntersecting);
-        if (entry && entry.target) {
-          virtualizedObserver?.unobserve(entry.target);
-          appendNextVirtualizedBatch();
-        }
-      },
-      {
-        root,
-        rootMargin: '200px',
-        threshold: 0.01,
-      }
-    );
-    return virtualizedObserver;
+  function scheduleWindow(): void {
+    if (virtualFrame !== null) return;
+    virtualFrame = requestAnimationFrame(() => {
+      virtualFrame = null;
+      renderWindow();
+    });
   }
 
-  function ensureVirtualizedSentinel(): void {
-    const fileGrid = config.getFileGrid();
-    if (!fileGrid) return;
-    const observer = getVirtualizedObserver();
-    if (!observer) return;
-
-    if (!virtualizedSentinel) {
-      virtualizedSentinel = document.createElement('div');
-      virtualizedSentinel.style.width = '100%';
-      virtualizedSentinel.style.height = '1px';
-      virtualizedSentinel.style.pointerEvents = 'none';
-    }
-
-    fileGrid.appendChild(virtualizedSentinel);
-
-    observer.observe(virtualizedSentinel);
-  }
-
-  function appendNextVirtualizedBatch(): void {
-    const fileGrid = config.getFileGrid();
-    if (!fileGrid) return;
-    if (virtualizedRenderToken !== renderFilesToken) return;
-
-    const start = virtualizedRenderIndex;
-    const end = Math.min(start + VIRTUALIZE_BATCH_SIZE, virtualizedItems.length);
-    if (start >= end) {
-      if (virtualizedSentinel) {
-        virtualizedSentinel.remove();
-      }
+  function renderWindow(requestedIndex?: number): void {
+    const grid = config.getFileGrid();
+    if (!grid || virtualizedItems.length === 0 || virtualizedRenderToken !== renderFilesToken)
       return;
+    const style = getComputedStyle(grid);
+    const columns = Math.max(1, style.gridTemplateColumns.split(' ').filter(Boolean).length);
+    const gap = parseFloat(style.rowGap) || 0;
+    const first = grid.querySelector<HTMLElement>('.file-item');
+    const isListMode = grid.classList.contains('list-view');
+    if (isListMode !== rowHeightListMode) {
+      rowHeight = 0;
+      rowHeightListMode = isListMode;
     }
-
-    const batch = virtualizedItems.slice(start, end);
-    virtualizedRenderIndex = end;
-    const paths = appendFileItems(batch, virtualizedSearchQuery);
+    rowHeight = first?.getBoundingClientRect().height || rowHeight || (isListMode ? 40 : 140);
+    const stride = rowHeight + gap;
+    const offset = virtualRoot
+      ? grid.getBoundingClientRect().top -
+        virtualRoot.getBoundingClientRect().top +
+        virtualRoot.scrollTop
+      : 0;
+    const row =
+      requestedIndex === undefined
+        ? Math.max(0, Math.floor(((virtualRoot?.scrollTop || 0) - offset) / stride))
+        : Math.floor(requestedIndex / columns);
+    const rowsPerWindow = Math.max(1, Math.ceil((VIRTUALIZE_BATCH_SIZE * 3) / columns));
+    const totalRows = Math.ceil(virtualizedItems.length / columns);
+    const startRow = Math.max(
+      0,
+      Math.min(row - Math.floor(rowsPerWindow / 3), totalRows - rowsPerWindow)
+    );
+    const start = startRow * columns;
+    if (start === windowStart && requestedIndex === undefined) return;
+    windowStart = start;
+    const end = Math.min(virtualizedItems.length, start + rowsPerWindow * columns);
+    const focusedPath = grid.contains(document.activeElement)
+      ? (document.activeElement as HTMLElement).dataset.path
+      : undefined;
+    grid.style.overflowAnchor = 'none';
+    grid.replaceChildren();
+    config.getFileElementMap().clear();
+    const spacer = (height: number) => {
+      if (height <= 0) return;
+      const element = document.createElement('div');
+      element.setAttribute('aria-hidden', 'true');
+      element.style.cssText = `grid-column: 1 / -1; height: ${height}px; pointer-events: none;`;
+      grid.appendChild(element);
+    };
+    spacer(Math.max(0, startRow * stride - gap));
+    const paths = appendFileItems(virtualizedItems.slice(start, end), virtualizedSearchQuery);
+    spacer(Math.max(0, (totalRows - Math.ceil(end / columns)) * stride - gap));
+    config.markSelectionDirty();
     config.applyGitIndicatorsToPaths(paths);
     config.updateCutVisuals();
+    if (focusedPath) config.getFileElementMap().get(focusedPath)?.focus({ preventScroll: true });
     config.ensureActiveItem();
+    if (requestedIndex !== undefined && virtualRoot) virtualRoot.scrollTop = offset + row * stride;
+  }
 
-    if (virtualizedRenderIndex < virtualizedItems.length) {
-      ensureVirtualizedSentinel();
-    } else if (virtualizedSentinel) {
-      virtualizedSentinel.remove();
+  function ensureItemRendered(path: string): HTMLElement | null {
+    const index = orderedFiles.findIndex((item) => item.path === path);
+    if (index < 0) return null;
+    if (virtualizedItems.length > 0) renderWindow(index);
+    else if (!config.getFileElementMap().has(path)) {
+      // A keyboard action can arrive between animation-frame batches.
+      const paths = appendFileItems(orderedFiles);
+      config.applyGitIndicatorsToPaths(paths);
+      config.markSelectionDirty();
     }
+    return config.getFileElementMap().get(path) ?? null;
   }
 
   function createFileIconNode(iconHtml: string): Element {
@@ -211,6 +229,7 @@ export function createFileRenderController(config: FileRenderConfig) {
       !disableEntryAnimation && !document.body.classList.contains('reduce-motion');
 
     for (const item of items) {
+      if (fileElementMap.has(item.path)) continue;
       const fileItem = createFileItem(item, searchQuery);
       if (shouldAnimate) {
         const delayIndex = renderItemIndex % ENTRY_ANIMATION_STAGGER_ITEMS;
@@ -358,6 +377,7 @@ export function createFileRenderController(config: FileRenderConfig) {
       return sortOrder === 'asc' ? comparison : -comparison;
     });
 
+    orderedFiles = sortedItems;
     disableEntryAnimation = sortedItems.length > ANIMATED_RENDER_ITEM_LIMIT;
     disableThumbnailRendering = sortedItems.length >= THUMBNAIL_RENDER_ITEM_LIMIT;
     config.setDisableEntryAnimation(disableEntryAnimation);
@@ -366,10 +386,20 @@ export function createFileRenderController(config: FileRenderConfig) {
     if (sortedItems.length >= VIRTUALIZE_THRESHOLD) {
       virtualizedRenderToken = renderToken;
       virtualizedItems = sortedItems;
-      virtualizedRenderIndex = 0;
+      virtualRoot = document.getElementById('file-view');
+      virtualRoot?.addEventListener('scroll', scheduleWindow, { passive: true });
+      if (typeof ResizeObserver !== 'undefined') {
+        virtualResize = new ResizeObserver(() => {
+          windowStart = -1;
+          scheduleWindow();
+        });
+        if (virtualRoot) virtualResize.observe(virtualRoot);
+      }
       virtualizedSearchQuery = searchQuery;
       config.updateStatusBar();
-      appendNextVirtualizedBatch();
+      renderWindow();
+      windowStart = -1;
+      scheduleWindow();
       return;
     }
 
@@ -476,7 +506,7 @@ export function createFileRenderController(config: FileRenderConfig) {
     }
 
     const symlinkBadge = item.isSymlink
-      ? '<span class="symlink-badge" aria-label="Symbolic link">⤳</span>'
+      ? '<span class="symlink-badge" role="img" aria-label="Symbolic link">⤳</span>'
       : '';
 
     // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
@@ -511,13 +541,12 @@ export function createFileRenderController(config: FileRenderConfig) {
   }
 
   function disconnectVirtualizedObserver(): void {
-    if (virtualizedObserver) {
-      virtualizedObserver.disconnect();
-      virtualizedObserver = null;
-    }
+    resetVirtualizedRender();
   }
 
   return {
+    getOrderedFiles: () => orderedFiles,
+    ensureItemRendered,
     renderFiles,
     createFileItem,
     appendFileItems,

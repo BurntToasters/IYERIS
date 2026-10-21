@@ -6,15 +6,18 @@
 
 const fs = require('fs');
 const path = require('path');
+const { execFileSync } = require('child_process');
 const { assertGitHubCliAuthenticated, githubApi } = require('./github-cli.cjs');
+
+const { buildChangelogReleaseBody } = require('./changelog-release-body.cjs');
 
 require('dotenv').config();
 
 const REPOSITORY_ROOT = path.resolve(__dirname, '..');
 const CHANGELOG_PATH = path.join(REPOSITORY_ROOT, 'CHANGELOG.md');
 
-const REPO_OWNER = 'BurntToasters';
-const REPO_NAME = 'IYERIS';
+const REPO_OWNER = process.env.GH_REPO_OWNER || 'BurntToasters';
+const REPO_NAME = process.env.GH_REPO_NAME || 'IYERIS';
 const GH_REQUEST_RETRIES = Number.parseInt(process.env.GH_REQUEST_RETRIES || '3', 10);
 const GH_REQUEST_RETRY_DELAY_MS = Number.parseInt(
   process.env.GH_REQUEST_RETRY_DELAY_MS || '1500',
@@ -33,7 +36,24 @@ const WAIT_POLL_INTERVAL_MS = Number.parseInt(
 const packageJson = require('../package.json');
 const VERSION = packageJson.version;
 const TAG_NAME = 'v' + VERSION;
-const IS_PRERELEASE = VERSION.includes('beta') || VERSION.includes('alpha');
+const IS_PRERELEASE = /-(?:beta|alpha|rc)(?:[.-]?\d+)?/i.test(VERSION);
+
+function currentCommit() {
+  return execFileSync('git', ['rev-parse', 'HEAD'], {
+    cwd: REPOSITORY_ROOT,
+    encoding: 'utf8',
+  }).trim();
+}
+
+const RELEASE_COMMIT = currentCommit();
+
+function assertReleaseCommit(release) {
+  if (release?.target_commitish !== RELEASE_COMMIT) {
+    throw new Error(
+      `Release ${TAG_NAME} is pinned to ${release?.target_commitish || '<missing>'}, expected ${RELEASE_COMMIT}. Recreate the draft from this commit.`
+    );
+  }
+}
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,16 +70,17 @@ function readChangelogReleaseBody(changelogPath = CHANGELOG_PATH) {
       { cause: error }
     );
   }
-  if (!body.trim()) {
-    throw new Error('CHANGELOG.md is empty; refusing to set blank release notes.');
-  }
-  return body;
+  return buildChangelogReleaseBody(body, VERSION);
 }
 
 async function syncReleaseNotesBody(release, body) {
   if (!release || typeof release.id !== 'number') {
     throw new Error('Cannot sync release notes without a GitHub release id.');
   }
+  if (!release.draft) {
+    throw new Error(`Release ${TAG_NAME} is already published; refusing to mutate it.`);
+  }
+  assertReleaseCommit(release);
   const updated = await githubRequestWithRetry(
     'PATCH',
     '/repos/' + REPO_OWNER + '/' + REPO_NAME + '/releases/' + release.id,
@@ -160,6 +181,9 @@ async function ensureDraftRelease() {
 
   const existing = await findExistingRelease();
   if (existing) {
+    if (!existing.draft) {
+      throw new Error(`Release ${TAG_NAME} is already published; refusing to reuse it.`);
+    }
     console.log(
       '   Draft already exists: ' +
         (existing.name || TAG_NAME) +
@@ -181,12 +205,14 @@ async function ensureDraftRelease() {
         // Match electron-builder's createRelease() so it reuses this draft:
         // tag = "v" + version, name defaults to the version, draft:true.
         tag_name: TAG_NAME,
+        target_commitish: RELEASE_COMMIT,
         name: VERSION,
         body,
         draft: true,
         prerelease: IS_PRERELEASE,
       }
     );
+    assertReleaseCommit(release);
     console.log(
       '   Created draft release: ' +
         (release.name || TAG_NAME) +
@@ -202,6 +228,11 @@ async function ensureDraftRelease() {
       await sleep(2000);
       const afterRetry = await findExistingRelease();
       if (afterRetry) {
+        if (!afterRetry.draft) {
+          throw new Error(`Release ${TAG_NAME} is already published; refusing to reuse it.`, {
+            cause: error,
+          });
+        }
         console.log('   Found existing draft after retry: id ' + afterRetry.id);
         return syncReleaseNotesBody(afterRetry, body);
       }
@@ -223,6 +254,10 @@ async function waitForDraftRelease() {
     attempt += 1;
     const existing = await findExistingRelease();
     if (existing) {
+      if (!existing.draft) {
+        throw new Error(`Release ${TAG_NAME} is already published; refusing to build into it.`);
+      }
+      assertReleaseCommit(existing);
       console.log(
         '   Found draft: ' +
           (existing.name || TAG_NAME) +

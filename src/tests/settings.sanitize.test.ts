@@ -194,7 +194,7 @@ describe('sanitizeSettings', () => {
   describe('numeric fields', () => {
     it('accepts valid numeric values', () => {
       expect(sanitizeSettings({ maxThumbnailSizeMB: 20 }).maxThumbnailSizeMB).toBe(20);
-      expect(sanitizeSettings({ maxPreviewSizeMB: 100 }).maxPreviewSizeMB).toBe(100);
+      expect(sanitizeSettings({ maxPreviewSizeMB: 100 }).maxPreviewSizeMB).toBe(50);
       expect(sanitizeSettings({ iconSize: 128 }).iconSize).toBe(128);
       expect(sanitizeSettings({ sidebarWidth: 250 }).sidebarWidth).toBe(250);
       expect(sanitizeSettings({ previewPanelWidth: 400 }).previewPanelWidth).toBe(400);
