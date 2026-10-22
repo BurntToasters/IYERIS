@@ -156,6 +156,14 @@ function findBrowser() {
   return executable;
 }
 
+// Snap Chromium cannot read file:// pages under its private /tmp.
+function getTempBase() {
+  if (process.platform !== 'linux' || !fs.existsSync('/snap')) return os.tmpdir();
+  const base = path.join(os.homedir(), 'iyeris-tmp');
+  fs.mkdirSync(base, { recursive: true });
+  return base;
+}
+
 function boundedError(error) {
   const message = error instanceof Error ? error.stack || error.message : String(error);
   return message.slice(0, MAX_ERROR_LENGTH);
@@ -313,7 +321,10 @@ async function runBrowserSuites(executable, temporary, state) {
         (error) => finish({ error: String(error?.stack || error), suites: globalThis.fileRenderSmokeResults || [] })
       );
     } else if (Date.now() - start > 10000) {
-      finish({ error: 'Smoke page failed to load', suites: globalThis.fileRenderSmokeResults || [] });
+      finish({
+        error: 'Smoke page failed to load (a snap-confined browser cannot read pages under /tmp; use a folder in your home directory)',
+        suites: globalThis.fileRenderSmokeResults || [],
+      });
     } else {
       setTimeout(poll, 20);
     }
@@ -385,7 +396,7 @@ async function main() {
     };
     persistArtifact();
 
-    temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'iyeris-browser-smoke-'));
+    temporary = fs.mkdtempSync(path.join(getTempBase(), 'iyeris-browser-smoke-'));
     await build({
       configFile: false,
       root,
