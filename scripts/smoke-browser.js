@@ -133,6 +133,10 @@ function findBrowser() {
     '/usr/bin/google-chrome',
     '/usr/bin/chromium',
     '/usr/bin/chromium-browser',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/microsoft-edge',
+    '/usr/bin/brave-browser',
+    '/snap/bin/chromium',
     ...[process.env.PROGRAMFILES, process.env['PROGRAMFILES(X86)'], process.env.LOCALAPPDATA]
       .filter(Boolean)
       .flatMap((base) => [
