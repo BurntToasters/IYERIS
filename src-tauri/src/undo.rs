@@ -467,11 +467,15 @@ pub(crate) fn copy_fingerprint(
 /// targets without reading file bodies. This keeps large copy/move operations
 /// from hashing every byte a second time while still detecting edits,
 /// replacements, and tree changes in normal use.
+///
+/// Windows omits identity: its only identity here is the creation time, which
+/// NTFS file tunneling rewrites when a same-named file is recreated within
+/// seconds, so a rename round trip would otherwise change the fingerprint.
 pub(crate) fn path_fingerprint(
     path: &Path,
     cancelled: &impl Fn() -> bool,
 ) -> Result<String, String> {
-    fingerprint_tree(path, cancelled, true, false)
+    fingerprint_tree(path, cancelled, !cfg!(windows), false)
 }
 
 fn fingerprint_tree(
