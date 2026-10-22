@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 const pkg = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
@@ -322,9 +323,16 @@ stripMsiBundleForPrereleaseWindows();
 // Keep user/CI arguments as argv. Shell interpolation here made a path or
 // custom Tauri argument containing metacharacters executable by the build
 // shell, and also broke paths containing spaces on Windows.
-const npxCommand = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-execFileSync(npxCommand, ['--no-install', 'tauri', 'build', ...args, '--', '--locked'], {
-  stdio: 'inherit',
-});
+// Node 24 refuses to spawn .cmd shims without a shell (EINVAL), so run the
+// installed CLI's JS entry point with node directly.
+const tauriPackageJson = createRequire(import.meta.url).resolve('@tauri-apps/cli/package.json');
+const tauriManifest = JSON.parse(readFileSync(tauriPackageJson, 'utf8'));
+const tauriBin =
+  typeof tauriManifest.bin === 'string' ? tauriManifest.bin : tauriManifest.bin.tauri;
+execFileSync(
+  process.execPath,
+  [path.join(path.dirname(tauriPackageJson), tauriBin), 'build', ...args, '--', '--locked'],
+  { stdio: 'inherit' }
+);
 signFinalWindowsRuntimeArtifacts();
 verifyWindowsArtifacts();
