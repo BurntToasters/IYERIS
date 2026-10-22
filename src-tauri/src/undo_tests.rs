@@ -206,7 +206,6 @@ fn move_overwrite_undo_redo_round_trip_preserves_source_and_prior_destination() 
         fingerprint: path_fingerprint(&backup_path, &|| false).unwrap(),
     };
     let moved_fingerprint = path_fingerprint(&destination, &|| false).unwrap();
-    let recorded_meta = fs::metadata(&destination).unwrap();
     push_undo_action(
         UndoAction::Move(MoveActionData {
             source_paths: vec![destination.to_string_lossy().into_owned()],
@@ -222,16 +221,6 @@ fn move_overwrite_undo_redo_round_trip_preserves_source_and_prior_destination() 
     .unwrap();
 
     undo_action_sync().unwrap();
-    let restored_meta = fs::metadata(&source).unwrap();
-    eprintln!(
-        "DIAG recorded: created={:?} modified={:?} len={} | restored: created={:?} modified={:?} len={}",
-        recorded_meta.created(),
-        recorded_meta.modified(),
-        recorded_meta.len(),
-        restored_meta.created(),
-        restored_meta.modified(),
-        restored_meta.len()
-    );
     assert_eq!(fs::read(&source).unwrap(), b"replacement");
     assert_eq!(fs::read(&destination).unwrap(), b"original");
     assert!(!backup_path.exists());
