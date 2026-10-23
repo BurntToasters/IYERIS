@@ -851,8 +851,9 @@ body .modal.glass-panel {
 }
 
 /* Outside liquid glass, modal panels are fully opaque. --glass-modal-bg is 0.98 alpha, so grid
-   icons behind a dialog showed through its top half. Relative color syntax keeps the origin alpha unless '/ 1' is given. The
-   first declaration is the fallback for engines without that syntax. */
+   icons behind a dialog showed through its top half. Relative color syntax keeps the origin
+   alpha unless '/ 1' is given. The first declaration is the fallback for engines without that
+   syntax. */
 body:not(.liquid-glass) .modal.glass-panel {
   background: var(--glass-modal-bg);
   background: rgb(from var(--glass-modal-bg) r g b / 1);

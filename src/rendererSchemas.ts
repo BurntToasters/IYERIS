@@ -74,6 +74,38 @@ export const RawItemPropertiesSchema = z.object({
 });
 export type RawItemProperties = z.infer<typeof RawItemPropertiesSchema>;
 
+const RawCodeSignerSchema = z.object({
+  name: z.string(),
+  issuer: z.string().optional(),
+  digestAlgorithm: z.string().optional(),
+  timestamp: z.number().optional(),
+  serialNumber: z.string().optional(),
+  thumbprint: z.string().optional(),
+  validFrom: z.number().optional(),
+  validTo: z.number().optional(),
+});
+
+export const RawCodeSignatureSchema = z.object({
+  supported: z.boolean(),
+  signed: z.boolean(),
+  status: z.enum([
+    'valid',
+    'invalid',
+    'untrusted',
+    'expired',
+    'revoked',
+    'unsigned',
+    'unsupported',
+    'error',
+  ]),
+  statusMessage: z.string().optional(),
+  signers: z.array(RawCodeSignerSchema),
+  identifier: z.string().optional(),
+  teamId: z.string().optional(),
+  hardenedRuntime: z.boolean().optional(),
+});
+export type RawCodeSignature = z.infer<typeof RawCodeSignatureSchema>;
+
 export const RawSearchResultSchema = z.object({
   name: z.string(),
   path: z.string(),

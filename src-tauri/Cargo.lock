@@ -2211,6 +2211,7 @@ dependencies = [
  "open",
  "raw-window-handle",
  "regex",
+ "security-framework-sys",
  "serde",
  "serde_json",
  "sevenz-rust2",

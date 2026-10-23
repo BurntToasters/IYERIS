@@ -414,3 +414,120 @@
   align-items: center;
   gap: 8px;
 }
+
+#properties-modal .properties-tab[hidden] {
+  display: none;
+}
+
+#properties-modal .signature-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-small);
+  background: var(--surface-2);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+#properties-modal .signature-status-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+#properties-modal .signature-status[data-tone='ok'] .signature-status-icon {
+  color: var(--success-color);
+}
+
+#properties-modal .signature-status[data-tone='warn'] .signature-status-icon {
+  color: var(--warning-color);
+}
+
+#properties-modal .signature-status[data-tone='error'] .signature-status-icon {
+  color: var(--danger-color);
+}
+
+#properties-modal .signature-status-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+#properties-modal .signature-status-message {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+#properties-modal .signature-table-wrap {
+  margin-top: 12px;
+  max-height: 132px;
+  overflow: auto;
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-small);
+}
+
+#properties-modal .signature-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+/* Digest and timestamp keep their width, so only the name column gives up space. */
+#properties-modal .signature-col-digest {
+  width: 124px;
+}
+
+#properties-modal .signature-col-time {
+  width: 158px;
+}
+
+#properties-modal .signature-table th,
+#properties-modal .signature-table td {
+  padding: 4px 8px;
+  white-space: nowrap;
+  text-align: left;
+}
+
+#properties-modal .signature-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--native-divider);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+#properties-modal .signature-table td {
+  color: var(--text-primary);
+}
+
+#properties-modal .signature-table td.signature-col-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* One row-level highlight, no per-cell borders. */
+#properties-modal .signature-table tr[aria-selected='false']:hover > td {
+  background: var(--interactive-hover);
+}
+
+#properties-modal .signature-table tr[aria-selected='true'] > td {
+  background: var(--file-selection-bg);
+}
+
+/* One focus ring around the whole row. */
+#properties-modal .signature-table tr:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+#properties-modal .signature-details {
+  margin-top: 10px;
+}

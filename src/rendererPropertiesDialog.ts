@@ -1,4 +1,4 @@
-import type { ItemProperties } from './types';
+import type { CodeSignatureInfo, CodeSigner, ItemProperties } from './types';
 import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
 import { rendererPath, twemojiImg } from './rendererUtils.js';
 
@@ -45,9 +45,17 @@ const TAG_COLORS: Record<string, string> = {
 
 const PANEL_IDS = {
   general: 'properties-panel-general',
+  signatures: 'properties-panel-signatures',
   details: 'properties-panel-details',
   security: 'properties-panel-security',
 } as const;
+
+// macOS signs these bundles as directories, so they get a signature lookup like files do.
+const SIGNABLE_BUNDLE_EXTENSIONS = new Set(['app', 'framework', 'bundle', 'appex', 'kext']);
+
+const SIGNATURE_COPY_LABELS = { serialNumber: 'Serial number', thumbprint: 'Thumbprint' } as const;
+
+type SignatureStatusView = { icon: string; tone: 'ok' | 'warn' | 'error'; text: string };
 
 const PERM_ACTIONS = ['Read', 'Write', 'Execute'] as const;
 
@@ -106,6 +114,99 @@ function identityHtml(name: string | undefined, id: string | undefined): string 
   return value ? escapeHtml(value) : '';
 }
 
+function canHaveSignature(props: ItemProperties): boolean {
+  if (!props.isDirectory) return true;
+  const dot = props.name.lastIndexOf('.');
+  return dot > 0 && SIGNABLE_BUNDLE_EXTENSIONS.has(props.name.slice(dot + 1).toLowerCase());
+}
+
+// Explorer shows the Digital Signatures tab only for signed files.
+function isSignatureShown(info: CodeSignatureInfo | null): info is CodeSignatureInfo {
+  return info !== null && info.supported && info.signed;
+}
+
+function signatureStatusView(status: CodeSignatureInfo['status']): SignatureStatusView {
+  switch (status) {
+    case 'valid':
+      return { icon: 'check-circle', tone: 'ok', text: 'This digital signature is OK.' };
+    case 'untrusted':
+      return {
+        icon: 'alert-triangle',
+        tone: 'warn',
+        text: 'This digital signature is not trusted.',
+      };
+    case 'expired':
+      return { icon: 'alert-triangle', tone: 'warn', text: 'This digital signature has expired.' };
+    case 'revoked':
+      return {
+        icon: 'x-circle',
+        tone: 'error',
+        text: 'This digital signature has been revoked.',
+      };
+    case 'invalid':
+      return { icon: 'x-circle', tone: 'error', text: 'This digital signature is not valid.' };
+    default:
+      return {
+        icon: 'alert-triangle',
+        tone: 'warn',
+        text: 'This digital signature could not be verified.',
+      };
+  }
+}
+
+function notAvailableHtml(): string {
+  return '<span class="property-muted">Not available</span>';
+}
+
+// Backend strings are escaped here, so every signature value is safe to interpolate.
+function signatureTextHtml(value: string | undefined): string {
+  return value ? escapeHtml(value) : notAvailableHtml();
+}
+
+function signatureDateHtml(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return notAvailableHtml();
+  return escapeHtml(formatLongDate(new Date(value)));
+}
+
+function signerCopyValueHtml(
+  value: string | undefined,
+  field: keyof typeof SIGNATURE_COPY_LABELS
+): string {
+  if (!value) return notAvailableHtml();
+  const label = SIGNATURE_COPY_LABELS[field];
+  return `<div class="property-path-row"><span class="property-path">${escapeHtml(value)}</span><button type="button" class="property-btn-copy" data-action="copy-signer-field" data-field="${field}" aria-label="Copy ${escapeHtml(label)}" title="Copy ${escapeHtml(label)}">${twemojiImg('clipboard', 'twemoji')}</button></div>`;
+}
+
+function signerDetailsHtml(signer: CodeSigner): string {
+  return [
+    propertyRow('Signer:', signatureTextHtml(signer.name)),
+    propertyRow('Issuer:', signatureTextHtml(signer.issuer)),
+    propertyRow('Serial number:', signerCopyValueHtml(signer.serialNumber, 'serialNumber')),
+    propertyRow('Thumbprint:', signerCopyValueHtml(signer.thumbprint, 'thumbprint')),
+    propertyRow('Valid from:', signatureDateHtml(signer.validFrom)),
+    propertyRow('Valid to:', signatureDateHtml(signer.validTo)),
+  ].join('');
+}
+
+// The table uses a shorter date so each signer fits on one line. The details block keeps the long form.
+function signatureTableDateHtml(value: number | undefined): string {
+  if (value === undefined || !Number.isFinite(value)) return notAvailableHtml();
+  const text = new Date(value).toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+  return escapeHtml(text);
+}
+
+function signerRowHtml(signer: CodeSigner, index: number, selected: boolean): string {
+  return `
+        <tr role="row" data-role="signer-row" data-index="${index}" aria-selected="${selected}" tabindex="${selected ? 0 : -1}">
+          <td class="signature-col-name" title="${escapeHtml(signer.name ?? '')}">${signatureTextHtml(signer.name)}</td>
+          <td class="signature-col-digest">${signatureTextHtml(signer.digestAlgorithm)}</td>
+          <td class="signature-col-time">${signatureTableDateHtml(signer.timestamp)}</td>
+        </tr>`;
+}
+
 function createOperationId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
@@ -157,6 +258,11 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     let checksumPercent = 0;
     let checksumProgress = '';
     const checksumValues: Partial<Record<ChecksumAlgorithm, string>> = {};
+
+    // Cached for this dialog session, so Apply re-renders without asking the backend again.
+    let signature: CodeSignatureInfo | null = null;
+    let selectedSignerIndex = 0;
+    const signatureTab = tabEls.find((tab) => tab.dataset.tab === 'signatures') ?? null;
 
     const syncAttrs = (source: ItemProperties) => {
       attrBase.readOnly = source.isReadOnly === true;
@@ -396,6 +502,36 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       return groups.join('');
     };
 
+    const buildSignatures = (): string => {
+      if (!isSignatureShown(signature)) return '';
+      const info = signature;
+      const view = signatureStatusView(info.status);
+      const messageHtml = info.statusMessage
+        ? `<div class="signature-status-message">${escapeHtml(info.statusMessage)}</div>`
+        : '';
+      const statusHtml = `<div class="signature-status" data-tone="${view.tone}" role="status">${twemojiImg(view.icon, 'signature-status-icon')}<div class="signature-status-body"><div class="signature-status-text">${escapeHtml(view.text)}</div>${messageHtml}</div></div>`;
+
+      const signers = info.signers;
+      selectedSignerIndex = Math.min(selectedSignerIndex, Math.max(signers.length - 1, 0));
+      const selected = signers[selectedSignerIndex];
+      const listHtml = selected
+        ? `<div class="signature-table-wrap"><table class="signature-table" role="grid" aria-label="Signers"><colgroup><col class="signature-col-name"><col class="signature-col-digest"><col class="signature-col-time"></colgroup><thead><tr role="row"><th scope="col">Name of signer</th><th scope="col">Digest algorithm</th><th scope="col">Timestamp</th></tr></thead><tbody>${signers.map((signer, index) => signerRowHtml(signer, index, index === selectedSignerIndex)).join('')}</tbody></table></div><div class="signature-details" data-role="signer-details">${signerDetailsHtml(selected)}</div>`
+        : '<p class="property-note">No signer details are available.</p>';
+
+      const macRows: string[] = [];
+      if (info.identifier) macRows.push(propertyRow('Identifier:', escapeHtml(info.identifier)));
+      if (info.teamId) macRows.push(propertyRow('Team ID:', escapeHtml(info.teamId)));
+      if (info.hardenedRuntime !== undefined) {
+        macRows.push(propertyRow('Hardened Runtime:', info.hardenedRuntime ? 'Yes' : 'No'));
+      }
+      if (info.gatekeeperAccepted !== undefined) {
+        macRows.push(propertyRow('Gatekeeper:', info.gatekeeperAccepted ? 'Accepted' : 'Rejected'));
+      }
+      const macHtml = macRows.length > 0 ? `${SEPARATOR}${macRows.join('')}` : '';
+
+      return `${statusHtml}${listHtml}${macHtml}`;
+    };
+
     const paintProgress = () => {
       const folderBar = find<HTMLElement>('folder-bar');
       if (folderBar) folderBar.style.width = '100%';
@@ -430,6 +566,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
     const renderPanels = () => {
       setPanel('general', buildGeneral());
+      setPanel('signatures', buildSignatures());
       setPanel('details', buildDetails());
       setPanel('security', buildSecurity());
       fillIcon();
@@ -451,6 +588,49 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     const copyText = (text: string, label: string) => {
       window.tauriAPI.writeToSystemClipboard(text).catch(ignoreError);
       deps.showToast(`${label} copied to clipboard`, 'Copied', 'success');
+    };
+
+    // Shows or hides the Digital Signatures tab. Leaves the tab if it is hidden while selected.
+    const syncSignatureTab = () => {
+      if (!signatureTab) return;
+      const shown = isSignatureShown(signature);
+      signatureTab.hidden = !shown;
+      if (!shown && signatureTab.getAttribute('aria-selected') === 'true') {
+        selectTab('general', false);
+      }
+    };
+
+    // Updates the row selection and the details block in place, so focus stays on the row.
+    const selectSigner = (index: number, focus: boolean) => {
+      const count = signature?.signers.length ?? 0;
+      if (index < 0 || index >= count) return;
+      selectedSignerIndex = index;
+      content.querySelectorAll<HTMLElement>('[data-role="signer-row"]').forEach((row) => {
+        const selected = Number(row.dataset.index) === selectedSignerIndex;
+        row.setAttribute('aria-selected', String(selected));
+        row.tabIndex = selected ? 0 : -1;
+        if (selected && focus) row.focus();
+      });
+      const signer = signature?.signers[selectedSignerIndex];
+      const details = find('signer-details');
+      if (details && signer) details.innerHTML = signerDetailsHtml(signer);
+    };
+
+    // The lookup runs after the dialog renders, so a slow backend never delays it.
+    const requestSignature = async () => {
+      if (!canHaveSignature(initialProps)) return;
+      let info: CodeSignatureInfo | null = null;
+      try {
+        const result = await window.tauriAPI.getCodeSignature(initialProps.path);
+        if (result.success) info = result.signature;
+      } catch {
+        // A failed lookup leaves the tab hidden, the same as an unsigned file.
+      }
+      // A result for a closed dialog, or for an earlier item, must not reveal the tab.
+      if (sessionClosed) return;
+      signature = info;
+      syncSignatureTab();
+      setPanel('signatures', buildSignatures());
     };
 
     const stopFolderSize = (cancelBackend: boolean) => {
@@ -661,6 +841,8 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     syncAttrs(props);
     syncMode(props);
     renderPanels();
+    // A previous session may have left the tab revealed in the shared static markup.
+    syncSignatureTab();
     selectTab('general', false);
 
     modal.style.display = 'flex';
@@ -679,32 +861,58 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       tab.onclick = () => selectTab(tab.dataset.tab ?? 'general', true);
     }
     tablist.onkeydown = (event: KeyboardEvent) => {
-      const index = tabEls.indexOf(event.target as HTMLButtonElement);
+      // Hidden tabs (Digital Signatures on unsigned items) are skipped by the arrow keys.
+      const shownTabs = tabEls.filter((tab) => !tab.hidden);
+      const index = shownTabs.indexOf(event.target as HTMLButtonElement);
       if (index < 0) return;
       let next: number;
       switch (event.key) {
         case 'ArrowRight':
-          next = (index + 1) % tabEls.length;
+          next = (index + 1) % shownTabs.length;
           break;
         case 'ArrowLeft':
-          next = (index - 1 + tabEls.length) % tabEls.length;
+          next = (index - 1 + shownTabs.length) % shownTabs.length;
           break;
         case 'Home':
           next = 0;
           break;
         case 'End':
-          next = tabEls.length - 1;
+          next = shownTabs.length - 1;
           break;
         default:
           return;
       }
       event.preventDefault();
-      const nextTab = tabEls[next];
+      const nextTab = shownTabs[next];
       if (nextTab) selectTab(nextTab.dataset.tab ?? 'general', true);
     };
 
+    content.onkeydown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement) || target.dataset.role !== 'signer-row') return;
+      let step: number;
+      switch (event.key) {
+        case 'ArrowDown':
+          step = 1;
+          break;
+        case 'ArrowUp':
+          step = -1;
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      selectSigner(selectedSignerIndex + step, true);
+    };
+
     content.onclick = (event) => {
-      const target = (event.target as Element | null)?.closest<HTMLElement>('[data-action]');
+      const element = event.target as Element | null;
+      const row = element?.closest<HTMLElement>('[data-role="signer-row"]');
+      if (row) {
+        selectSigner(Number(row.dataset.index), true);
+        return;
+      }
+      const target = element?.closest<HTMLElement>('[data-action]');
       if (!target) return;
       switch (target.dataset.action) {
         case 'copy-path':
@@ -726,6 +934,13 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
           const algo = target.dataset.algo as ChecksumAlgorithm | undefined;
           const value = algo ? checksumValues[algo] : undefined;
           if (algo && value) copyText(value, CHECKSUM_LABELS[algo]);
+          break;
+        }
+        case 'copy-signer-field': {
+          const field = target.dataset.field;
+          if (field !== 'serialNumber' && field !== 'thumbprint') break;
+          const value = signature?.signers[selectedSignerIndex]?.[field];
+          if (value) copyText(value, SIGNATURE_COPY_LABELS[field]);
           break;
         }
         default:
@@ -773,6 +988,8 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       target.setAttribute('aria-invalid', String(parsed === null));
       syncFooter();
     };
+
+    void requestSignature();
   };
 
   return {

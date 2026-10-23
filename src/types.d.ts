@@ -317,6 +317,39 @@ export type DirectoryResponse = IpcResult<{ contents: FileItem[] }>;
 
 export type PropertiesResponse = IpcResult<{ properties: ItemProperties }>;
 
+export interface CodeSigner {
+  name: string; // signer subject common name
+  issuer?: string; // issuer common name
+  digestAlgorithm?: string; // e.g. "sha256"
+  timestamp?: number; // signing time, ms since epoch (countersignature / secure timestamp)
+  serialNumber?: string; // hex
+  thumbprint?: string; // SHA-1 hex of the cert, uppercase
+  validFrom?: number; // ms
+  validTo?: number; // ms
+}
+
+export interface CodeSignatureInfo {
+  supported: boolean; // false on Linux or for file types the platform can't sign
+  signed: boolean;
+  status:
+    | 'valid'
+    | 'invalid'
+    | 'untrusted'
+    | 'expired'
+    | 'revoked'
+    | 'unsigned'
+    | 'unsupported'
+    | 'error';
+  statusMessage?: string; // human-readable detail
+  signers: CodeSigner[]; // Windows: one per embedded signature, primary first
+  identifier?: string; // macOS bundle/code identifier
+  teamId?: string; // macOS
+  hardenedRuntime?: boolean; // macOS
+  gatekeeperAccepted?: boolean; // macOS SecAssessment verdict, if implemented
+}
+
+export type CodeSignatureResponse = IpcResult<{ signature: CodeSignatureInfo }>;
+
 export type SettingsResponse = IpcResult<{ settings: Settings }>;
 
 export type SettingsSaveResponse =
@@ -619,6 +652,7 @@ export interface TauriAPI {
   openTrash: () => Promise<IpcResult>;
   renameItem: (oldPath: string, newName: string) => Promise<PathResponse>;
   getItemProperties: (itemPath: string) => Promise<PropertiesResponse>;
+  getCodeSignature: (itemPath: string) => Promise<CodeSignatureResponse>;
   setPermissions: (itemPath: string, mode: number) => Promise<IpcResult>;
   setAttributes: (
     itemPath: string,

@@ -1692,6 +1692,19 @@
             type="button"
             class="properties-tab"
             role="tab"
+            id="properties-tab-signatures"
+            data-tab="signatures"
+            aria-selected="false"
+            aria-controls="properties-panel-signatures"
+            tabindex="-1"
+            hidden
+          >
+            Digital Signatures
+          </button>
+          <button
+            type="button"
+            class="properties-tab"
+            role="tab"
             id="properties-tab-details"
             data-tab="details"
             aria-selected="false"
@@ -1719,6 +1732,13 @@
             role="tabpanel"
             id="properties-panel-general"
             aria-labelledby="properties-tab-general"
+          ></div>
+          <div
+            class="properties-panel"
+            role="tabpanel"
+            id="properties-panel-signatures"
+            aria-labelledby="properties-tab-signatures"
+            hidden
           ></div>
           <div
             class="properties-panel"

@@ -21,6 +21,7 @@ import {
   RawFileItemSchema,
   RawDriveInfoSchema,
   RawItemPropertiesSchema,
+  RawCodeSignatureSchema,
   RawSearchResultSchema,
   RawArchiveEntrySchema,
   RawFolderSizeSchema,
@@ -851,6 +852,18 @@ const tauriAPI: TauriAPI = {
           isIndexedAttr: v.isIndexedAttr ?? undefined,
         },
       };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+  getCodeSignature: async (itemPath) => {
+    try {
+      const raw = await invoke<Record<string, unknown>>('get_code_signature', { itemPath });
+      const v = validateIpc(RawCodeSignatureSchema, raw, 'CodeSignatureInfo');
+      if (!v) {
+        return { success: false, error: 'Invalid code signature data from backend' };
+      }
+      return { success: true, signature: v };
     } catch (e) {
       return { success: false, error: String(e) };
     }

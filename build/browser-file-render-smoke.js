@@ -1654,6 +1654,70 @@ const visualFolderProps = () => ({
   groupName: 'staff',
 });
 
+// Signable item for the Digital Signatures tab. Signed, unsigned and untrusted fixtures share it.
+const visualSignableProps = (name, overrides = {}) => ({
+  path: `C:\\Downloads\\${name}`,
+  name,
+  size: 4831232,
+  sizeOnDisk: 4833280,
+  isDirectory: false,
+  isFile: true,
+  created: new Date('2026-03-11T10:00:00Z'),
+  modified: new Date('2026-03-11T10:02:00Z'),
+  accessed: new Date('2026-10-22T20:00:00Z'),
+  isReadOnly: false,
+  isHiddenAttr: false,
+  isSystemAttr: false,
+  extension: 'exe',
+  mimeType: 'application/x-msdownload',
+  owner: 'S-1-5-21-1001',
+  ownerName: 'DESKTOP-BURNT\\Burnt',
+  group: 'S-1-5-21-513',
+  groupName: 'DESKTOP-BURNT\\None',
+  ...overrides,
+});
+
+// macOS application bundle: a directory that still gets a signature lookup.
+const visualBundleProps = () => ({
+  path: '/Applications/IYERIS.app',
+  name: 'IYERIS.app',
+  size: 0,
+  isDirectory: true,
+  isFile: false,
+  created: new Date('2026-03-11T10:00:00Z'),
+  modified: new Date('2026-03-11T10:02:00Z'),
+  accessed: new Date('2026-10-22T20:00:00Z'),
+  mode: 0o755,
+  owner: '501',
+  ownerName: 'burnt',
+  group: '20',
+  groupName: 'staff',
+});
+
+// Two signers from a dual-signed file. Row 2 differs in issuer and serial, so the details change.
+const VISUAL_SIGNERS = [
+  {
+    name: 'IYERIS Publisher LLC',
+    issuer: 'DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1',
+    digestAlgorithm: 'sha1',
+    timestamp: Date.parse('2026-03-11T10:01:00Z'),
+    serialNumber: '0A1B2C3D4E5F60718293A4B5C6D7E8F9',
+    thumbprint: '3F9A0B1C2D3E4F5061728394A5B6C7D8E9F0A1B2',
+    validFrom: Date.parse('2025-11-02T00:00:00Z'),
+    validTo: Date.parse('2026-11-30T23:59:59Z'),
+  },
+  {
+    name: 'IYERIS Publisher LLC',
+    issuer: 'Sectigo Public Code Signing CA R36',
+    digestAlgorithm: 'sha256',
+    timestamp: Date.parse('2026-03-11T10:01:30Z'),
+    serialNumber: '7E6D5C4B3A2918070605040302010F0E',
+    thumbprint: '9C8B7A6958473625140312F0E1D2C3B4A5968778',
+    validFrom: Date.parse('2025-06-15T00:00:00Z'),
+    validTo: Date.parse('2027-06-14T23:59:59Z'),
+  },
+];
+
 const waitUntil = async (predicate, message, timeoutMs = 4000) => {
   const deadline = performance.now() + timeoutMs;
   while (!predicate()) {
@@ -1840,8 +1904,48 @@ async function runVisualUpliftSuite(results) {
     const propertyStore = new Map();
     const fileProps = visualFileProps();
     const folderProps = visualFolderProps();
-    propertyStore.set(fileProps.path, fileProps);
-    propertyStore.set(folderProps.path, folderProps);
+    const signedProps = visualSignableProps('Setup-Signed.exe');
+    const unsignedProps = visualSignableProps('portable-tool.exe');
+    const untrustedProps = visualSignableProps('legacy-driver.exe');
+    const bundleProps = visualBundleProps();
+    for (const props of [fileProps, folderProps, signedProps, unsignedProps, untrustedProps]) {
+      propertyStore.set(props.path, props);
+    }
+    // Signature lookups: signedProps can be held so a late result can arrive after a switch.
+    const signatureStore = new Map([
+      [
+        signedProps.path,
+        { supported: true, signed: true, status: 'valid', signers: VISUAL_SIGNERS },
+      ],
+      [
+        bundleProps.path,
+        {
+          supported: true,
+          signed: true,
+          status: 'valid',
+          identifier: 'org.iyeris.app',
+          teamId: 'ABCDE12345',
+          hardenedRuntime: true,
+          gatekeeperAccepted: true,
+          signers: [VISUAL_SIGNERS[0]],
+        },
+      ],
+      [unsignedProps.path, { supported: true, signed: false, status: 'unsigned', signers: [] }],
+      [
+        untrustedProps.path,
+        {
+          supported: true,
+          signed: true,
+          status: 'untrusted',
+          statusMessage: 'A certificate in the chain is not trusted by the system.',
+          signers: [VISUAL_SIGNERS[0]],
+        },
+      ],
+    ]);
+    const signatureCalls = [];
+    let heldSignaturePath = null;
+    let releaseHeldSignature = null;
+    let heldSignatureDelivered = false;
     window.tauriAPI.getPlatform = async () => 'windows';
     window.tauriAPI.onChecksumProgress = () => noop;
     window.tauriAPI.getDiskSpace = async () => ({
@@ -1867,6 +1971,19 @@ async function runVisualUpliftSuite(results) {
       propertyCalls.getItemProperties.push(filePath);
       return { success: true, properties: { ...propertyStore.get(filePath) } };
     };
+    window.tauriAPI.getCodeSignature = async (filePath) => {
+      signatureCalls.push(filePath);
+      if (filePath === heldSignaturePath) {
+        await new Promise((resolve) => {
+          releaseHeldSignature = resolve;
+        });
+        heldSignatureDelivered = true;
+      }
+      const signature = signatureStore.get(filePath);
+      return signature
+        ? { success: true, signature }
+        : { success: false, error: 'No signature information' };
+    };
 
     const propertiesDialog = createPropertiesDialogController({
       showToast: noop,
@@ -1884,7 +2001,7 @@ async function runVisualUpliftSuite(results) {
         .filter((tab) => tab.getAttribute('aria-selected') === 'true')
         .map((tab) => tab.dataset.tab)
         .join(',');
-    check('properties dialog has three tabs', tabs.length, 3, tabs.length === 3);
+    check('properties dialog has four tabs', tabs.length, 4, tabs.length === 4);
 
     propertiesDialog.showPropertiesDialog(fileProps);
     check(
@@ -2102,6 +2219,231 @@ async function runVisualUpliftSuite(results) {
       'none',
       propertiesModal.style.display === 'none'
     );
+
+    // Digital Signatures tab: reveal for signed items, skip when unsigned, warn when untrusted,
+    // drop a stale lookup, and keep the cached signature through Apply.
+    const signaturesTab = propertiesTab('signatures');
+    const signaturePanel = () => propertiesModal.querySelector('#properties-panel-signatures');
+    const signerRows = () =>
+      Array.from(propertiesModal.querySelectorAll('[data-role="signer-row"]'));
+    const signerDetails = () =>
+      propertiesModal.querySelector('[data-role="signer-details"]')?.textContent ?? '';
+    const selectedRow = () =>
+      signerRows().findIndex((row) => row.getAttribute('aria-selected') === 'true');
+    const signatureCallsFor = (path) => signatureCalls.filter((called) => called === path).length;
+
+    check(
+      'tab order is General, Digital Signatures, Details, Security',
+      tabs.map((tab) => tab.dataset.tab).join(','),
+      'general,signatures,details,security',
+      tabs.map((tab) => tab.dataset.tab).join(',') === 'general,signatures,details,security'
+    );
+    propertiesDialog.showPropertiesDialog(signedProps);
+    await waitUntil(
+      () => !signaturesTab.hidden,
+      'visual-uplift: the signed file never revealed the Digital Signatures tab'
+    );
+    check(
+      'signed file reveals the Digital Signatures tab',
+      signaturesTab.hidden,
+      false,
+      signaturesTab.hidden === false
+    );
+    check(
+      'signed file still opens on General',
+      selectedTabIds(),
+      'general',
+      selectedTabIds() === 'general'
+    );
+    keyDown(propertiesTab('general'), 'ArrowRight');
+    check(
+      'ArrowRight from General lands on Digital Signatures',
+      `${selectedTabIds()} focus ${document.activeElement?.id ?? ''}`,
+      'signatures focus properties-tab-signatures',
+      selectedTabIds() === 'signatures' && document.activeElement === signaturesTab
+    );
+    check('signer table has two rows', signerRows().length, 2, signerRows().length === 2);
+    const headerHeights = Array.from(
+      propertiesModal.querySelectorAll('#properties-panel-signatures th')
+    ).map((th) => Math.round(th.getBoundingClientRect().height));
+    check(
+      'signer table headers stay on one line',
+      headerHeights.join(','),
+      'each <= 28px',
+      headerHeights.length === 3 && headerHeights.every((height) => height <= 28)
+    );
+    check('first signer row is selected by default', selectedRow(), 0, selectedRow() === 0);
+    check(
+      'details show the first signer issuer',
+      signerDetails().includes('DigiCert'),
+      true,
+      signerDetails().includes('DigiCert')
+    );
+    signerRows()[1].click();
+    check('clicking row 2 selects it', selectedRow(), 1, selectedRow() === 1);
+    check(
+      'row 2 updates the details block',
+      signerDetails().includes('Sectigo') && !signerDetails().includes('DigiCert'),
+      'Sectigo details only',
+      signerDetails().includes('Sectigo') && !signerDetails().includes('DigiCert')
+    );
+    keyDown(signerRows()[1], 'ArrowUp');
+    check('ArrowUp moves the signer selection to row 1', selectedRow(), 0, selectedRow() === 0);
+    keyDown(signerRows()[0], 'ArrowDown');
+    check('ArrowDown moves the signer selection to row 2', selectedRow(), 1, selectedRow() === 1);
+    const okStatus = signaturePanel().querySelector('.signature-status');
+    check(
+      'valid signature shows the OK status',
+      okStatus?.textContent?.trim() ?? '',
+      'This digital signature is OK.',
+      okStatus?.dataset.tone === 'ok' &&
+        okStatus.textContent.includes('This digital signature is OK.')
+    );
+    // Focus stays on the selected row, so the screenshot shows the single row focus ring.
+    await shoot('properties-signatures');
+
+    const refreshesBeforeApply = propertyCalls.getItemProperties.length;
+    propertiesModal.querySelector('input[data-attr="readOnly"]').click();
+    applyButton.click();
+    await waitUntil(
+      () => propertyCalls.getItemProperties.length > refreshesBeforeApply && applyButton.disabled,
+      'visual-uplift: Apply never refreshed the signed file'
+    );
+    check(
+      'Apply keeps the Digital Signatures tab revealed',
+      signaturesTab.hidden,
+      false,
+      signaturesTab.hidden === false
+    );
+    check('Apply keeps both signer rows', signerRows().length, 2, signerRows().length === 2);
+    check('Apply keeps the selected signer', selectedRow(), 1, selectedRow() === 1);
+    check(
+      'Apply does not ask for the signature again',
+      signatureCallsFor(signedProps.path),
+      1,
+      signatureCallsFor(signedProps.path) === 1
+    );
+    document.getElementById('properties-cancel').click();
+
+    propertiesDialog.showPropertiesDialog(unsignedProps);
+    await frame();
+    check(
+      'unsigned file keeps the Digital Signatures tab hidden',
+      signaturesTab.hidden,
+      true,
+      signaturesTab.hidden === true
+    );
+    keyDown(propertiesTab('general'), 'ArrowRight');
+    check(
+      'ArrowRight skips the hidden Digital Signatures tab',
+      selectedTabIds(),
+      'details',
+      selectedTabIds() === 'details'
+    );
+    document.getElementById('properties-cancel').click();
+
+    propertiesDialog.showPropertiesDialog(untrustedProps);
+    await waitUntil(
+      () => !signaturesTab.hidden,
+      'visual-uplift: the untrusted file never revealed the Digital Signatures tab'
+    );
+    signaturesTab.click();
+    const untrustedStatus = signaturePanel().querySelector('.signature-status');
+    check(
+      'untrusted file shows a warning status',
+      untrustedStatus?.dataset.tone ?? '',
+      'warn',
+      untrustedStatus?.dataset.tone === 'warn'
+    );
+    check(
+      'untrusted status reads as a warning',
+      untrustedStatus?.querySelector('.signature-status-text')?.textContent ?? '',
+      'This digital signature is not trusted.',
+      untrustedStatus?.querySelector('.signature-status-text')?.textContent ===
+        'This digital signature is not trusted.'
+    );
+    check(
+      'untrusted status includes the backend message',
+      signaturePanel().querySelector('.signature-status-message')?.textContent ?? '',
+      'A certificate in the chain is not trusted by the system.',
+      signaturePanel().querySelector('.signature-status-message')?.textContent ===
+        'A certificate in the chain is not trusted by the system.'
+    );
+    document.getElementById('properties-cancel').click();
+
+    // A lookup for the signed file is held open. The dialog switches to the unsigned file before it
+    // returns, so the late signed result must not reveal the tab.
+    heldSignaturePath = signedProps.path;
+    propertiesDialog.showPropertiesDialog(signedProps);
+    await frame();
+    check(
+      'a pending lookup keeps the tab hidden',
+      signaturesTab.hidden,
+      true,
+      signaturesTab.hidden === true
+    );
+    propertiesDialog.showPropertiesDialog(unsignedProps);
+    await frame();
+    if (!releaseHeldSignature) {
+      throw new Error('visual-uplift: the held signature lookup never started');
+    }
+    releaseHeldSignature();
+    heldSignaturePath = null;
+    await frame();
+    check(
+      'the stale signed result was delivered after the switch',
+      heldSignatureDelivered,
+      true,
+      heldSignatureDelivered === true
+    );
+    check(
+      'a stale signed result does not reveal the tab',
+      signaturesTab.hidden,
+      true,
+      signaturesTab.hidden === true
+    );
+    check(
+      'a stale signed result leaves the signature panel empty',
+      signaturePanel().childElementCount,
+      0,
+      signaturePanel().childElementCount === 0
+    );
+    check(
+      'the dialog stays on General after the stale result',
+      selectedTabIds(),
+      'general',
+      selectedTabIds() === 'general'
+    );
+    document.getElementById('properties-cancel').click();
+
+    propertiesDialog.showPropertiesDialog(bundleProps);
+    await waitUntil(
+      () => !signaturesTab.hidden,
+      'visual-uplift: the signed macOS bundle never revealed the Digital Signatures tab'
+    );
+    signaturesTab.click();
+    const bundleText = signaturePanel().textContent;
+    const bundleExtrasShown =
+      bundleText.includes('ABCDE12345') &&
+      bundleText.includes('Hardened Runtime') &&
+      bundleText.includes('Accepted');
+    check(
+      'signed macOS bundle shows Team ID, Hardened Runtime and Gatekeeper',
+      bundleExtrasShown ? 'shown' : 'missing',
+      'shown',
+      bundleExtrasShown
+    );
+    document.getElementById('properties-cancel').click();
+
+    propertiesDialog.showPropertiesDialog(folderProps);
+    await frame();
+    check(
+      'a plain folder skips the signature lookup',
+      signatureCallsFor(folderProps.path),
+      0,
+      signatureCallsFor(folderProps.path) === 0
+    );
+    document.getElementById('properties-cancel').click();
 
     propertiesDialog.showPropertiesDialog(folderProps);
     propertiesTab('security').click();
