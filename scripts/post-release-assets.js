@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { pathsEqual } from './direct-execution.js';
@@ -63,7 +64,9 @@ function getReleaseEntries(releaseDir) {
   if (!fs.existsSync(releaseDir)) {
     throw new Error(`release directory does not exist: ${releaseDir}`);
   }
-  const entries = fs.readdirSync(releaseDir);
+  // Session/build dotfiles are local metadata, never release artifacts. Leave
+  // them in the checkout so a failed mirror can still be resumed.
+  const entries = fs.readdirSync(releaseDir).filter((entry) => !entry.startsWith('.'));
   if (entries.length === 0) throw new Error(`release directory is empty: ${releaseDir}`);
   for (const entry of entries) {
     const stat = fs.lstatSync(path.join(releaseDir, entry));
@@ -72,6 +75,21 @@ function getReleaseEntries(releaseDir) {
     }
   }
   return entries;
+}
+
+function sha256File(filePath) {
+  const hash = crypto.createHash('sha256');
+  const buffer = Buffer.allocUnsafe(1024 * 1024);
+  const fd = fs.openSync(filePath, 'r');
+  try {
+    let bytesRead;
+    while ((bytesRead = fs.readSync(fd, buffer, 0, buffer.length, null)) > 0) {
+      hash.update(buffer.subarray(0, bytesRead));
+    }
+  } finally {
+    fs.closeSync(fd);
+  }
+  return hash.digest('hex');
 }
 
 function verifyCopiedPath(sourcePath, destinationPath) {
@@ -93,10 +111,40 @@ function verifyCopiedPath(sourcePath, destinationPath) {
       `mirrored file size differs: ${destinationPath} (${destination.size} bytes; expected ${source.size})`
     );
   }
+  if (source.isFile() && sha256File(sourcePath) !== sha256File(destinationPath)) {
+    throw new Error(`mirrored file hash differs: ${destinationPath}`);
+  }
   if (source.isDirectory()) {
     for (const entry of fs.readdirSync(sourcePath)) {
       verifyCopiedPath(path.join(sourcePath, entry), path.join(destinationPath, entry));
     }
+  }
+}
+
+function copyPathForMirror(sourcePath, destinationPath) {
+  const source = fs.lstatSync(sourcePath);
+  if (source.isSymbolicLink()) throw new Error(`source path is a symlink: ${sourcePath}`);
+  try {
+    if (fs.lstatSync(destinationPath).isSymbolicLink()) {
+      throw new Error(`refusing to overwrite destination symlink: ${destinationPath}`);
+    }
+  } catch (error) {
+    if (error?.code !== 'ENOENT') throw error;
+  }
+  if (source.isDirectory()) {
+    fs.mkdirSync(destinationPath, { recursive: true });
+    for (const entry of fs.readdirSync(sourcePath)) {
+      copyPathForMirror(path.join(sourcePath, entry), path.join(destinationPath, entry));
+    }
+    return;
+  }
+  // Avoid fs.cpSync's native recursive path on Windows mapped drives. SMB
+  // servers may reject copyFile permission handling but accept plain writes.
+  try {
+    fs.copyFileSync(sourcePath, destinationPath);
+  } catch (error) {
+    if (error?.code !== 'EPERM' && error?.code !== 'EACCES') throw error;
+    fs.writeFileSync(destinationPath, fs.readFileSync(sourcePath));
   }
 }
 
@@ -126,14 +174,7 @@ function copyReleaseAssets(releaseDir = RELEASE_DIR, destination) {
   for (const entry of entries) {
     const sourcePath = path.join(resolvedReleaseDir, entry);
     const destinationPath = path.join(resolvedDestination, entry);
-    try {
-      if (fs.lstatSync(destinationPath).isSymbolicLink()) {
-        throw new Error(`refusing to overwrite destination symlink: ${destinationPath}`);
-      }
-    } catch (error) {
-      if (error?.code !== 'ENOENT') throw error;
-    }
-    fs.cpSync(sourcePath, destinationPath, { recursive: true, force: true, errorOnExist: false });
+    copyPathForMirror(sourcePath, destinationPath);
     verifyCopiedPath(sourcePath, destinationPath);
   }
   return entries.length;
