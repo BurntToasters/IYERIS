@@ -23,7 +23,20 @@ function sha256File(filePath) {
 }
 
 function releaseWorkingTreeSha256(root) {
-  const status = gitPorcelainStatus(root);
+  // Tauri rewrites these generated outputs during native builds, after proof
+  // and session creation. They are not release inputs; keep all other drift bound.
+  const status = command(
+    'git',
+    [
+      'status',
+      '--porcelain=v1',
+      '--untracked-files=all',
+      '--',
+      '.',
+      ':(exclude)src-tauri/gen/schemas/',
+    ],
+    root
+  );
   const paths = parsePorcelainPaths(status);
   const files = paths
     .map((filePath) => {
