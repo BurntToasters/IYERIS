@@ -295,8 +295,8 @@ body.theme-light .context-menu-separator {
 
 body.liquid-glass .context-menu {
   background: var(--liquid-glass-menu-bg);
-  backdrop-filter: var(--liquid-glass-menu-filter);
   -webkit-backdrop-filter: var(--liquid-glass-menu-filter);
+  backdrop-filter: var(--liquid-glass-menu-filter);
   border: 1px solid var(--liquid-glass-menu-border-color);
   border-radius: var(--liquid-glass-menu-radius);
   box-shadow: var(--liquid-glass-menu-shadow);

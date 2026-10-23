@@ -624,7 +624,7 @@
 
 .storage-progress-bar {
   height: 8px;
-  background: var(--surface-3);
+  background: var(--surface-2);
   border-radius: 4px;
   overflow: hidden;
 }

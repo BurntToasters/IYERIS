@@ -60,7 +60,17 @@ export const RawItemPropertiesSchema = z.object({
   modified: z.number(),
   accessed: z.number(),
   extension: z.string(),
-  permissions: z.number(),
+  // Null on Windows, where POSIX mode bits do not apply.
+  permissions: z.number().nullable().optional(),
+  sizeOnDisk: z.number().nullable().optional(),
+  mimeType: z.string().nullable().optional(),
+  opensWith: z.string().nullable().optional(),
+  ownerName: z.string().nullable().optional(),
+  groupName: z.string().nullable().optional(),
+  isArchiveAttr: z.boolean().nullable().optional(),
+  isCompressedAttr: z.boolean().nullable().optional(),
+  isEncryptedAttr: z.boolean().nullable().optional(),
+  isIndexedAttr: z.boolean().nullable().optional(),
 });
 export type RawItemProperties = z.infer<typeof RawItemPropertiesSchema>;
 

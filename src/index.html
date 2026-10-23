@@ -1675,9 +1675,74 @@
           <h3 id="properties-title">Properties</h3>
           <button class="modal-close" id="properties-close" aria-label="Close">✕</button>
         </div>
-        <div class="modal-content" id="properties-content"></div>
+        <div class="properties-tabs" role="tablist" aria-label="Properties sections">
+          <button
+            type="button"
+            class="properties-tab"
+            role="tab"
+            id="properties-tab-general"
+            data-tab="general"
+            aria-selected="true"
+            aria-controls="properties-panel-general"
+            tabindex="0"
+          >
+            General
+          </button>
+          <button
+            type="button"
+            class="properties-tab"
+            role="tab"
+            id="properties-tab-details"
+            data-tab="details"
+            aria-selected="false"
+            aria-controls="properties-panel-details"
+            tabindex="-1"
+          >
+            Details
+          </button>
+          <button
+            type="button"
+            class="properties-tab"
+            role="tab"
+            id="properties-tab-security"
+            data-tab="security"
+            aria-selected="false"
+            aria-controls="properties-panel-security"
+            tabindex="-1"
+          >
+            Security
+          </button>
+        </div>
+        <div class="modal-content properties-content" id="properties-content">
+          <div
+            class="properties-panel"
+            role="tabpanel"
+            id="properties-panel-general"
+            aria-labelledby="properties-tab-general"
+          ></div>
+          <div
+            class="properties-panel"
+            role="tabpanel"
+            id="properties-panel-details"
+            aria-labelledby="properties-tab-details"
+            hidden
+          ></div>
+          <div
+            class="properties-panel"
+            role="tabpanel"
+            id="properties-panel-security"
+            aria-labelledby="properties-tab-security"
+            hidden
+          ></div>
+        </div>
         <div class="modal-footer">
-          <button class="modal-button" id="properties-ok">OK</button>
+          <button type="button" class="modal-button primary" id="properties-ok">OK</button>
+          <button type="button" class="modal-button secondary" id="properties-cancel">
+            Cancel
+          </button>
+          <button type="button" class="modal-button secondary" id="properties-apply" disabled>
+            Apply
+          </button>
         </div>
       </div>
     </div>
@@ -2572,6 +2637,21 @@
 
               <div class="settings-card">
                 <div class="settings-card-header">Utility Dashboard</div>
+                <div
+                  class="setting-item"
+                  data-searchable="utility dashboard drawer bottom selection permissions checksums advanced"
+                >
+                  <div class="setting-info">
+                    <label for="show-utility-dashboard-toggle">Show Utility Dashboard</label>
+                    <p class="setting-description">
+                      Advanced: selection info, permissions and checksums docked at the bottom
+                    </p>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="show-utility-dashboard-toggle" />
+                    <span class="toggle-slider"></span>
+                  </label>
+                </div>
                 <div
                   class="setting-item"
                   data-searchable="checksum auto automatic hash hashcode file size"
@@ -4291,8 +4371,8 @@
           ></div>
         </div>
         <div class="modal-footer">
-          <button class="modal-button secondary" id="folder-icon-reset">Reset to Default</button>
-          <button class="modal-button primary" id="folder-icon-cancel">Cancel</button>
+          <button class="modal-button" id="folder-icon-reset">Reset to Default</button>
+          <button class="modal-button secondary" id="folder-icon-cancel">Cancel</button>
         </div>
       </div>
     </div>

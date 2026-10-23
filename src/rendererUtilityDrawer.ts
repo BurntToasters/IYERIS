@@ -24,6 +24,7 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
   let selectionRequestId = 0;
   let storageRequestId = 0;
   let isEditMode = false;
+  let initialized = false;
 
   // Cache elements
   const drawerEl = document.getElementById('utility-drawer');
@@ -86,8 +87,21 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
     'utility-copy-checksum-btn'
   ) as HTMLButtonElement | null;
 
+  // Shows the drawer and runs one-time setup. Does nothing while the
+  // showUtilityDashboard setting is off, so the opt-in default skips all work.
   function init(): void {
     if (!drawerEl || !headerEl || !bodyEl) return;
+
+    if (config.getCurrentSettings().showUtilityDashboard !== true) {
+      hide();
+      return;
+    }
+
+    if (initialized) {
+      drawerEl.style.display = 'flex';
+      return;
+    }
+    initialized = true;
 
     // Detect platform OS early
     window.tauriAPI
@@ -223,6 +237,10 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
 
     // Make drawer visible
     drawerEl.style.display = 'flex';
+  }
+
+  function hide(): void {
+    if (drawerEl) drawerEl.style.display = 'none';
   }
 
   function setCollapsedState(collapsed: boolean): void {
@@ -930,5 +948,5 @@ export function createUtilityDrawerController(config: UtilityDrawerConfig) {
     return `file://${encodeURI(filePath)}`;
   }
 
-  return { init, updateSelection };
+  return { init, hide, updateSelection };
 }

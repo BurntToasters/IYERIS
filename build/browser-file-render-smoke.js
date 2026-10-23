@@ -14,9 +14,29 @@ import { createBatchRenameController } from '../src/rendererBatchRename.ts';
 import { createThumbnailController } from '../src/rendererThumbnails.ts';
 import { createCompressExtractController } from '../src/rendererCompressExtract.ts';
 import { twemojiImg } from '../src/rendererUtils.ts';
+import { createHoverCardController } from '../src/rendererHoverCard.ts';
+import { createPropertiesDialogController } from '../src/rendererPropertiesDialog.ts';
+import { createUtilityDrawerController } from '../src/rendererUtilityDrawer.ts';
+import { createDefaultSettings } from '../src/settings.ts';
+import { formatFileSize, getFileIcon, getFileTypeFromName } from '../src/rendererFileIcons.ts';
+import { HOVER_CARD_DELAY_MS } from '../src/rendererLocalConstants.ts';
 import '../src/css/main.css';
+// Raw markup for the overlays and hover card. The visual suite mounts the real elements
+// from index.html so the checks run against the shipped structure and classes.
+import indexHtml from '../src/index.html?raw';
 
-const { document, requestAnimationFrame, performance, window, DragEvent } = globalThis;
+const {
+  document,
+  requestAnimationFrame,
+  performance,
+  window,
+  DragEvent,
+  DOMParser,
+  Event,
+  KeyboardEvent,
+  MouseEvent,
+  getComputedStyle,
+} = globalThis;
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 const assert = (condition, message) => {
@@ -1504,6 +1524,776 @@ async function runOperationQueueLifetimeSuite(results) {
   });
 }
 
+// ── Visual uplift ───────────────────────────────────────────────────────────
+
+const SCREENSHOT_BINDING = 'iyerisSmokeScreenshot';
+const screenshotWaiters = new Map();
+let screenshotSequence = 0;
+// Node calls this with the reply to each requestScreenshot() call.
+globalThis.__iyerisSmokeScreenshotSettle = (reply) => {
+  const waiter = screenshotWaiters.get(reply?.id);
+  if (!waiter) return;
+  screenshotWaiters.delete(reply.id);
+  if (reply.error) waiter.reject(new Error(`Smoke screenshot failed: ${reply.error}`));
+  else waiter.resolve(reply);
+};
+// Resolves once Node has written coverage-headless/browser-smoke-<name>.png.
+const requestScreenshot = (name, regions = []) =>
+  new Promise((resolve, reject) => {
+    const id = ++screenshotSequence;
+    screenshotWaiters.set(id, { resolve, reject });
+    window[SCREENSHOT_BINDING](
+      JSON.stringify({ id, name, regions, viewportWidth: window.innerWidth })
+    );
+  });
+
+// Parses the computed colors Chromium reports: rgb(), rgba() and color(srgb ...).
+// Any other form throws, so an unexpected format fails the run instead of passing.
+const NUMERIC_TOKEN_RE = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%?)$/i;
+const parseComputedColor = (value) => {
+  const text = String(value).trim().toLowerCase();
+  if (text === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
+  const match = /^(rgba?|color)\((.*)\)$/.exec(text);
+  if (!match) throw new Error(`Unsupported computed color: ${String(value)}`);
+  const isSrgb = match[1] === 'color';
+  let body = match[2].trim();
+  if (isSrgb) {
+    if (!body.startsWith('srgb ')) throw new Error(`Unsupported color space: ${String(value)}`);
+    body = body.slice('srgb'.length).trim();
+  }
+  const slashParts = body.split('/');
+  if (slashParts.length > 2) throw new Error(`Malformed computed color: ${String(value)}`);
+  const channels = slashParts[0].split(/[\s,]+/).filter(Boolean);
+  let alphaToken = slashParts.length === 2 ? slashParts[1].trim() : undefined;
+  if (alphaToken === undefined && channels.length === 4) alphaToken = channels.pop();
+  if (channels.length !== 3) throw new Error(`Malformed computed color: ${String(value)}`);
+  // color(srgb) channels are 0-1 and rgb() channels are 0-255. Percentages scale to either.
+  const toNumber = (token, fullScale) => {
+    const parts = NUMERIC_TOKEN_RE.exec(token);
+    if (!parts) throw new Error(`Malformed color component "${token}" in ${String(value)}`);
+    const number = Number(parts[1]);
+    return parts[2] ? (number / 100) * fullScale : number;
+  };
+  const [r, g, b] = channels.map((token) =>
+    isSrgb ? toNumber(token, 1) * 255 : toNumber(token, 255)
+  );
+  const a = alphaToken === undefined ? 1 : toNumber(alphaToken, 1);
+  if (![r, g, b, a].every(Number.isFinite) || a < 0 || a > 1) {
+    throw new Error(`Out-of-range computed color: ${String(value)}`);
+  }
+  return { r, g, b, a };
+};
+const alphaOf = (value) => parseComputedColor(value).a;
+
+// Turns off transitions and animations so computed styles and screenshots settle the same way every run.
+const VISUAL_FREEZE_CSS =
+  '*, *::before, *::after { transition: none !important; animation: none !important; caret-color: transparent !important; }';
+const VISUAL_GRID_NAMES = [
+  'Johann_Smith_Invoice_IT_Services.pdf',
+  'Quarterly-Report-2026.xlsx',
+  'meeting-notes.md',
+  'archive[old].zip',
+  'podcast-episode-12.mp3',
+  'design_v2_final.psd',
+  'README.txt',
+  'budget2026.csv',
+  'vacation_video.mp4',
+  'resume_updated.docx',
+  'screenshot-2026-10-01.png',
+  'holiday_photo_(beach).jpg',
+  'Project_Plan_draft.pptx',
+  'config.json',
+  'main.ts',
+  'LICENSE',
+];
+const VISUAL_LABEL_NAME = 'Johann_Smith_Invoice_IT_Services.pdf';
+const VISUAL_HOVER_NAME = 'holiday_photo_(beach).jpg';
+const VISUAL_PERM_BITS = [0o400, 0o200, 0o100, 0o040, 0o020, 0o010, 0o004, 0o002, 0o001];
+
+// Windows-style file: attribute booleans present, no Unix mode.
+const visualFileProps = () => ({
+  path: 'C:\\Users\\Burnt\\Documents\\Johann_Smith_Invoice_IT_Services.pdf',
+  name: 'Johann_Smith_Invoice_IT_Services.pdf',
+  size: 248512,
+  sizeOnDisk: 249856,
+  isDirectory: false,
+  isFile: true,
+  created: new Date('2026-01-14T09:12:04Z'),
+  modified: new Date('2026-10-02T17:45:31Z'),
+  accessed: new Date('2026-10-22T21:38:45Z'),
+  isReadOnly: false,
+  isHiddenAttr: false,
+  isSystemAttr: false,
+  isArchiveAttr: true,
+  isCompressedAttr: false,
+  isEncryptedAttr: false,
+  isIndexedAttr: true,
+  extension: 'pdf',
+  mimeType: 'application/pdf',
+  opensWith: 'Microsoft Edge',
+  owner: 'S-1-5-21-1001',
+  ownerName: 'DESKTOP-BURNT\\Burnt',
+  group: 'S-1-5-21-513',
+  groupName: 'DESKTOP-BURNT\\None',
+});
+
+// Unix-style folder: mode 0o754, no Windows attribute booleans.
+const visualFolderProps = () => ({
+  path: '/home/burnt/Projects',
+  name: 'Projects',
+  size: 4096,
+  isDirectory: true,
+  isFile: false,
+  created: new Date('2026-02-03T08:00:00Z'),
+  modified: new Date('2026-10-20T14:10:00Z'),
+  accessed: new Date('2026-10-22T21:00:00Z'),
+  mode: 0o754,
+  owner: '1000',
+  ownerName: 'burnt',
+  group: '1000',
+  groupName: 'staff',
+});
+
+const waitUntil = async (predicate, message, timeoutMs = 4000) => {
+  const deadline = performance.now() + timeoutMs;
+  while (!predicate()) {
+    if (performance.now() > deadline) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+};
+
+// Walks from the element under (x, y) up to the dialog. Any element with opacity below 1 or a
+// mask in that chain can let content behind the dialog show through.
+function opacityChainFailures(modalEl, x, y) {
+  const failures = [];
+  let element = document.elementFromPoint(x, y);
+  if (!element || !modalEl.contains(element)) {
+    return [
+      `point ${Math.round(x)},${Math.round(y)} hit ${element?.tagName ?? 'nothing'} outside the dialog`,
+    ];
+  }
+  while (element) {
+    const style = getComputedStyle(element);
+    const label = `${element.tagName}${element.id ? `#${element.id}` : ''}.${String(element.className).trim().split(/\s+/).join('.')}`;
+    if (Number(style.opacity) < 1) failures.push(`${label} opacity ${style.opacity}`);
+    if (style.maskImage !== 'none' || style.webkitMaskImage !== 'none') {
+      failures.push(`${label} mask ${style.maskImage}`);
+    }
+    if (element === modalEl) break;
+    element = element.parentElement;
+  }
+  return failures;
+}
+
+async function runVisualUpliftSuite(results) {
+  const checks = [];
+  const screenshots = [];
+  const record = { mode: 'visual-uplift', checks, screenshots, passed: false };
+  results.push(record);
+  const check = (name, actual, expected, passed) => {
+    checks.push({ name, actual: String(actual), expected, passed: passed === true });
+  };
+  const shoot = async (name, regions = []) => {
+    await frame();
+    const reply = await requestScreenshot(name, regions);
+    screenshots.push(name);
+    return reply.regions ?? [];
+  };
+  const keyDown = (element, key) =>
+    element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+
+  let hover = null;
+  let failure = null;
+  try {
+    await document.fonts?.ready;
+    const parsedIndex = new DOMParser().parseFromString(indexHtml, 'text/html');
+    const fromIndex = (id) => {
+      const node = parsedIndex.getElementById(id);
+      if (!node) throw new Error(`visual-uplift: index.html has no #${id}.`);
+      return document.importNode(node, true);
+    };
+    const freeze = document.createElement('style');
+    freeze.textContent = VISUAL_FREEZE_CSS;
+    const fileView = document.createElement('div');
+    fileView.id = 'file-view';
+    fileView.className = 'file-view';
+    fileView.style.cssText = 'position:absolute;left:24px;top:24px;width:820px;height:520px;';
+    const grid = document.createElement('div');
+    grid.id = 'file-grid';
+    grid.className = 'file-grid';
+    fileView.append(grid);
+    const emptyState = document.createElement('div');
+    emptyState.id = 'empty-state';
+    document.body.className = '';
+    document.body.replaceChildren(
+      freeze,
+      fileView,
+      emptyState,
+      fromIndex('file-hover-card'),
+      fromIndex('properties-modal'),
+      fromIndex('compress-options-modal'),
+      fromIndex('settings-modal'),
+      fromIndex('utility-drawer')
+    );
+
+    const settings = createDefaultSettings();
+    const renderedElements = new Map();
+    const fileRender = createFileRenderController({
+      getFileGrid: () => grid,
+      getEmptyState: () => emptyState,
+      getCurrentSettings: () => settings,
+      getFileElementMap: () => renderedElements,
+      showToast: noop,
+      clearSelection: noop,
+      updateStatusBar: noop,
+      markSelectionDirty: noop,
+      setHiddenFilesCount: noop,
+      getHiddenFilesCount: () => 0,
+      setAllFiles: noop,
+      setDisableEntryAnimation: noop,
+      setDisableThumbnailRendering: noop,
+      ensureActiveItem: noop,
+      applyGitIndicatorsToPaths: noop,
+      updateCutVisuals: noop,
+      clearCutPaths: noop,
+      clearGitCache: noop,
+      observeThumbnailItem: noop,
+      resetThumbnailObserver: noop,
+      getFolderIcon: () => '',
+      nameCollator: new Intl.Collator('en'),
+      dateFormatter: new Intl.DateTimeFormat('en-US'),
+    });
+    const gridItems = VISUAL_GRID_NAMES.map((name, index) =>
+      fixtureItem({
+        name,
+        path: `/visual/${name}`,
+        size: 2048 * (index + 1),
+        modified: new Date('2026-10-01T12:00:00Z'),
+      })
+    );
+    const gridItemsByPath = new Map(gridItems.map((item) => [item.path, item]));
+    fileRender.renderFiles(gridItems);
+    await waitUntil(
+      () => grid.querySelectorAll('.file-item').length === gridItems.length,
+      'visual-uplift: the grid did not render every fixture item'
+    );
+    await document.fonts?.ready;
+
+    // Grid label: wrap opportunities are added, and the text is unchanged.
+    const labelElement = grid.querySelector(
+      `.file-item[data-path="/visual/${VISUAL_LABEL_NAME}"] .file-name`
+    );
+    const labelHtml = labelElement?.innerHTML ?? '';
+    check(
+      'grid label has <wbr> break opportunities',
+      labelHtml,
+      'contains <wbr>',
+      labelHtml.includes('<wbr>')
+    );
+    const labelText = labelElement?.textContent ?? '';
+    check(
+      'grid label text matches the file name',
+      labelText,
+      VISUAL_LABEL_NAME,
+      labelText === VISUAL_LABEL_NAME
+    );
+
+    // Hover card over the icon grid.
+    hover = createHoverCardController({
+      getFileItemData: (element) => gridItemsByPath.get(element.dataset.path ?? '') ?? null,
+      formatFileSize,
+      getFileTypeFromName,
+      getFileIcon,
+      getThumbnailForPath: () => undefined,
+      isRubberBandActive: () => false,
+    });
+    hover.setup();
+    const hoverTarget = Array.from(grid.querySelectorAll('.file-item')).find(
+      (element) => element.dataset.path === `/visual/${VISUAL_HOVER_NAME}`
+    );
+    if (!hoverTarget) throw new Error('visual-uplift: the hover target was not rendered');
+    hoverTarget.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    const hoverCard = document.getElementById('file-hover-card');
+    await waitUntil(
+      () => hoverCard.classList.contains('visible'),
+      `visual-uplift: hover card never showed after ${HOVER_CARD_DELAY_MS}ms`
+    );
+    const hoverStyle = getComputedStyle(hoverCard);
+    const hoverAlpha = alphaOf(hoverStyle.backgroundColor);
+    check(
+      'hover card background is fully opaque (alpha at least 0.99)',
+      hoverStyle.backgroundColor,
+      '>= 0.99',
+      hoverAlpha >= 0.99
+    );
+    check(
+      'hover card has a box-shadow',
+      hoverStyle.boxShadow,
+      'not none',
+      hoverStyle.boxShadow !== 'none'
+    );
+    await shoot('hover-card');
+    hover.hideHoverCard();
+
+    // Properties dialog: tabs, dim-only backdrop, Apply flow and the permission grid.
+    const propertyCalls = { setAttributes: [], setPermissions: [], getItemProperties: [] };
+    const propertyStore = new Map();
+    const fileProps = visualFileProps();
+    const folderProps = visualFolderProps();
+    propertyStore.set(fileProps.path, fileProps);
+    propertyStore.set(folderProps.path, folderProps);
+    window.tauriAPI.getPlatform = async () => 'windows';
+    window.tauriAPI.onChecksumProgress = () => noop;
+    window.tauriAPI.getDiskSpace = async () => ({
+      success: true,
+      total: 500 * 1024 ** 3,
+      free: 200 * 1024 ** 3,
+    });
+    window.tauriAPI.writeToSystemClipboard = async () => ({ success: true });
+    window.tauriAPI.setAttributes = async (filePath, payload) => {
+      propertyCalls.setAttributes.push({ path: filePath, payload: { ...payload } });
+      const stored = propertyStore.get(filePath);
+      if (stored && payload.readOnly !== undefined) stored.isReadOnly = payload.readOnly;
+      if (stored && payload.hidden !== undefined) stored.isHiddenAttr = payload.hidden;
+      return { success: true };
+    };
+    window.tauriAPI.setPermissions = async (filePath, mode) => {
+      propertyCalls.setPermissions.push({ path: filePath, mode });
+      const stored = propertyStore.get(filePath);
+      if (stored) stored.mode = mode;
+      return { success: true };
+    };
+    window.tauriAPI.getItemProperties = async (filePath) => {
+      propertyCalls.getItemProperties.push(filePath);
+      return { success: true, properties: { ...propertyStore.get(filePath) } };
+    };
+
+    const propertiesDialog = createPropertiesDialogController({
+      showToast: noop,
+      onModalOpen: noop,
+      onModalClose: noop,
+      getFileIcon,
+      getThumbnailForPath: () => undefined,
+      getFileTypeFromName,
+    });
+    const propertiesModal = document.getElementById('properties-modal');
+    const propertiesTab = (id) => document.getElementById(`properties-tab-${id}`);
+    const tabs = Array.from(propertiesModal.querySelectorAll('[role="tab"]'));
+    const selectedTabIds = () =>
+      tabs
+        .filter((tab) => tab.getAttribute('aria-selected') === 'true')
+        .map((tab) => tab.dataset.tab)
+        .join(',');
+    check('properties dialog has three tabs', tabs.length, 3, tabs.length === 3);
+
+    propertiesDialog.showPropertiesDialog(fileProps);
+    check(
+      'properties opens on General',
+      selectedTabIds(),
+      'general',
+      selectedTabIds() === 'general'
+    );
+    propertiesTab('details').click();
+    check(
+      'clicking Details selects it',
+      selectedTabIds(),
+      'details',
+      selectedTabIds() === 'details'
+    );
+    keyDown(propertiesTab('details'), 'ArrowRight');
+    check(
+      'ArrowRight moves focus with the selection',
+      document.activeElement?.id ?? '',
+      'properties-tab-security',
+      document.activeElement === propertiesTab('security')
+    );
+    check(
+      'ArrowRight moves selection to Security',
+      selectedTabIds(),
+      'security',
+      selectedTabIds() === 'security'
+    );
+    propertiesTab('general').click();
+    check(
+      'clicking a tab moves focus to it',
+      document.activeElement?.id ?? '',
+      'properties-tab-general',
+      document.activeElement === propertiesTab('general')
+    );
+
+    const backdrop = getComputedStyle(propertiesModal);
+    check(
+      'properties backdrop has no blur',
+      backdrop.backdropFilter,
+      'none',
+      backdrop.backdropFilter === 'none' || backdrop.backdropFilter === ''
+    );
+    const backdropAlpha = alphaOf(backdrop.backgroundColor);
+    check(
+      'properties backdrop only dims (alpha <= 0.4)',
+      backdrop.backgroundColor,
+      '<= 0.4',
+      backdropAlpha <= 0.4
+    );
+    const dialogPanelStyle = getComputedStyle(propertiesModal.querySelector('.modal'));
+    check(
+      'properties dialog panel has no nested blur',
+      dialogPanelStyle.backdropFilter,
+      'none',
+      dialogPanelStyle.backdropFilter === 'none' || dialogPanelStyle.backdropFilter === ''
+    );
+    // A shared overlay outside the dim-only group keeps the 8px blur from ui3.css.
+    const sharedOverlayBlur = getComputedStyle(
+      document.getElementById('settings-modal')
+    ).backdropFilter;
+    check(
+      'shared modal overlay blur is 8px',
+      sharedOverlayBlur,
+      'blur(8px)',
+      /blur\(8px\)/.test(sharedOverlayBlur) && !/blur\(10px\)/.test(sharedOverlayBlur)
+    );
+
+    const applyButton = document.getElementById('properties-apply');
+    check('Apply starts disabled', applyButton.disabled, true, applyButton.disabled === true);
+    propertiesModal.querySelector('input[data-attr="readOnly"]').click();
+    check(
+      'toggling Read-only enables Apply',
+      applyButton.disabled,
+      false,
+      applyButton.disabled === false
+    );
+    applyButton.click();
+    await waitUntil(
+      () => propertyCalls.getItemProperties.length === 1 && applyButton.disabled,
+      'visual-uplift: Apply never finished refreshing the file properties'
+    );
+    const attributeCall = propertyCalls.setAttributes[0];
+    const attributeKeys = Object.keys(attributeCall?.payload ?? {})
+      .sort()
+      .join(',');
+    check(
+      'Apply sends {readOnly, hidden} to setAttributes',
+      attributeKeys,
+      'hidden,readOnly',
+      attributeKeys === 'hidden,readOnly' &&
+        attributeCall.payload.readOnly === true &&
+        attributeCall.payload.hidden === false
+    );
+    check(
+      'Read-only stays checked after the refresh',
+      propertiesModal.querySelector('input[data-attr="readOnly"]')?.checked ?? false,
+      true,
+      propertiesModal.querySelector('input[data-attr="readOnly"]')?.checked === true
+    );
+    // Opacity and pixel probes. The band sits under the tab strip, where grid icons are behind the
+    // dialog. The solid strip sits above the footer, where nothing is behind the dialog.
+    const panelEl = propertiesModal.querySelector('.modal');
+    const panelRect = panelEl.getBoundingClientRect();
+    const tabsRect = propertiesModal.querySelector('.properties-tabs').getBoundingClientRect();
+    const footerRect = propertiesModal.querySelector('.modal-footer').getBoundingClientRect();
+    const bandArea = {
+      left: panelRect.left,
+      right: panelRect.right,
+      top: tabsRect.bottom + 4,
+      bottom: tabsRect.bottom + 40,
+    };
+    const behindBand = Array.from(grid.querySelectorAll('.file-item'))
+      .map((element) => element.getBoundingClientRect())
+      .map((rect) => {
+        const left = Math.max(rect.left, bandArea.left);
+        const top = Math.max(rect.top, bandArea.top);
+        return {
+          x: left,
+          y: top,
+          width: Math.min(rect.right, bandArea.right) - left,
+          height: Math.min(rect.bottom, bandArea.bottom) - top,
+        };
+      })
+      .filter((rect) => rect.width >= 24 && rect.height >= 12)
+      .sort((a, b) => b.width * b.height - a.width * a.height)[0];
+    check(
+      'a grid item sits behind the panel band',
+      behindBand ? 'yes' : 'none',
+      'yes',
+      Boolean(behindBand)
+    );
+    if (!behindBand) throw new Error('visual-uplift: no grid item sits behind the panel band');
+    const solidRegion = {
+      name: 'solid',
+      x: panelRect.left + 24,
+      y: footerRect.top - 36,
+      width: 200,
+      height: 22,
+    };
+    const probeFailures = [
+      ...opacityChainFailures(
+        panelEl,
+        behindBand.x + behindBand.width / 2,
+        behindBand.y + behindBand.height / 2
+      ),
+      ...opacityChainFailures(panelEl, panelRect.left + 60, panelRect.top + 20),
+      ...opacityChainFailures(panelEl, solidRegion.x + 100, solidRegion.y + 11),
+      ...opacityChainFailures(panelEl, panelRect.left + panelRect.width / 2, footerRect.top - 60),
+    ];
+    check(
+      'properties panel chain has no translucent element or mask',
+      probeFailures.join('; ') || 'none',
+      'none',
+      probeFailures.length === 0
+    );
+    const panelAlpha = alphaOf(getComputedStyle(panelEl).backgroundColor);
+    check(
+      'properties panel background is fully opaque',
+      getComputedStyle(panelEl).backgroundColor,
+      'alpha 1',
+      panelAlpha === 1
+    );
+    const dateLines = ['Created:', 'Modified:', 'Accessed:'].map((label) => {
+      const row = Array.from(
+        propertiesModal.querySelectorAll('#properties-panel-general .property-row')
+      ).find((element) => element.querySelector('.property-label')?.textContent.trim() === label);
+      const valueNode = row?.querySelector('.property-value');
+      if (!valueNode) return `${label} missing`;
+      const range = document.createRange();
+      range.selectNodeContents(valueNode);
+      return `${label} ${range.getClientRects().length}`;
+    });
+    check(
+      'long date values stay on one line',
+      dateLines.join(', '),
+      'each 1 line',
+      dateLines.every((entry) => entry.endsWith(' 1'))
+    );
+    document.activeElement?.blur();
+    const [bandStats, solidStats] = await shoot('properties-file-general', [
+      { name: 'band', ...behindBand },
+      solidRegion,
+    ]);
+    check(
+      'panel band over grid icons has no ghosting (luminance stdDev)',
+      `stdDev ${bandStats.stdDev}`,
+      'stdDev <= 0.1',
+      bandStats.stdDev <= 0.1
+    );
+    check(
+      'panel band matches the solid panel strip (mean luminance)',
+      `band ${bandStats.mean}, solid ${solidStats.mean}`,
+      'difference <= 0.5',
+      Math.abs(bandStats.mean - solidStats.mean) <= 0.5
+    );
+    propertiesTab('details').click();
+    document.activeElement?.blur();
+    await shoot('properties-file-details');
+    propertiesTab('security').click();
+    const securityText =
+      propertiesModal.querySelector('#properties-panel-security')?.textContent ?? '';
+    check(
+      'file Security tab shows the Windows note',
+      securityText.includes('Access control lists are managed by Windows.'),
+      'note present',
+      securityText.includes('Access control lists are managed by Windows.')
+    );
+    document.activeElement?.blur();
+    await shoot('properties-file-security');
+    document.getElementById('properties-cancel').click();
+    check(
+      'Cancel closes the properties dialog',
+      propertiesModal.style.display,
+      'none',
+      propertiesModal.style.display === 'none'
+    );
+
+    propertiesDialog.showPropertiesDialog(folderProps);
+    propertiesTab('security').click();
+    const permBox = (bit) => propertiesModal.querySelector(`input[data-perm-bit="${bit}"]`);
+    const octalInput = () => propertiesModal.querySelector('[data-role="perm-octal"]');
+    const rwxText = () =>
+      propertiesModal.querySelector('[data-role="perm-rwx"]')?.textContent ?? '';
+    const gridState = () =>
+      VISUAL_PERM_BITS.map((bit) => (permBox(bit)?.checked ? '1' : '0')).join('');
+    check(
+      'folder octal input shows 754',
+      octalInput()?.value ?? '',
+      '754',
+      octalInput()?.value === '754'
+    );
+    check('permission grid mirrors 754', gridState(), '111101100', gridState() === '111101100');
+    check(
+      'folder Apply starts disabled',
+      applyButton.disabled,
+      true,
+      applyButton.disabled === true
+    );
+    permBox(0o002).click();
+    check(
+      'grid edit updates the octal input',
+      octalInput()?.value ?? '',
+      '756',
+      octalInput()?.value === '756'
+    );
+    check('grid edit updates the rwx text', rwxText(), 'rwxr-xrw-', rwxText() === 'rwxr-xrw-');
+    octalInput().value = '644';
+    octalInput().dispatchEvent(new Event('input', { bubbles: true }));
+    check('octal input updates the grid', gridState(), '110100100', gridState() === '110100100');
+    check('octal input updates the rwx text', rwxText(), 'rw-r--r--', rwxText() === 'rw-r--r--');
+    check(
+      'Apply enables after permission edits',
+      applyButton.disabled,
+      false,
+      applyButton.disabled === false
+    );
+    applyButton.click();
+    await waitUntil(
+      () => propertyCalls.setPermissions.length === 1 && applyButton.disabled,
+      'visual-uplift: permission Apply never finished'
+    );
+    const modeSent = (propertyCalls.setPermissions[0]?.mode ?? -1).toString(8);
+    check('Apply sends the octal mode to setPermissions', modeSent, '644', modeSent === '644');
+    document.activeElement?.blur();
+    await shoot('properties-folder-security');
+    document.getElementById('properties-cancel').click();
+
+    // Compress modal footer, opened through the real controller.
+    const compressModal = document.getElementById('compress-options-modal');
+    const compressController = createCompressExtractController({
+      getCurrentPath: () => '/visual',
+      getSelectedItems: () => new Set([`/visual/${VISUAL_LABEL_NAME}`]),
+      getAllFiles: () => gridItems,
+      showToast: noop,
+      showConfirm: async () => true,
+      navigateTo: async () => {},
+      activateModal: noop,
+      deactivateModal: noop,
+      addToRecentFiles: noop,
+      generateOperationId: () => 'visual-op',
+      addOperation: noop,
+      getOperation: () => undefined,
+      updateOperation: noop,
+      completeOperation: noop,
+      removeOperation: noop,
+      isWindowsPlatform: () => false,
+    });
+    compressController.showCompressOptionsModal();
+    const footer = compressModal.querySelector('.modal-footer');
+    if (!footer) throw new Error('visual-uplift: the compress modal has no .modal-footer');
+    const footerBox = footer.getBoundingClientRect();
+    const footerButtons = Array.from(footer.querySelectorAll('button')).filter(
+      (button) => button.getClientRects().length > 0
+    );
+    check(
+      'modal footer lays out as a row',
+      getComputedStyle(footer).flexDirection,
+      'row',
+      getComputedStyle(footer).flexDirection === 'row'
+    );
+    check(
+      'modal footer buttons are narrower than the footer',
+      footerButtons.length,
+      `>0 buttons, each narrower than ${Math.round(footerBox.width)}px`,
+      footerButtons.length > 0 &&
+        footerButtons.every((button) => button.getBoundingClientRect().width < footerBox.width)
+    );
+    const lastButtonRight =
+      footerButtons[footerButtons.length - 1]?.getBoundingClientRect().right ?? 0;
+    check(
+      'modal footer buttons sit on the right half',
+      lastButtonRight,
+      `> ${Math.round(footerBox.left + footerBox.width / 2)}`,
+      lastButtonRight > footerBox.left + footerBox.width / 2
+    );
+    const compressPanelEl = compressModal.querySelector('.modal');
+    const compressRect = compressPanelEl.getBoundingClientRect();
+    const compressFailures = [
+      ...opacityChainFailures(compressPanelEl, compressRect.left + 60, compressRect.top + 20),
+      ...opacityChainFailures(
+        compressPanelEl,
+        compressRect.left + compressRect.width / 2,
+        compressRect.top + compressRect.height / 2
+      ),
+      ...opacityChainFailures(compressPanelEl, compressRect.right - 40, compressRect.bottom - 40),
+    ];
+    check(
+      'compress panel chain has no translucent element or mask',
+      compressFailures.join('; ') || 'none',
+      'none',
+      compressFailures.length === 0
+    );
+    check(
+      'compress panel background is fully opaque',
+      getComputedStyle(compressPanelEl).backgroundColor,
+      'alpha 1',
+      alphaOf(getComputedStyle(compressPanelEl).backgroundColor) === 1
+    );
+    await shoot('compress-options');
+
+    // Utility Dashboard: hidden with the default setting, shown once it is enabled.
+    const drawer = document.getElementById('utility-drawer');
+    const utilitySettings = createDefaultSettings();
+    check(
+      'Utility Dashboard setting defaults to off',
+      utilitySettings.showUtilityDashboard,
+      false,
+      utilitySettings.showUtilityDashboard === false
+    );
+    const utility = createUtilityDrawerController({
+      getCurrentSettings: () => utilitySettings,
+      saveSettingsWithTimestamp: async () => undefined,
+      showToast: noop,
+      getCurrentPath: () => '/visual',
+      navigateTo: noop,
+    });
+    utility.init();
+    const hiddenDisplay = getComputedStyle(drawer).display;
+    check(
+      'utility drawer stays hidden with default settings',
+      hiddenDisplay,
+      'none',
+      hiddenDisplay === 'none'
+    );
+    utilitySettings.showUtilityDashboard = true;
+    utility.init();
+    const shownDisplay = getComputedStyle(drawer).display;
+    check(
+      'utility drawer shows after the setting is enabled',
+      shownDisplay,
+      'not none',
+      shownDisplay !== 'none'
+    );
+
+    // Theme surfaces: the modal panel must stay near-opaque in these themes.
+    for (const themeClass of ['theme-nord', 'theme-dracula', 'liquid-glass']) {
+      document.body.className = themeClass;
+      compressController.showCompressOptionsModal();
+      await frame();
+      const surface = compressModal.querySelector('.modal.glass-panel');
+      if (!surface) throw new Error(`visual-uplift: ${themeClass} has no .modal.glass-panel`);
+      const surfaceBackground = getComputedStyle(surface).backgroundColor;
+      check(
+        `${themeClass} modal surface alpha is at least 0.94`,
+        surfaceBackground,
+        '>= 0.94',
+        alphaOf(surfaceBackground) >= 0.94
+      );
+      await shoot(`${themeClass}-modal`);
+      compressModal.style.display = 'none';
+    }
+  } catch (error) {
+    failure = error;
+  } finally {
+    hover?.cleanup();
+    document.body.className = '';
+    record.passed = failure === null && checks.length > 0 && checks.every((c) => c.passed);
+  }
+  if (failure) throw failure;
+  const failed = checks.filter((c) => !c.passed);
+  assert(
+    failed.length === 0,
+    `visual-uplift: ${failed.length} check(s) failed: ${failed
+      .map((c) => `${c.name} (actual ${c.actual}, expected ${c.expected})`)
+      .join('; ')}`
+  );
+}
+
 // The bundle can execute while the parser is still running (inside <head> or
 // before the implicit body exists), so every suite must wait for the body.
 const documentReady = () =>
@@ -1532,5 +2322,6 @@ globalThis.runFileRenderSmoke = async () => {
   await runThumbnailFingerprintSuite(results);
   await runArchiveWhitespacePasswordSuite(results);
   await runOperationQueueLifetimeSuite(results);
+  await runVisualUpliftSuite(results);
   return results;
 };

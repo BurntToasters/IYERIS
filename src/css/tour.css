@@ -2,8 +2,8 @@
 #tour-prompt-modal,
 #fda-prompt-modal {
   background: rgba(0, 0, 0, 0.38);
-  backdrop-filter: blur(12px) saturate(130%);
   -webkit-backdrop-filter: blur(12px) saturate(130%);
+  backdrop-filter: blur(12px) saturate(130%);
 }
 
 .support-popup-modal,

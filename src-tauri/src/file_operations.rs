@@ -302,10 +302,67 @@ pub struct ItemProperties {
     pub modified: f64,
     pub accessed: f64,
     pub extension: String,
-    #[cfg(unix)]
-    pub permissions: u32,
-    #[cfg(not(unix))]
-    pub permissions: u32,
+    /// Unix mode bits. None on Windows, where POSIX permissions do not apply.
+    pub permissions: Option<u32>,
+    /// Allocated bytes on disk. Files only. None when the platform query fails.
+    pub size_on_disk: Option<u64>,
+    /// Sniffed from the first 8 KB, falling back to the extension. Files only.
+    pub mime_type: Option<String>,
+    /// Friendly name (or executable stem) of the default handler. Windows only.
+    pub opens_with: Option<String>,
+    pub owner_name: Option<String>,
+    pub group_name: Option<String>,
+    pub is_archive_attr: Option<bool>,
+    pub is_compressed_attr: Option<bool>,
+    pub is_encrypted_attr: Option<bool>,
+    pub is_indexed_attr: Option<bool>,
+}
+
+/// Bytes read from the start of a file for MIME sniffing.
+const MIME_SNIFF_BYTES: u64 = 8 * 1024;
+
+/// Best-effort MIME type: content sniffing first, then a small extension table.
+/// Sensitive paths (see `ensure_safe_preview_read_path`) are never read or
+/// name-guessed, so they yield None instead of an error.
+fn detect_item_mime_type(path: &Path) -> Option<String> {
+    ensure_safe_preview_read_path(path).ok()?;
+    let sniffed = (|| {
+        let canonical = path.canonicalize().ok()?;
+        let file = open_regular_read(&canonical).ok()?;
+        let mut buffer = Vec::with_capacity(MIME_SNIFF_BYTES as usize);
+        file.take(MIME_SNIFF_BYTES).read_to_end(&mut buffer).ok()?;
+        infer::get(&buffer).map(|kind| kind.mime_type().to_string())
+    })();
+    sniffed.or_else(|| {
+        let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+        let mime = match ext.as_str() {
+            "png" => "image/png",
+            "jpg" | "jpeg" => "image/jpeg",
+            "gif" => "image/gif",
+            "webp" => "image/webp",
+            "bmp" => "image/bmp",
+            "svg" => "image/svg+xml",
+            "ico" => "image/x-icon",
+            "pdf" => "application/pdf",
+            "mp4" => "video/mp4",
+            "webm" => "video/webm",
+            "mp3" => "audio/mpeg",
+            "ogg" => "audio/ogg",
+            "wav" => "audio/wav",
+            "flac" => "audio/flac",
+            "zip" => "application/zip",
+            "json" => "application/json",
+            "xml" => "application/xml",
+            "html" | "htm" => "text/html",
+            "css" => "text/css",
+            "js" => "text/javascript",
+            "txt" | "log" | "ini" | "cfg" => "text/plain",
+            "md" => "text/markdown",
+            "csv" => "text/csv",
+            _ => return None,
+        };
+        Some(mime.to_string())
+    })
 }
 
 #[derive(Serialize)]
@@ -2181,12 +2238,12 @@ fn get_item_properties_sync(item_path: String) -> Result<ItemProperties, String>
     };
 
     #[cfg(unix)]
-    let permissions = {
+    let permissions: Option<u32> = {
         use std::os::unix::fs::PermissionsExt;
-        meta.permissions().mode()
+        Some(meta.permissions().mode())
     };
     #[cfg(not(unix))]
-    let permissions = 0u32;
+    let permissions: Option<u32> = None;
 
     let name = path
         .file_name()
@@ -2202,6 +2259,9 @@ fn get_item_properties_sync(item_path: String) -> Result<ItemProperties, String>
     };
     let is_directory = resolve_item_is_directory(&path, &meta);
 
+    // Plain files only: links and folders get no size-on-disk, MIME or handler.
+    let is_plain_file = !is_directory && !is_symlink;
+
     #[cfg(unix)]
     let (owner, group) = {
         use std::os::unix::fs::MetadataExt;
@@ -2209,6 +2269,28 @@ fn get_item_properties_sync(item_path: String) -> Result<ItemProperties, String>
     };
     #[cfg(not(unix))]
     let (owner, group): (Option<String>, Option<String>) = (None, None);
+
+    // Name lookups are best effort. Linux resolves through NSS via nix. Other
+    // Unix targets have no nix dependency here, so only numeric ids are shown.
+    #[cfg(target_os = "linux")]
+    let (owner_name, group_name) = {
+        use nix::unistd::{Gid, Group, Uid, User};
+        use std::os::unix::fs::MetadataExt;
+        let owner_name = User::from_uid(Uid::from_raw(meta.uid()))
+            .ok()
+            .flatten()
+            .map(|user| user.name);
+        let group_name = Group::from_gid(Gid::from_raw(meta.gid()))
+            .ok()
+            .flatten()
+            .map(|group| group.name);
+        (owner_name, group_name)
+    };
+    #[cfg(target_os = "windows")]
+    let (owner_name, group_name): (Option<String>, Option<String>) =
+        (crate::native_windows::owner_account_name(&path), None);
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
+    let (owner_name, group_name): (Option<String>, Option<String>) = (None, None);
 
     #[cfg(target_os = "windows")]
     let (is_shortcut, shortcut_target) = {
@@ -2227,14 +2309,94 @@ fn get_item_properties_sync(item_path: String) -> Result<ItemProperties, String>
     #[cfg(not(target_os = "windows"))]
     let (is_shortcut, shortcut_target): (Option<bool>, Option<String>) = (None, None);
 
+    // Raw FILE_ATTRIBUTE_* masks from winnt.h.
     #[cfg(target_os = "windows")]
-    let (is_hidden_attr, is_system_attr) = {
+    let (
+        is_hidden_attr,
+        is_system_attr,
+        is_archive_attr,
+        is_compressed_attr,
+        is_encrypted_attr,
+        is_indexed_attr,
+    ) = {
         use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+        const FILE_ATTRIBUTE_SYSTEM: u32 = 0x4;
+        const FILE_ATTRIBUTE_ARCHIVE: u32 = 0x20;
+        const FILE_ATTRIBUTE_COMPRESSED: u32 = 0x800;
+        const FILE_ATTRIBUTE_NOT_CONTENT_INDEXED: u32 = 0x2000;
+        const FILE_ATTRIBUTE_ENCRYPTED: u32 = 0x4000;
         let attrs = meta.file_attributes();
-        (Some(attrs & 0x2 != 0), Some(attrs & 0x4 != 0))
+        (
+            Some(attrs & FILE_ATTRIBUTE_HIDDEN != 0),
+            Some(attrs & FILE_ATTRIBUTE_SYSTEM != 0),
+            Some(attrs & FILE_ATTRIBUTE_ARCHIVE != 0),
+            Some(attrs & FILE_ATTRIBUTE_COMPRESSED != 0),
+            Some(attrs & FILE_ATTRIBUTE_ENCRYPTED != 0),
+            // The Windows flag means "not indexed", so invert it for the UI.
+            Some(attrs & FILE_ATTRIBUTE_NOT_CONTENT_INDEXED == 0),
+        )
     };
     #[cfg(not(target_os = "windows"))]
-    let (is_hidden_attr, is_system_attr): (Option<bool>, Option<bool>) = (None, None);
+    let (
+        is_hidden_attr,
+        is_system_attr,
+        is_archive_attr,
+        is_compressed_attr,
+        is_encrypted_attr,
+        is_indexed_attr,
+    ): (
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+    ) = (None, None, None, None, None, None);
+
+    let mime_type = if is_plain_file {
+        detect_item_mime_type(&path)
+    } else {
+        None
+    };
+
+    #[cfg(unix)]
+    let size_on_disk = if is_plain_file {
+        use std::os::unix::fs::MetadataExt;
+        Some(meta.blocks().saturating_mul(512))
+    } else {
+        None
+    };
+    #[cfg(target_os = "windows")]
+    let size_on_disk = if is_plain_file {
+        crate::native_windows::compressed_file_size(&path)
+    } else {
+        None
+    };
+    #[cfg(not(any(unix, target_os = "windows")))]
+    let size_on_disk: Option<u64> = None;
+
+    #[cfg(target_os = "windows")]
+    let opens_with = if is_plain_file {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .filter(|ext| !ext.is_empty())
+            .and_then(|ext| {
+                let assoc = format!(".{ext}");
+                crate::native_windows::associated_app_name(&assoc).or_else(|| {
+                    crate::native_windows::associated_executable(&assoc).and_then(|exe| {
+                        Path::new(&exe)
+                            .file_stem()
+                            .and_then(|stem| stem.to_str())
+                            .map(str::to_string)
+                    })
+                })
+            })
+    } else {
+        None
+    };
+    #[cfg(not(target_os = "windows"))]
+    let opens_with: Option<String> = None;
 
     Ok(ItemProperties {
         name: name.clone(),
@@ -2260,6 +2422,15 @@ fn get_item_properties_sync(item_path: String) -> Result<ItemProperties, String>
             .map(|e| e.to_string_lossy().to_string())
             .unwrap_or_default(),
         permissions,
+        size_on_disk,
+        mime_type,
+        opens_with,
+        owner_name,
+        group_name,
+        is_archive_attr,
+        is_compressed_attr,
+        is_encrypted_attr,
+        is_indexed_attr,
     })
 }
 

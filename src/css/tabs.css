@@ -415,9 +415,9 @@ body.reduce-transparency .titlebar-tabs {
 }
 
 body.liquid-glass .tab-context-menu {
-  background: var(--liquid-glass-context-menu-bg, rgba(30, 30, 30, 0.85));
-  backdrop-filter: blur(20px) saturate(150%);
+  background: var(--dropdown-bg);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
   border-color: var(--liquid-glass-context-menu-border, rgba(255, 255, 255, 0.08));
 }
 

@@ -19,6 +19,7 @@ export const TOGGLE_MAPPINGS: ReadonlyArray<readonly [string, keyof Settings]> =
   ['git-include-untracked-toggle', 'gitIncludeUntracked'],
   ['show-file-hover-card-toggle', 'showFileHoverCard'],
   ['show-file-checkboxes-toggle', 'showFileCheckboxes'],
+  ['show-utility-dashboard-toggle', 'showUtilityDashboard'],
   ['minimize-to-tray-toggle', 'minimizeToTray'],
   ['start-on-login-toggle', 'startOnLogin'],
   ['auto-check-updates-toggle', 'autoCheckUpdates'],

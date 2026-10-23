@@ -404,7 +404,7 @@ body:not(.show-file-checkboxes) .file-checkbox {
 .file-name {
   font-size: var(--font-size-file-name);
   text-align: center;
-  word-break: break-word;
+  overflow-wrap: anywhere;
   max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;

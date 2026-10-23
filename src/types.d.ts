@@ -122,6 +122,7 @@ export interface Settings {
   nativeMenuEnabled?: boolean;
   operationPanelCollapsed?: boolean;
   utilityDrawerCollapsed?: boolean;
+  showUtilityDashboard?: boolean;
   enableAutoChecksum?: boolean;
   defaultChecksumAlgorithm?: 'sha256' | 'md5' | 'blake3' | 'sha512' | 'crc32';
 
@@ -250,6 +251,16 @@ export interface ItemProperties {
   isHiddenAttr?: boolean;
   isSystemAttr?: boolean;
   macTags?: string[];
+  extension?: string;
+  sizeOnDisk?: number;
+  mimeType?: string;
+  opensWith?: string;
+  ownerName?: string;
+  groupName?: string;
+  isArchiveAttr?: boolean;
+  isCompressedAttr?: boolean;
+  isEncryptedAttr?: boolean;
+  isIndexedAttr?: boolean;
 }
 
 export interface FolderSizeProgress {

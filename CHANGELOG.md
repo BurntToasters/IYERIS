@@ -25,7 +25,15 @@
 
 ## Changes in `v3.1.0-beta.1:`
 
-- **Fix:** (add release notes)
+- **Hover card:** The file hover card and floating panels (zoom popup, progress panel, search filters, archive panel) are now fully opaque, so icons no longer show through them. Liquid Glass keeps its translucent look.
+- **Properties:** Redesigned with General, Details and Security tabs and OK, Cancel and Apply buttons. General shows Opens with, Size on disk and attributes. Details shows the full path, extension, MIME type, symlink and shortcut targets, and checksums. Security shows owner and group names, a Unix permission grid that stays in sync with the octal value, and Windows attribute rows. Apply stays disabled until something changes.
+- **Dialogs:** Properties, Compress and Extract now dim the window without blur. Other dialogs use a lighter 8px blur, down from 18px.
+- **Themes:** Modal panels are fully opaque outside Liquid Glass, so grid icons no longer show through dialogs. Liquid Glass keeps its translucent look.
+- **Dialogs:** Modal footers are right-aligned with auto-width buttons. The folder icon dialog has a secondary Cancel button.
+- **Grid view:** Long file names wrap after `_`, `-`, `.`, brackets and camelCase boundaries instead of breaking mid-word.
+- **Utility Dashboard:** Now opt-in and off by default, including for existing users. Turn it on in Settings → View → Show Utility Dashboard.
+- **CSS:** Removed dead and duplicate rules, replaced undefined color tokens, and aligned the tooltip arrow border with the other panel borders.
+- **Build:** Blur and transparency settings were silently stripped from release builds. The CSS minifier dropped unprefixed `backdrop-filter` declarations that followed the `-webkit-` prefixed ones. Fixed by declaration order, and the browser smoke test now fails the build if it happens again.
 
 ## Changes in `v3.0.5:`
 

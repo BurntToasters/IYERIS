@@ -39,7 +39,7 @@ body.platform-darwin .ui-tooltip-arrow {
   width: 8px;
   height: 8px;
   background: var(--dropdown-bg);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--native-divider);
   transform: rotate(45deg);
   z-index: 0;
 }
@@ -80,7 +80,7 @@ body.platform-darwin .ui-tooltip-arrow {
   font-family: var(--font-mono, SFMono-Regular, Consolas, Menlo, monospace);
   font-size: 9px;
   color: var(--text-tertiary);
-  background: color-mix(in srgb, var(--surface-3) 40%, rgba(0, 0, 0, 0.2));
+  background: color-mix(in srgb, var(--surface-2) 40%, rgba(0, 0, 0, 0.2));
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 1px 4px;

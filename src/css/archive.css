@@ -58,8 +58,8 @@
   width: 350px;
   max-height: 400px;
   background: var(--chrome-surface-raised);
-  backdrop-filter: blur(20px) saturate(150%);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid var(--native-divider);
   border-radius: var(--radius-medium);
   box-shadow: var(--native-elevation-2);

@@ -48,6 +48,7 @@ import { isForeground, markDirtyRefresh } from './rendererActivityState.js';
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
 let utilityDrawerController: ReturnType<typeof createUtilityDrawerController> | null = null;
+let utilityDashboardActive = false;
 const driveLabelByPath = new Map<string, string>();
 let cachedDriveInfo: DriveInfo[] = [];
 
@@ -607,7 +608,10 @@ const statusBarController = createStatusBarController({
   getViewMode: () => viewMode,
   getSearchStatusText: () => getSearchStatusText(),
   syncDualPaneControls: () => syncDualPaneControls(),
-  updateUtilitySelection: (p) => utilityDrawerController?.updateSelection(p),
+  updateUtilitySelection: (p) => {
+    if (currentSettings.showUtilityDashboard !== true) return;
+    utilityDrawerController?.updateSelection(p);
+  },
   saveSettings: () => debouncedSaveSettings(),
   updateGitBranch: (p) => updateGitBranch(p),
   updateClipboardIndicator: () => clipboardController.updateClipboardIndicator(),
@@ -718,6 +722,24 @@ async function applySystemFontSize(): Promise<void> {
   }
 }
 
+// Utility Dashboard is opt-in. Turning it on shows the drawer and runs its
+// lazy init without a restart. Turning it off hides it.
+function syncUtilityDashboardVisibility(settings: Settings): void {
+  if (!utilityDrawerController) return;
+  if (settings.showUtilityDashboard !== true) {
+    utilityDrawerController.hide();
+    utilityDashboardActive = false;
+    return;
+  }
+  utilityDrawerController.init();
+  if (!utilityDashboardActive) {
+    utilityDashboardActive = true;
+    utilityDrawerController.updateSelection(
+      selectedItems.size === 1 ? (Array.from(selectedItems)[0] ?? null) : null
+    );
+  }
+}
+
 function applySettings(settings: Settings) {
   devLog('Settings', 'applySettings', { viewMode: settings.viewMode, theme: settings.theme });
   setLocale(
@@ -792,6 +814,7 @@ function applySettings(settings: Settings) {
   updateContentSearchToggle();
   updateSearchPlaceholder();
 
+  syncUtilityDashboardVisibility(settings);
   warnIfMultipleScalingActive(settings);
 }
 

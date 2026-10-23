@@ -14,8 +14,8 @@ body {
 
 .glass-panel {
   background: var(--chrome-surface);
-  backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%);
+  backdrop-filter: blur(10px) saturate(120%);
   border: 1px solid var(--native-divider);
   box-shadow: var(--native-elevation-1);
   border-radius: var(--radius-medium);

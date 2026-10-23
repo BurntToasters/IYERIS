@@ -101,6 +101,7 @@ beforeEach(() => {
   buildDom();
 
   settings = {
+    showUtilityDashboard: true,
     utilityDrawerCollapsed: false,
     enableAutoChecksum: true,
     defaultChecksumAlgorithm: 'sha256',

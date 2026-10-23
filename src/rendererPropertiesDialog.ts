@@ -1,6 +1,6 @@
 import type { ItemProperties } from './types';
 import { escapeHtml, getErrorMessage, ignoreError } from './shared.js';
-import { twemojiImg } from './rendererUtils.js';
+import { rendererPath, twemojiImg } from './rendererUtils.js';
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 
@@ -8,7 +8,57 @@ type PropertiesDialogDeps = {
   showToast: (message: string, title: string, type: ToastType) => void;
   onModalOpen: (modal: HTMLElement) => void;
   onModalClose: (modal: HTMLElement) => void;
+  getFileIcon: (name: string) => string;
+  getThumbnailForPath: (path: string) => string | undefined;
+  getFileTypeFromName: (name: string) => string;
 };
+
+type ChecksumAlgorithm = 'md5' | 'sha256' | 'sha512' | 'blake3' | 'crc32';
+
+type OperationRun = { id: string; unlisten: () => void };
+
+const CHECKSUM_ALGORITHMS: readonly ChecksumAlgorithm[] = [
+  'md5',
+  'sha256',
+  'sha512',
+  'blake3',
+  'crc32',
+];
+
+const CHECKSUM_LABELS: Record<ChecksumAlgorithm, string> = {
+  md5: 'MD5',
+  sha256: 'SHA-256',
+  sha512: 'SHA-512',
+  blake3: 'BLAKE3',
+  crc32: 'CRC32',
+};
+
+const TAG_COLORS: Record<string, string> = {
+  Red: '#ff3b30',
+  Orange: '#ff9500',
+  Yellow: '#ffcc00',
+  Green: '#34c759',
+  Blue: '#007aff',
+  Purple: '#af52de',
+  Gray: '#8e8e93',
+};
+
+const PANEL_IDS = {
+  general: 'properties-panel-general',
+  details: 'properties-panel-details',
+  security: 'properties-panel-security',
+} as const;
+
+const PERM_ACTIONS = ['Read', 'Write', 'Execute'] as const;
+
+// Permission bits for each row of the 3x3 grid, in Read / Write / Execute order.
+const PERM_ROWS: ReadonlyArray<{ who: string; bits: readonly number[] }> = [
+  { who: 'Owner', bits: [0o400, 0o200, 0o100] },
+  { who: 'Group', bits: [0o040, 0o020, 0o010] },
+  { who: 'Others', bits: [0o004, 0o002, 0o001] },
+];
+
+const SEPARATOR = '<div class="property-separator"></div>';
 
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 bytes';
@@ -18,19 +68,42 @@ function formatSize(bytes: number): string {
   return `${bytes.toLocaleString()} bytes (${size} ${units[i]})`;
 }
 
-function formatTypeSize(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
-}
-
 function formatPermissions(mode: number): string {
   const rwx = (m: number) => (m & 4 ? 'r' : '-') + (m & 2 ? 'w' : '-') + (m & 1 ? 'x' : '-');
   const owner = rwx((mode >> 6) & 7);
   const group = rwx((mode >> 3) & 7);
   const other = rwx(mode & 7);
   return `${owner}${group}${other}`;
+}
+
+function formatLongDate(value: Date): string {
+  return new Date(value).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'medium' });
+}
+
+// Accepts 1 to 4 octal digits in the 0..0o777 range. Returns null otherwise.
+function parseOctal(text: string): number | null {
+  const trimmed = text.trim();
+  if (!/^[0-7]{1,4}$/.test(trimmed)) return null;
+  const value = parseInt(trimmed, 8);
+  return value <= 0o777 ? value : null;
+}
+
+// valueHtml must already be escaped, or be trusted markup built by this file.
+function propertyRow(label: string, valueHtml: string, valueClass = ''): string {
+  const cls = valueClass ? `property-value ${valueClass}` : 'property-value';
+  return `
+    <div class="property-row">
+      <div class="property-label">${escapeHtml(label)}</div>
+      <div class="${cls}">${valueHtml}</div>
+    </div>`;
+}
+
+function identityHtml(name: string | undefined, id: string | undefined): string {
+  if (name && id) {
+    return `${escapeHtml(name)} <span class="property-muted">(${escapeHtml(id)})</span>`;
+  }
+  const value = name || id;
+  return value ? escapeHtml(value) : '';
 }
 
 function createOperationId(prefix: string): string {
@@ -47,531 +120,658 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     }
   };
 
-  const showPropertiesDialog = (props: ItemProperties): void => {
+  const showPropertiesDialog = (initialProps: ItemProperties): void => {
     clearActive();
 
     const modal = document.getElementById('properties-modal');
     const content = document.getElementById('properties-content');
+    const closeBtn = document.getElementById('properties-close');
+    const okBtn = document.getElementById('properties-ok') as HTMLButtonElement | null;
+    const cancelBtn = document.getElementById('properties-cancel');
+    const applyBtn = document.getElementById('properties-apply') as HTMLButtonElement | null;
+    const tablist = modal?.querySelector<HTMLElement>('[role="tablist"]');
 
-    if (!modal || !content) return;
+    if (!modal || !content || !okBtn || !applyBtn || !tablist) return;
 
-    const folderSizeOperationId = createOperationId('foldersize');
-    const checksumOperationId = createOperationId('checksum');
+    const tabEls = Array.from(tablist.querySelectorAll<HTMLButtonElement>('[role="tab"]'));
 
-    let folderSizeActive = false;
-    let checksumActive = false;
-    let folderSizeProgressCleanup: (() => void) | null = null;
-    let checksumProgressCleanup: (() => void) | null = null;
+    let props = initialProps;
+    let sessionClosed = false;
+    let applying = false;
 
-    const sizeDisplay = formatSize(props.size);
+    // attrs holds the checkbox values. attrBase holds the last values known to be on disk.
+    const attrs = { readOnly: false, hidden: false };
+    const attrBase = { readOnly: false, hidden: false };
+    let modeBase: number | null = null;
+    let modeBits = 0;
+    let modeText = '';
 
-    let html = `
-    <div class="property-row">
-      <div class="property-label">Name:</div>
-      <div class="property-value">${escapeHtml(props.name)}</div>
-    </div>
-    <div class="property-row">
-      <div class="property-label">Type:</div>
-      <div class="property-value">${props.isDirectory ? 'Folder' : 'File'}${props.isSymlink ? ' (Symbolic Link)' : ''}</div>
-    </div>`;
+    let folderSizeTotal: number | null = null;
+    let folderStatus = 'Not calculated';
+    let folderRun: OperationRun | null = null;
+    let folderRunning = false;
+    let folderProgress = '';
 
-    if (props.symlinkTarget) {
-      html += `
-    <div class="property-row">
-      <div class="property-label">Link Target:</div>
-      <div class="property-value property-path">${escapeHtml(props.symlinkTarget)}</div>
-    </div>`;
-    }
+    let checksumRun: OperationRun | null = null;
+    let checksumRunning = false;
+    let checksumPercent = 0;
+    let checksumProgress = '';
+    const checksumValues: Partial<Record<ChecksumAlgorithm, string>> = {};
 
-    if (props.shortcutTarget) {
-      html += `
-    <div class="property-row">
-      <div class="property-label">Target:</div>
-      <div class="property-value property-path">${escapeHtml(props.shortcutTarget)}</div>
-    </div>`;
-    }
+    const syncAttrs = (source: ItemProperties) => {
+      attrBase.readOnly = source.isReadOnly === true;
+      attrBase.hidden = source.isHiddenAttr === true;
+      attrs.readOnly = attrBase.readOnly;
+      attrs.hidden = attrBase.hidden;
+    };
 
-    html += `
-    <div class="property-row">
-      <div class="property-label">Size:</div>
-      <div class="property-value" id="props-size-value">${sizeDisplay}</div>
-    </div>`;
+    const syncMode = (source: ItemProperties) => {
+      modeBase = source.mode === undefined ? null : source.mode & 0o777;
+      modeBits = modeBase ?? 0;
+      modeText = modeBase === null ? '' : modeBase.toString(8);
+    };
 
-    if (props.isDirectory) {
-      html += `
-    <div class="property-row property-folder-size">
-      <div class="property-label">Contents:</div>
-      <div class="property-value">
-        <span id="folder-size-info">Not calculated</span>
-        <button type="button" class="property-btn" id="calculate-folder-size-btn" aria-label="Calculate folder size">${twemojiImg('bar-chart-3', 'twemoji')} Calculate Size</button>
-      </div>
-    </div>
-    <div class="property-row" id="folder-size-progress-row" style="display: none;">
-      <div class="property-label"></div>
-      <div class="property-value">
-        <div class="property-progress-container">
-          <div class="property-progress-bar" id="folder-size-progress-bar"></div>
-        </div>
-        <div class="property-progress-text" id="folder-size-progress-text">Calculating...</div>
-        <button type="button" class="property-btn property-btn-cancel" id="cancel-folder-size-btn" aria-label="Cancel folder size calculation">${twemojiImg('x', 'twemoji')} Cancel</button>
-      </div>
-    </div>
-    <div class="property-row" id="folder-stats-row" style="display: none;">
-      <div class="property-label">File Types:</div>
-      <div class="property-value">
-        <div id="folder-stats-content" class="folder-stats-content"></div>
-      </div>
-    </div>`;
-    }
+    const attrDirty = () =>
+      attrs.readOnly !== attrBase.readOnly || attrs.hidden !== attrBase.hidden;
 
-    html += `
-    <div class="property-row">
-      <div class="property-label">Location:</div>
-      <div class="property-value property-path">${escapeHtml(props.path)}</div>
-    </div>
-    <div class="property-row">
-      <div class="property-label">Created:</div>
-      <div class="property-value">${new Date(props.created).toLocaleString()}</div>
-    </div>
-    <div class="property-row">
-      <div class="property-label">Modified:</div>
-      <div class="property-value">${new Date(props.modified).toLocaleString()}</div>
-    </div>
-    <div class="property-row">
-      <div class="property-label">Accessed:</div>
-      <div class="property-value">${new Date(props.accessed).toLocaleString()}</div>
-    </div>`;
+    const modeDirty = () => {
+      if (modeBase === null) return false;
+      const parsed = parseOctal(modeText);
+      return parsed === null || parsed !== modeBase;
+    };
 
-    if (props.macTags && props.macTags.length > 0) {
-      const TAG_COLORS: Record<string, string> = {
-        Red: '#ff3b30',
-        Orange: '#ff9500',
-        Yellow: '#ffcc00',
-        Green: '#34c759',
-        Blue: '#007aff',
-        Purple: '#af52de',
-        Gray: '#8e8e93',
-      };
-      const tagHtml = props.macTags
-        .map((tag) => {
-          const colorName = tag.replace(/\n\d+$/, '');
-          const color = TAG_COLORS[colorName];
-          const dot = color
-            ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:4px;vertical-align:middle;"></span>`
-            : '';
-          return `<span class="property-tag">${dot}${escapeHtml(colorName)}</span>`;
-        })
-        .join(' ');
-      html += `
-    <div class="property-row">
-      <div class="property-label">Tags:</div>
-      <div class="property-value">${tagHtml}</div>
-    </div>`;
-    }
+    const isDirty = () => attrDirty() || modeDirty();
 
-    if (props.mode !== undefined) {
-      html += `<div class="property-separator"></div>`;
-      if (props.isHiddenAttr != null) {
-        html += `
-    <div class="property-row">
-      <div class="property-label">Attributes:</div>
-      <div class="property-value property-attrs-edit">
-        <label><input type="checkbox" id="attr-readonly" ${props.isReadOnly ? 'checked' : ''}> Read-only</label>
-        <label><input type="checkbox" id="attr-hidden" ${props.isHiddenAttr ? 'checked' : ''}> Hidden</label>
-        ${props.isSystemAttr ? '<span class="property-system-badge">System</span>' : ''}
-        <button type="button" class="property-btn property-btn-sm" id="apply-attrs-btn">Apply</button>
-      </div>
-    </div>`;
-      } else {
-        html += `
-    <div class="property-row">
-      <div class="property-label">Permissions:</div>
-      <div class="property-value property-perms-edit">
-        <code>${formatPermissions(props.mode)}</code>
-        <input type="text" id="perm-octal-input" class="property-perm-input" aria-label="Octal permissions" value="${(props.mode & 0o777).toString(8)}" maxlength="4" size="5">
-        <button type="button" class="property-btn property-btn-sm" id="apply-perms-btn">Apply</button>
-      </div>
-    </div>`;
-        if (props.owner) {
-          html += `
-    <div class="property-row">
-      <div class="property-label">Owner:</div>
-      <div class="property-value">${escapeHtml(props.owner)}${props.group ? `:${escapeHtml(props.group)}` : ''}</div>
-    </div>`;
-        }
+    const syncFooter = () => {
+      applyBtn.disabled = applying || !isDirty();
+      okBtn.disabled = applying;
+    };
+
+    const find = <T extends HTMLElement = HTMLElement>(role: string): T | null =>
+      content.querySelector<T>(`[data-role="${role}"]`);
+
+    const contentsHtml = (): string => {
+      const button = folderRunning
+        ? `<button type="button" class="property-btn property-btn-cancel" data-action="cancel-folder-size" aria-label="Cancel folder size calculation">${twemojiImg('x', 'twemoji')} Cancel</button>`
+        : `<button type="button" class="property-btn" data-action="calc-folder-size" aria-label="Calculate folder size">${twemojiImg('bar-chart-3', 'twemoji')} Calculate Size</button>`;
+      const progress = folderRunning
+        ? `<div class="property-progress-container"><div class="property-progress-bar indeterminate" data-role="folder-bar"></div></div>
+        <div class="property-progress-text" data-role="folder-progress">${escapeHtml(folderProgress || 'Calculating...')}</div>`
+        : '';
+      return `<div class="property-inline"><span data-role="folder-info">${escapeHtml(folderStatus)}</span>${button}</div>${progress}`;
+    };
+
+    const buildGeneral = (): string => {
+      const isDir = props.isDirectory;
+      const groups: string[] = [];
+
+      const typeName = isDir ? 'Folder' : deps.getFileTypeFromName(props.name);
+      const ext = props.extension ? props.extension.replace(/^\./, '') : '';
+      const typeRows = [
+        propertyRow(
+          'Type of file:',
+          `${escapeHtml(typeName)}${ext ? ` (.${escapeHtml(ext)})` : ''}`
+        ),
+      ];
+      if (props.opensWith) {
+        typeRows.push(propertyRow('Opens with:', escapeHtml(props.opensWith)));
       }
-    }
+      typeRows.push(
+        propertyRow('Location:', escapeHtml(rendererPath.dirname(props.path)), 'property-path')
+      );
+      if (props.symlinkTarget) {
+        typeRows.push(
+          propertyRow('Link target:', escapeHtml(props.symlinkTarget), 'property-path')
+        );
+      }
+      if (props.shortcutTarget) {
+        typeRows.push(propertyRow('Target:', escapeHtml(props.shortcutTarget), 'property-path'));
+      }
+      groups.push(typeRows.join(''));
 
-    if (props.isFile) {
-      html += `
-    <div class="property-separator"></div>
-    <div class="property-row property-checksum-header">
-      <div class="property-label">Checksums:</div>
-      <div class="property-value">
-        <button type="button" class="property-btn" id="calculate-checksum-btn" aria-label="Calculate checksums">${twemojiImg('key', 'twemoji')} Calculate Checksums</button>
-      </div>
+      const sizeRows = [
+        propertyRow('Size:', escapeHtml(formatSize(folderSizeTotal ?? props.size))),
+      ];
+      if (props.sizeOnDisk !== undefined) {
+        sizeRows.push(propertyRow('Size on disk:', escapeHtml(formatSize(props.sizeOnDisk))));
+      }
+      if (isDir) {
+        sizeRows.push(propertyRow('Contents:', contentsHtml(), 'property-folder-size'));
+      }
+      groups.push(sizeRows.join(''));
+
+      groups.push(
+        [
+          propertyRow('Created:', escapeHtml(formatLongDate(props.created))),
+          propertyRow('Modified:', escapeHtml(formatLongDate(props.modified))),
+          propertyRow('Accessed:', escapeHtml(formatLongDate(props.accessed))),
+        ].join('')
+      );
+
+      const attrBoxes: string[] = [];
+      if (props.isReadOnly !== undefined) {
+        attrBoxes.push(
+          `<label><input type="checkbox" data-attr="readOnly"${attrs.readOnly ? ' checked' : ''}> Read-only</label>`
+        );
+      }
+      if (props.isHiddenAttr !== undefined) {
+        attrBoxes.push(
+          `<label><input type="checkbox" data-attr="hidden"${attrs.hidden ? ' checked' : ''}> Hidden</label>`
+        );
+      }
+      if (props.isSystemAttr) {
+        attrBoxes.push('<span class="property-system-badge">System</span>');
+      }
+      if (attrBoxes.length > 0) {
+        groups.push(
+          propertyRow('Attributes:', `<div class="property-attrs-edit">${attrBoxes.join('')}</div>`)
+        );
+      }
+
+      return `
+    <div class="properties-header">
+      <div class="properties-icon" data-role="icon" aria-hidden="true"></div>
+      <div class="properties-name">${escapeHtml(props.name || props.path)}</div>
     </div>
-    <div class="property-row" id="checksum-progress-row" style="display: none;">
-      <div class="property-label"></div>
-      <div class="property-value">
-        <div class="property-progress-container">
-          <div class="property-progress-bar" id="checksum-progress-bar"></div>
-        </div>
-        <div class="property-progress-text" id="checksum-progress-text">Calculating...</div>
-        <button type="button" class="property-btn property-btn-cancel" id="cancel-checksum-btn" aria-label="Cancel checksum calculation">${twemojiImg('x', 'twemoji')} Cancel</button>
-      </div>
-    </div>
-    <div class="property-row" id="checksum-md5-row" style="display: none;">
-      <div class="property-label">MD5:</div>
+    ${groups.join(SEPARATOR)}`;
+    };
+
+    const buildChecksums = (): string => {
+      const action = checksumRunning
+        ? `<div class="property-progress-container"><div class="property-progress-bar" data-role="checksum-bar"></div></div>
+        <div class="property-progress-text" data-role="checksum-progress">${escapeHtml(checksumProgress || 'Calculating...')}</div>
+        <button type="button" class="property-btn property-btn-cancel" data-action="cancel-checksum" aria-label="Cancel checksum calculation">${twemojiImg('x', 'twemoji')} Cancel</button>`
+        : `<button type="button" class="property-btn" data-action="calc-checksum" aria-label="Calculate checksums">${twemojiImg('key', 'twemoji')} Calculate Checksums</button>`;
+      const rows = CHECKSUM_ALGORITHMS.map((algo) => {
+        const value = checksumValues[algo];
+        const label = CHECKSUM_LABELS[algo];
+        return `
+    <div class="property-row property-checksum-row"${value ? '' : ' hidden'}>
+      <div class="property-label">${escapeHtml(label)}:</div>
       <div class="property-value property-checksum">
-        <code id="checksum-md5-value"></code>
-        <button type="button" class="property-btn-copy" id="copy-md5-btn" aria-label="Copy MD5 checksum" title="Copy MD5">${twemojiImg('clipboard', 'twemoji')}</button>
-      </div>
-    </div>
-    <div class="property-row" id="checksum-sha256-row" style="display: none;">
-      <div class="property-label">SHA-256:</div>
-      <div class="property-value property-checksum">
-        <code id="checksum-sha256-value"></code>
-        <button type="button" class="property-btn-copy" id="copy-sha256-btn" aria-label="Copy SHA-256 checksum" title="Copy SHA-256">${twemojiImg('clipboard', 'twemoji')}</button>
-      </div>
-    </div>
-    <div class="property-row" id="checksum-sha512-row" style="display: none;">
-      <div class="property-label">SHA-512:</div>
-      <div class="property-value property-checksum">
-        <code id="checksum-sha512-value"></code>
-        <button type="button" class="property-btn-copy" id="copy-sha512-btn" aria-label="Copy SHA-512 checksum" title="Copy SHA-512">${twemojiImg('clipboard', 'twemoji')}</button>
-      </div>
-    </div>
-    <div class="property-row" id="checksum-blake3-row" style="display: none;">
-      <div class="property-label">BLAKE3:</div>
-      <div class="property-value property-checksum">
-        <code id="checksum-blake3-value"></code>
-        <button type="button" class="property-btn-copy" id="copy-blake3-btn" aria-label="Copy BLAKE3 checksum" title="Copy BLAKE3">${twemojiImg('clipboard', 'twemoji')}</button>
-      </div>
-    </div>
-    <div class="property-row" id="checksum-crc32-row" style="display: none;">
-      <div class="property-label">CRC32:</div>
-      <div class="property-value property-checksum">
-        <code id="checksum-crc32-value"></code>
-        <button type="button" class="property-btn-copy" id="copy-crc32-btn" aria-label="Copy CRC32 checksum" title="Copy CRC32">${twemojiImg('clipboard', 'twemoji')}</button>
+        <code>${escapeHtml(value ?? '')}</code>
+        <button type="button" class="property-btn-copy" data-action="copy-checksum" data-algo="${algo}" aria-label="Copy ${escapeHtml(label)} checksum" title="Copy ${escapeHtml(label)}">${twemojiImg('clipboard', 'twemoji')}</button>
       </div>
     </div>`;
-    }
+      }).join('');
+      return `${SEPARATOR}
+    <div class="property-row">
+      <div class="property-label">Checksums:</div>
+      <div class="property-value property-checksum-actions">${action}</div>
+    </div>${rows}`;
+    };
 
-    content.innerHTML = html;
-    modal.style.display = 'flex';
-    deps.onModalOpen(modal);
+    const buildDetails = (): string => {
+      const groups: string[] = [
+        propertyRow(
+          'Full path:',
+          `<div class="property-path-row"><span class="property-path">${escapeHtml(props.path)}</span><button type="button" class="property-btn-copy" data-action="copy-path" aria-label="Copy full path" title="Copy full path">${twemojiImg('clipboard', 'twemoji')}</button></div>`
+        ),
+      ];
+      if (props.extension) {
+        groups.push(
+          propertyRow('Extension:', escapeHtml(`.${props.extension.replace(/^\./, '')}`))
+        );
+      }
+      if (props.mimeType) {
+        groups.push(propertyRow('MIME type:', escapeHtml(props.mimeType)));
+      }
+      if (props.isSymlink) {
+        groups.push(propertyRow('Symbolic link:', 'Yes'));
+      }
+      if (props.isShortcut) {
+        groups.push(propertyRow('Shortcut:', 'Yes'));
+      }
+      if (props.macTags && props.macTags.length > 0) {
+        const tagHtml = props.macTags
+          .map((tag) => {
+            const colorName = tag.replace(/\n\d+$/, '');
+            const color = TAG_COLORS[colorName];
+            const dot = color
+              ? `<span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${color};margin-right:4px;vertical-align:middle;"></span>`
+              : '';
+            return `<span class="property-tag">${dot}${escapeHtml(colorName)}</span>`;
+          })
+          .join(' ');
+        groups.push(propertyRow('Tags:', tagHtml));
+      }
+      if (props.isFile) {
+        groups.push(buildChecksums());
+      }
+      return groups.join('');
+    };
+
+    const permissionsHtml = (): string => {
+      const head = PERM_ACTIONS.map(
+        (action) => `<span class="property-perm-head">${action}</span>`
+      ).join('');
+      const cells = PERM_ROWS.map((row) => {
+        const boxes = row.bits
+          .map(
+            (bit, i) =>
+              `<input type="checkbox" data-perm-bit="${bit}" aria-label="${row.who} ${PERM_ACTIONS[i]}"${(modeBits & bit) !== 0 ? ' checked' : ''}>`
+          )
+          .join('');
+        return `<span class="property-perm-who">${row.who}</span>${boxes}`;
+      }).join('');
+      const invalid = parseOctal(modeText) === null;
+      return (
+        propertyRow(
+          'Permissions:',
+          `<div class="property-perm-grid" role="group" aria-label="Permissions">
+        <span></span>${head}${cells}
+      </div>`
+        ) +
+        propertyRow(
+          'Octal:',
+          `<div class="property-perms-edit"><input type="text" class="property-perm-input" data-role="perm-octal" aria-label="Octal permissions" value="${escapeHtml(modeText)}" maxlength="4" size="5" aria-invalid="${invalid ? 'true' : 'false'}"> <code data-role="perm-rwx">${escapeHtml(formatPermissions(modeBits))}</code></div>`
+        )
+      );
+    };
+
+    const buildSecurity = (): string => {
+      const groups: string[] = [];
+      const ownerHtml = identityHtml(props.ownerName, props.owner);
+      if (ownerHtml) groups.push(propertyRow('Owner:', ownerHtml));
+      const groupHtml = identityHtml(props.groupName, props.group);
+      if (groupHtml) groups.push(propertyRow('Group:', groupHtml));
+
+      if (props.mode !== undefined) {
+        groups.push(SEPARATOR, permissionsHtml());
+      } else {
+        const winAttrs: [string, boolean | undefined][] = [
+          ['Archive', props.isArchiveAttr],
+          ['Compressed', props.isCompressedAttr],
+          ['Encrypted', props.isEncryptedAttr],
+          ['Indexed', props.isIndexedAttr],
+          ['System', props.isSystemAttr],
+        ];
+        const attrRows: string[] = [];
+        for (const [label, value] of winAttrs) {
+          if (value !== undefined) attrRows.push(propertyRow(`${label}:`, value ? 'Yes' : 'No'));
+        }
+        if (attrRows.length > 0) groups.push(SEPARATOR, ...attrRows);
+        groups.push('<p class="property-note">Access control lists are managed by Windows.</p>');
+      }
+      return groups.join('');
+    };
+
+    const paintProgress = () => {
+      const folderBar = find<HTMLElement>('folder-bar');
+      if (folderBar) folderBar.style.width = '100%';
+      const folderText = find('folder-progress');
+      if (folderText) folderText.textContent = folderProgress || 'Calculating...';
+      const checksumBar = find<HTMLElement>('checksum-bar');
+      if (checksumBar) checksumBar.style.width = `${checksumPercent}%`;
+      const checksumText = find('checksum-progress');
+      if (checksumText) checksumText.textContent = checksumProgress || 'Calculating...';
+    };
+
+    const fillIcon = () => {
+      const host = find('icon');
+      if (!host) return;
+      const cached = props.isDirectory ? undefined : deps.getThumbnailForPath(props.path);
+      if (cached) {
+        const img = document.createElement('img');
+        img.src = cached;
+        img.alt = '';
+        host.replaceChildren(img);
+        return;
+      }
+      host.innerHTML = props.isDirectory
+        ? twemojiImg('folder', 'twemoji')
+        : deps.getFileIcon(props.name);
+    };
+
+    const setPanel = (tab: keyof typeof PANEL_IDS, html: string) => {
+      const panel = document.getElementById(PANEL_IDS[tab]);
+      if (panel) panel.innerHTML = html;
+    };
+
+    const renderPanels = () => {
+      setPanel('general', buildGeneral());
+      setPanel('details', buildDetails());
+      setPanel('security', buildSecurity());
+      fillIcon();
+      paintProgress();
+      syncFooter();
+    };
+
+    const selectTab = (tabId: string, focus: boolean) => {
+      for (const tab of tabEls) {
+        const selected = tab.dataset.tab === tabId;
+        tab.setAttribute('aria-selected', String(selected));
+        tab.tabIndex = selected ? 0 : -1;
+        const panel = document.getElementById(tab.getAttribute('aria-controls') ?? '');
+        if (panel) panel.hidden = !selected;
+        if (selected && focus) tab.focus();
+      }
+    };
+
+    const copyText = (text: string, label: string) => {
+      window.tauriAPI.writeToSystemClipboard(text).catch(ignoreError);
+      deps.showToast(`${label} copied to clipboard`, 'Copied', 'success');
+    };
+
+    const stopFolderSize = (cancelBackend: boolean) => {
+      const run = folderRun;
+      if (!run) return;
+      folderRun = null;
+      folderRunning = false;
+      if (cancelBackend) {
+        window.tauriAPI.cancelFolderSizeCalculation(run.id).catch(ignoreError);
+      }
+      run.unlisten();
+    };
+
+    const startFolderSize = async () => {
+      if (folderRun) return;
+      const id = createOperationId('foldersize');
+      const unlisten = window.tauriAPI.onFolderSizeProgress((progress) => {
+        if (progress.operationId !== id) return;
+        folderProgress = `${progress.fileCount} files, ${progress.folderCount} folders - ${formatSize(progress.calculatedSize)}`;
+        paintProgress();
+      });
+      const run: OperationRun = { id, unlisten };
+      folderRun = run;
+      folderRunning = true;
+      folderProgress = '';
+      renderPanels();
+
+      try {
+        const result = await window.tauriAPI.calculateFolderSize(props.path, id);
+        if (folderRun !== run) return;
+        if (!result.success) {
+          if (result.error !== 'Calculation cancelled') {
+            folderStatus = `Error: ${result.error || 'Operation failed'}`;
+          }
+        } else {
+          const { totalSize, fileCount, folderCount } = result.result;
+          folderSizeTotal = totalSize;
+          folderStatus = `${fileCount} files, ${folderCount} folders (${formatSize(totalSize)})`;
+        }
+      } catch (error) {
+        if (folderRun !== run) return;
+        folderStatus = `Error: ${getErrorMessage(error)}`;
+      }
+
+      folderRun = null;
+      folderRunning = false;
+      run.unlisten();
+      renderPanels();
+    };
+
+    const cancelFolderSize = () => {
+      stopFolderSize(true);
+      folderStatus = 'Calculation cancelled';
+      renderPanels();
+    };
+
+    const stopChecksum = (cancelBackend: boolean) => {
+      const run = checksumRun;
+      if (!run) return;
+      checksumRun = null;
+      checksumRunning = false;
+      if (cancelBackend) {
+        window.tauriAPI.cancelChecksumCalculation(run.id).catch(ignoreError);
+      }
+      run.unlisten();
+    };
+
+    const startChecksum = async () => {
+      if (checksumRun) return;
+      const id = createOperationId('checksum');
+      const unlisten = window.tauriAPI.onChecksumProgress((progress) => {
+        if (progress.operationId !== id) return;
+        checksumPercent = progress.percent;
+        checksumProgress = `Calculating ${progress.algorithm.toUpperCase()}... ${progress.percent.toFixed(1)}%`;
+        paintProgress();
+      });
+      const run: OperationRun = { id, unlisten };
+      checksumRun = run;
+      checksumRunning = true;
+      checksumPercent = 0;
+      checksumProgress = '';
+      renderPanels();
+
+      try {
+        const result = await window.tauriAPI.calculateChecksum(props.path, id, [
+          ...CHECKSUM_ALGORITHMS,
+        ]);
+        if (checksumRun !== run) return;
+        if (!result.success) {
+          if (result.error !== 'Calculation cancelled') {
+            deps.showToast(result.error || 'Checksum calculation failed', 'Error', 'error');
+          }
+        } else {
+          for (const algo of CHECKSUM_ALGORITHMS) {
+            const value = result.result[algo];
+            if (value) checksumValues[algo] = value;
+          }
+        }
+      } catch (error) {
+        if (checksumRun !== run) return;
+        deps.showToast(getErrorMessage(error), 'Error', 'error');
+      }
+
+      checksumRun = null;
+      checksumRunning = false;
+      run.unlisten();
+      renderPanels();
+    };
+
+    const cancelChecksum = () => {
+      stopChecksum(true);
+      renderPanels();
+    };
 
     const cleanup = () => {
-      if (folderSizeActive) {
-        window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId).catch(ignoreError);
-        folderSizeActive = false;
-      }
-      if (checksumActive) {
-        window.tauriAPI.cancelChecksumCalculation(checksumOperationId).catch(ignoreError);
-        checksumActive = false;
-      }
-      if (folderSizeProgressCleanup) {
-        folderSizeProgressCleanup();
-        folderSizeProgressCleanup = null;
-      }
-      if (checksumProgressCleanup) {
-        checksumProgressCleanup();
-        checksumProgressCleanup = null;
-      }
+      sessionClosed = true;
+      stopFolderSize(true);
+      stopChecksum(true);
       activeCleanup = null;
     };
 
     activeCleanup = cleanup;
 
     const closeModal = () => {
+      if (sessionClosed) return;
       cleanup();
       modal.style.display = 'none';
       deps.onModalClose(modal);
     };
 
-    const applyAttrsBtn = document.getElementById('apply-attrs-btn');
-    if (applyAttrsBtn) {
-      applyAttrsBtn.addEventListener('click', async () => {
-        try {
-          const readOnly = (document.getElementById('attr-readonly') as HTMLInputElement)?.checked;
-          const hidden = (document.getElementById('attr-hidden') as HTMLInputElement)?.checked;
-          const result = await window.tauriAPI.setAttributes(props.path, { readOnly, hidden });
-          if (result.success) {
-            deps.showToast('Attributes updated', 'Success', 'success');
-          } else {
+    // Applies every pending change. A failed step stays dirty, and the toast explains why.
+    const applyPending = async (): Promise<boolean> => {
+      applying = true;
+      syncFooter();
+      try {
+        if (attrDirty()) {
+          const payload: { readOnly?: boolean; hidden?: boolean } = {};
+          if (props.isReadOnly !== undefined) payload.readOnly = attrs.readOnly;
+          if (props.isHiddenAttr !== undefined) payload.hidden = attrs.hidden;
+          const result = await window.tauriAPI.setAttributes(props.path, payload);
+          if (!result.success) {
             deps.showToast(result.error || 'Failed to update attributes', 'Error', 'error');
+            return false;
           }
-        } catch (e) {
-          deps.showToast(getErrorMessage(e), 'Error', 'error');
+          attrBase.readOnly = attrs.readOnly;
+          attrBase.hidden = attrs.hidden;
+          deps.showToast('Attributes updated', 'Success', 'success');
         }
-      });
-    }
-
-    const applyPermsBtn = document.getElementById('apply-perms-btn');
-    if (applyPermsBtn) {
-      applyPermsBtn.addEventListener('click', async () => {
-        try {
-          const input = document.getElementById('perm-octal-input') as HTMLInputElement;
-          if (!input) return;
-          const octal = parseInt(input.value, 8);
-          if (isNaN(octal) || octal < 0 || octal > 0o777) {
+        if (modeDirty()) {
+          const octal = parseOctal(modeText);
+          if (octal === null) {
             deps.showToast('Invalid permissions (use octal, e.g. 755)', 'Error', 'error');
-            return;
+            return false;
           }
           const result = await window.tauriAPI.setPermissions(props.path, octal);
-          if (result.success) {
-            deps.showToast('Permissions updated', 'Success', 'success');
-          } else {
+          if (!result.success) {
             deps.showToast(result.error || 'Failed to update permissions', 'Error', 'error');
+            return false;
           }
-        } catch (e) {
-          deps.showToast(getErrorMessage(e), 'Error', 'error');
+          modeBase = octal;
+          modeBits = octal;
+          modeText = octal.toString(8);
+          deps.showToast('Permissions updated', 'Success', 'success');
         }
-      });
-    }
-
-    if (props.isDirectory) {
-      const calculateBtn = document.getElementById('calculate-folder-size-btn');
-      const cancelBtn = document.getElementById('cancel-folder-size-btn');
-      const progressRow = document.getElementById('folder-size-progress-row');
-      const progressBar = document.getElementById('folder-size-progress-bar');
-      const progressText = document.getElementById('folder-size-progress-text');
-      const sizeInfo = document.getElementById('folder-size-info');
-
-      if (calculateBtn) {
-        calculateBtn.addEventListener('click', async () => {
-          calculateBtn.style.display = 'none';
-          if (progressRow) progressRow.style.display = 'flex';
-          folderSizeActive = true;
-
-          folderSizeProgressCleanup = window.tauriAPI.onFolderSizeProgress((progress) => {
-            if (progress.operationId === folderSizeOperationId && progressBar && progressText) {
-              const currentSize = formatSize(progress.calculatedSize);
-              progressText.textContent = `${progress.fileCount} files, ${progress.folderCount} folders - ${currentSize}`;
-              progressBar.style.width = '100%';
-              progressBar.classList.add('indeterminate');
-            }
-          });
-
-          try {
-            const result = await window.tauriAPI.calculateFolderSize(
-              props.path,
-              folderSizeOperationId
-            );
-
-            if (!result.success) {
-              if (result.error !== 'Calculation cancelled') {
-                if (sizeInfo) sizeInfo.textContent = `Error: ${result.error || 'Operation failed'}`;
-              }
-            } else {
-              const folderResult = result.result;
-              const totalSize = formatSize(folderResult.totalSize);
-              if (sizeInfo) {
-                sizeInfo.textContent = `${folderResult.fileCount} files, ${folderResult.folderCount} folders (${totalSize})`;
-              }
-              const propsSize = document.getElementById('props-size-value');
-              if (propsSize) {
-                propsSize.textContent = totalSize;
-              }
-
-              if (folderResult.fileTypes && folderResult.fileTypes.length > 0) {
-                const statsRow = document.getElementById('folder-stats-row');
-                const statsContent = document.getElementById('folder-stats-content');
-                if (statsRow && statsContent) {
-                  statsRow.style.display = 'flex';
-                  statsContent.innerHTML = folderResult.fileTypes
-                    .map((ft) => {
-                      const pct =
-                        folderResult.totalSize > 0
-                          ? ((ft.size / folderResult.totalSize) * 100).toFixed(1)
-                          : '0';
-                      return `<div class="file-type-stat">
-                    <span class="file-type-ext">${escapeHtml(ft.extension)}</span>
-                    <span class="file-type-count">${ft.count} files</span>
-                    <span class="file-type-size">${formatTypeSize(ft.size)} (${pct}%)</span>
-                    <div class="file-type-bar" style="width: ${pct}%"></div>
-                  </div>`;
-                    })
-                    .join('');
-                }
-              }
-            }
-          } catch (error) {
-            if (sizeInfo) sizeInfo.textContent = `Error: ${getErrorMessage(error)}`;
-          } finally {
-            folderSizeActive = false;
-            if (folderSizeProgressCleanup) {
-              folderSizeProgressCleanup();
-              folderSizeProgressCleanup = null;
-            }
-            if (progressRow) progressRow.style.display = 'none';
-            calculateBtn.style.display = 'inline-flex';
-            if (progressBar) {
-              progressBar.classList.remove('indeterminate');
-              progressBar.style.width = '0%';
-            }
-          }
-        });
+        return true;
+      } catch (error) {
+        deps.showToast(getErrorMessage(error), 'Error', 'error');
+        return false;
+      } finally {
+        applying = false;
+        syncFooter();
       }
+    };
 
-      if (cancelBtn) {
-        cancelBtn.addEventListener('click', () => {
-          if (folderSizeActive) {
-            window.tauriAPI.cancelFolderSizeCalculation(folderSizeOperationId).catch(ignoreError);
-            folderSizeActive = false;
-          }
-          if (folderSizeProgressCleanup) {
-            folderSizeProgressCleanup();
-            folderSizeProgressCleanup = null;
-          }
-          if (progressRow) progressRow.style.display = 'none';
-          if (calculateBtn) calculateBtn.style.display = 'inline-flex';
-          if (sizeInfo) sizeInfo.textContent = 'Calculation cancelled';
-        });
+    const refreshProperties = async () => {
+      try {
+        const result = await window.tauriAPI.getItemProperties(props.path);
+        if (sessionClosed) return;
+        if (result.success) {
+          props = result.properties;
+          if (!attrDirty()) syncAttrs(props);
+          if (!modeDirty()) syncMode(props);
+        } else {
+          deps.showToast(result.error || 'Failed to refresh properties', 'Error', 'error');
+        }
+      } catch (error) {
+        deps.showToast(getErrorMessage(error), 'Error', 'error');
       }
-    }
+      renderPanels();
+    };
 
-    if (props.isFile) {
-      const calculateBtn = document.getElementById('calculate-checksum-btn');
-      const cancelBtn = document.getElementById('cancel-checksum-btn');
-      const progressRow = document.getElementById('checksum-progress-row');
-      const progressBar = document.getElementById('checksum-progress-bar');
-      const progressText = document.getElementById('checksum-progress-text');
-      const md5Row = document.getElementById('checksum-md5-row');
-      const sha256Row = document.getElementById('checksum-sha256-row');
-      const sha512Row = document.getElementById('checksum-sha512-row');
-      const blake3Row = document.getElementById('checksum-blake3-row');
-      const crc32Row = document.getElementById('checksum-crc32-row');
-      const md5Value = document.getElementById('checksum-md5-value');
-      const sha256Value = document.getElementById('checksum-sha256-value');
-      const sha512Value = document.getElementById('checksum-sha512-value');
-      const blake3Value = document.getElementById('checksum-blake3-value');
-      const crc32Value = document.getElementById('checksum-crc32-value');
-      const copyMd5Btn = document.getElementById('copy-md5-btn');
-      const copySha256Btn = document.getElementById('copy-sha256-btn');
-      const copySha512Btn = document.getElementById('copy-sha512-btn');
-      const copyBlake3Btn = document.getElementById('copy-blake3-btn');
-      const copyCrc32Btn = document.getElementById('copy-crc32-btn');
+    const onApply = async () => {
+      if (applying || !isDirty()) return;
+      const ok = await applyPending();
+      if (!ok || sessionClosed) return;
+      await refreshProperties();
+    };
 
-      if (calculateBtn) {
-        calculateBtn.addEventListener('click', async () => {
-          calculateBtn.style.display = 'none';
-          if (progressRow) progressRow.style.display = 'flex';
-          checksumActive = true;
-
-          checksumProgressCleanup = window.tauriAPI.onChecksumProgress((progress) => {
-            if (progress.operationId === checksumOperationId && progressBar && progressText) {
-              progressBar.style.width = `${progress.percent}%`;
-              progressText.textContent = `Calculating ${progress.algorithm.toUpperCase()}... ${progress.percent.toFixed(1)}%`;
-            }
-          });
-
-          try {
-            const result = await window.tauriAPI.calculateChecksum(
-              props.path,
-              checksumOperationId,
-              ['md5', 'sha256', 'sha512', 'blake3', 'crc32']
-            );
-
-            if (!result.success) {
-              if (result.error !== 'Calculation cancelled') {
-                deps.showToast(result.error || 'Checksum calculation failed', 'Error', 'error');
-              }
-            } else {
-              if (result.result.md5 && md5Row && md5Value) {
-                md5Value.textContent = result.result.md5;
-                md5Row.style.display = 'flex';
-              }
-              if (result.result.sha256 && sha256Row && sha256Value) {
-                sha256Value.textContent = result.result.sha256;
-                sha256Row.style.display = 'flex';
-              }
-              if (result.result.sha512 && sha512Row && sha512Value) {
-                sha512Value.textContent = result.result.sha512;
-                sha512Row.style.display = 'flex';
-              }
-              if (result.result.blake3 && blake3Row && blake3Value) {
-                blake3Value.textContent = result.result.blake3;
-                blake3Row.style.display = 'flex';
-              }
-              if (result.result.crc32 && crc32Row && crc32Value) {
-                crc32Value.textContent = result.result.crc32;
-                crc32Row.style.display = 'flex';
-              }
-            }
-          } catch (error) {
-            deps.showToast(getErrorMessage(error), 'Error', 'error');
-          } finally {
-            checksumActive = false;
-            if (checksumProgressCleanup) {
-              checksumProgressCleanup();
-              checksumProgressCleanup = null;
-            }
-            if (progressRow) progressRow.style.display = 'none';
-            calculateBtn.style.display = 'inline-flex';
-            if (progressBar) progressBar.style.width = '0%';
-          }
-        });
+    const onOk = async () => {
+      if (applying) return;
+      if (isDirty()) {
+        const ok = await applyPending();
+        if (!ok) return;
       }
+      closeModal();
+    };
 
-      if (cancelBtn) {
-        cancelBtn.addEventListener('click', () => {
-          if (checksumActive) {
-            window.tauriAPI.cancelChecksumCalculation(checksumOperationId).catch(ignoreError);
-            checksumActive = false;
-          }
-          if (checksumProgressCleanup) {
-            checksumProgressCleanup();
-            checksumProgressCleanup = null;
-          }
-          if (progressRow) progressRow.style.display = 'none';
-          if (calculateBtn) calculateBtn.style.display = 'inline-flex';
-        });
-      }
+    syncAttrs(props);
+    syncMode(props);
+    renderPanels();
+    selectTab('general', false);
 
-      if (copyMd5Btn && md5Value) {
-        copyMd5Btn.addEventListener('click', () => {
-          window.tauriAPI.writeToSystemClipboard(md5Value.textContent || '').catch(ignoreError);
-          deps.showToast('MD5 copied to clipboard', 'Copied', 'success');
-        });
-      }
+    modal.style.display = 'flex';
+    deps.onModalOpen(modal);
 
-      if (copySha256Btn && sha256Value) {
-        copySha256Btn.addEventListener('click', () => {
-          window.tauriAPI.writeToSystemClipboard(sha256Value.textContent || '').catch(ignoreError);
-          deps.showToast('SHA-256 copied to clipboard', 'Copied', 'success');
-        });
-      }
-
-      if (copySha512Btn && sha512Value) {
-        copySha512Btn.addEventListener('click', () => {
-          window.tauriAPI.writeToSystemClipboard(sha512Value.textContent || '').catch(ignoreError);
-          deps.showToast('SHA-512 copied to clipboard', 'Copied', 'success');
-        });
-      }
-
-      if (copyBlake3Btn && blake3Value) {
-        copyBlake3Btn.addEventListener('click', () => {
-          window.tauriAPI.writeToSystemClipboard(blake3Value.textContent || '').catch(ignoreError);
-          deps.showToast('BLAKE3 copied to clipboard', 'Copied', 'success');
-        });
-      }
-
-      if (copyCrc32Btn && crc32Value) {
-        copyCrc32Btn.addEventListener('click', () => {
-          window.tauriAPI.writeToSystemClipboard(crc32Value.textContent || '').catch(ignoreError);
-          deps.showToast('CRC32 copied to clipboard', 'Copied', 'success');
-        });
-      }
-    }
-
-    const propsCloseBtn = document.getElementById('properties-close');
-    const propsOkBtn = document.getElementById('properties-ok');
-    if (propsCloseBtn) propsCloseBtn.onclick = closeModal;
-    if (propsOkBtn) propsOkBtn.onclick = closeModal;
+    if (closeBtn) closeBtn.onclick = closeModal;
+    if (cancelBtn) cancelBtn.onclick = closeModal;
+    okBtn.onclick = onOk;
+    applyBtn.onclick = onApply;
     modal.onclick = (e) => {
       if (e.target === modal) closeModal();
+    };
+
+    for (const tab of tabEls) {
+      // Focus follows the click, as it does for arrow keys. Safari does not focus buttons on click.
+      tab.onclick = () => selectTab(tab.dataset.tab ?? 'general', true);
+    }
+    tablist.onkeydown = (event: KeyboardEvent) => {
+      const index = tabEls.indexOf(event.target as HTMLButtonElement);
+      if (index < 0) return;
+      let next: number;
+      switch (event.key) {
+        case 'ArrowRight':
+          next = (index + 1) % tabEls.length;
+          break;
+        case 'ArrowLeft':
+          next = (index - 1 + tabEls.length) % tabEls.length;
+          break;
+        case 'Home':
+          next = 0;
+          break;
+        case 'End':
+          next = tabEls.length - 1;
+          break;
+        default:
+          return;
+      }
+      event.preventDefault();
+      const nextTab = tabEls[next];
+      if (nextTab) selectTab(nextTab.dataset.tab ?? 'general', true);
+    };
+
+    content.onclick = (event) => {
+      const target = (event.target as Element | null)?.closest<HTMLElement>('[data-action]');
+      if (!target) return;
+      switch (target.dataset.action) {
+        case 'copy-path':
+          copyText(props.path, 'Full path');
+          break;
+        case 'calc-folder-size':
+          void startFolderSize();
+          break;
+        case 'cancel-folder-size':
+          cancelFolderSize();
+          break;
+        case 'calc-checksum':
+          void startChecksum();
+          break;
+        case 'cancel-checksum':
+          cancelChecksum();
+          break;
+        case 'copy-checksum': {
+          const algo = target.dataset.algo as ChecksumAlgorithm | undefined;
+          const value = algo ? checksumValues[algo] : undefined;
+          if (algo && value) copyText(value, CHECKSUM_LABELS[algo]);
+          break;
+        }
+        default:
+          break;
+      }
+    };
+
+    content.onchange = (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement)) return;
+      if (target.dataset.attr === 'readOnly') {
+        attrs.readOnly = target.checked;
+      } else if (target.dataset.attr === 'hidden') {
+        attrs.hidden = target.checked;
+      } else if (target.dataset.permBit) {
+        const bit = Number(target.dataset.permBit);
+        modeBits = target.checked ? modeBits | bit : modeBits & ~bit;
+        modeText = modeBits.toString(8);
+        const octalInput = find<HTMLInputElement>('perm-octal');
+        if (octalInput) {
+          octalInput.value = modeText;
+          octalInput.setAttribute('aria-invalid', 'false');
+        }
+        const rwx = find('perm-rwx');
+        if (rwx) rwx.textContent = formatPermissions(modeBits);
+      } else {
+        return;
+      }
+      syncFooter();
+    };
+
+    content.oninput = (event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLInputElement) || target.dataset.role !== 'perm-octal') return;
+      modeText = target.value;
+      const parsed = parseOctal(modeText);
+      if (parsed !== null) {
+        modeBits = parsed;
+        content.querySelectorAll<HTMLInputElement>('input[data-perm-bit]').forEach((box) => {
+          box.checked = (modeBits & Number(box.dataset.permBit)) !== 0;
+        });
+        const rwx = find('perm-rwx');
+        if (rwx) rwx.textContent = formatPermissions(modeBits);
+      }
+      target.setAttribute('aria-invalid', String(parsed === null));
+      syncFooter();
     };
   };
 

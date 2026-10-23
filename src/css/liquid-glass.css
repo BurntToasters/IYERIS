@@ -66,7 +66,7 @@
     --liquid-glass-dropdown-filter: blur(var(--liquid-glass-blur))
       saturate(var(--liquid-glass-saturation));
     --liquid-glass-dropdown-shadow: var(--liquid-glass-shadow);
-    --liquid-glass-card-bg: color-mix(in srgb, var(--surface-1) 80%, transparent);
+    --liquid-glass-card-bg: color-mix(in srgb, var(--surface-1) 92%, transparent);
     --liquid-glass-card-filter: blur(14px) saturate(140%);
     --liquid-glass-card-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
     --liquid-glass-card-radius: 14px;
@@ -74,12 +74,12 @@
     --liquid-glass-toast-filter: blur(14px) saturate(130%);
     --liquid-glass-toast-border-color: color-mix(in srgb, var(--panel-border) 82%, transparent);
     --liquid-glass-toast-radius: 14px;
-    --liquid-glass-popup-bg: color-mix(in srgb, var(--surface-1) 80%, transparent);
+    --liquid-glass-popup-bg: color-mix(in srgb, var(--surface-1) 92%, transparent);
     --liquid-glass-popup-filter: blur(var(--liquid-glass-blur))
       saturate(var(--liquid-glass-saturation));
-    --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--surface-2) 80%, transparent);
+    --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--surface-2) 92%, transparent);
     --liquid-glass-popup-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--surface-2) 80%, transparent);
+    --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--surface-2) 92%, transparent);
     --liquid-glass-archive-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
     --liquid-glass-card-hover-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
   }
@@ -105,8 +105,8 @@
     --liquid-glass-input-border-color: rgba(32, 33, 36, 0.16);
     --liquid-glass-input-bg-hover: rgba(0, 0, 0, 0.06);
     --liquid-glass-input-bg-focus: rgba(0, 0, 0, 0.05);
-    --liquid-glass-popup-hover-bg: rgba(255, 255, 255, 0.88);
-    --liquid-glass-archive-hover-bg: rgba(255, 255, 255, 0.88);
+    --liquid-glass-popup-hover-bg: rgba(255, 255, 255, 0.92);
+    --liquid-glass-archive-hover-bg: rgba(255, 255, 255, 0.92);
     --liquid-glass-card-hover-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
   }
 
@@ -125,12 +125,12 @@
     --liquid-glass-toolbar-bg: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
     --liquid-glass-dropdown-bg: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
     --liquid-glass-dropdown-border-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
-    --liquid-glass-card-bg: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+    --liquid-glass-card-bg: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
     --liquid-glass-card-border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
     --liquid-glass-toast-bg: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
     --liquid-glass-toast-border-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
-    --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
-    --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--bg-secondary) 80%, transparent);
+    --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
     --liquid-glass-card-hover-shadow: 0 12px 40px
       color-mix(in srgb, var(--bg-primary) 40%, transparent);
   }
@@ -197,8 +197,8 @@
 
   body.liquid-glass .glass-panel {
     background: var(--liquid-glass-panel-bg);
-    backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
     -webkit-backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
+    backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
     border: 1px solid var(--liquid-glass-panel-border-color);
     border-radius: var(--liquid-glass-radius);
     box-shadow: var(--liquid-glass-panel-shadow);
@@ -232,42 +232,42 @@
   }
 
   body.liquid-glass .context-submenu {
-    background: var(--liquid-glass-menu-bg);
-    backdrop-filter: var(--liquid-glass-menu-filter);
+    background: var(--dropdown-bg);
     -webkit-backdrop-filter: var(--liquid-glass-menu-filter);
+    backdrop-filter: var(--liquid-glass-menu-filter);
     border-radius: var(--liquid-glass-menu-radius);
   }
 
   body.liquid-glass .sidebar {
     background: var(--liquid-glass-sidebar-bg);
-    backdrop-filter: var(--liquid-glass-sidebar-filter);
     -webkit-backdrop-filter: var(--liquid-glass-sidebar-filter);
+    backdrop-filter: var(--liquid-glass-sidebar-filter);
     border: 1px solid var(--liquid-glass-sidebar-border-color);
     border-radius: var(--liquid-glass-radius);
   }
 
   body.liquid-glass .titlebar {
     background: var(--liquid-glass-titlebar-bg);
-    backdrop-filter: var(--liquid-glass-titlebar-filter);
     -webkit-backdrop-filter: var(--liquid-glass-titlebar-filter);
+    backdrop-filter: var(--liquid-glass-titlebar-filter);
   }
 
   body.liquid-glass .tab-bar {
     background: var(--liquid-glass-tabbar-bg);
-    backdrop-filter: var(--liquid-glass-tabbar-filter);
     -webkit-backdrop-filter: var(--liquid-glass-tabbar-filter);
+    backdrop-filter: var(--liquid-glass-tabbar-filter);
   }
 
   body.liquid-glass .status-bar {
     background: var(--liquid-glass-statusbar-bg);
-    backdrop-filter: var(--liquid-glass-statusbar-filter);
     -webkit-backdrop-filter: var(--liquid-glass-statusbar-filter);
+    backdrop-filter: var(--liquid-glass-statusbar-filter);
   }
 
   body.liquid-glass .toolbar {
     background: var(--liquid-glass-toolbar-bg);
-    backdrop-filter: var(--liquid-glass-toolbar-filter);
     -webkit-backdrop-filter: var(--liquid-glass-toolbar-filter);
+    backdrop-filter: var(--liquid-glass-toolbar-filter);
   }
 
   body.liquid-glass .glass-input {
@@ -290,14 +290,14 @@
   body.liquid-glass .address-bar,
   body.liquid-glass .search-bar {
     background: var(--liquid-glass-address-bg);
-    backdrop-filter: var(--liquid-glass-address-filter);
     -webkit-backdrop-filter: var(--liquid-glass-address-filter);
+    backdrop-filter: var(--liquid-glass-address-filter);
   }
 
   body.liquid-glass .file-hover-card {
     background: var(--liquid-glass-card-bg);
-    backdrop-filter: var(--liquid-glass-card-filter);
     -webkit-backdrop-filter: var(--liquid-glass-card-filter);
+    backdrop-filter: var(--liquid-glass-card-filter);
     border: 1px solid var(--liquid-glass-card-border-color);
     border-radius: var(--liquid-glass-card-radius);
   }
@@ -309,8 +309,8 @@
   body.liquid-glass .progress-panel,
   body.liquid-glass .home-customize-btn {
     background: var(--liquid-glass-card-bg);
-    backdrop-filter: var(--liquid-glass-card-filter);
     -webkit-backdrop-filter: var(--liquid-glass-card-filter);
+    backdrop-filter: var(--liquid-glass-card-filter);
     border: 1px solid var(--liquid-glass-card-border-color);
     box-shadow: var(--liquid-glass-panel-shadow);
   }
@@ -332,8 +332,8 @@
 
   body.liquid-glass .zoom-popup {
     background: var(--liquid-glass-popup-bg);
-    backdrop-filter: var(--liquid-glass-popup-filter);
     -webkit-backdrop-filter: var(--liquid-glass-popup-filter);
+    backdrop-filter: var(--liquid-glass-popup-filter);
   }
 
   body.reduce-transparency.liquid-glass .glass-panel::before {
@@ -374,8 +374,8 @@
   body.performance-mode.liquid-glass .file-hover-card,
   body.performance-mode.liquid-glass .home-customize-btn,
   body.performance-mode.liquid-glass .zoom-popup {
-    backdrop-filter: none;
     -webkit-backdrop-filter: none;
+    backdrop-filter: none;
   }
 
   body.liquid-glass .zoom-popup:hover {
@@ -392,11 +392,6 @@
   body.liquid-glass .archive-operations-panel:hover {
     background: var(--liquid-glass-archive-hover-bg);
     box-shadow: var(--liquid-glass-archive-hover-shadow);
-  }
-
-  body.liquid-glass .file-hover-card:hover {
-    box-shadow: var(--liquid-glass-card-hover-shadow);
-    transform: translateY(-2px);
   }
 
   /* Allow glass panel shadows to render outside the rectangular clip boundary */

@@ -97,8 +97,8 @@ body::before {
 body.platform-darwin.theme-light .status-bar,
 body.platform-darwin.theme-light .titlebar {
   background: rgba(241, 241, 238, 0.9);
-  backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
 }
 
 body.theme-light {
@@ -140,8 +140,8 @@ body.theme-light .glass-panel {
   border: 1px solid var(--native-divider);
   border-radius: var(--radius-medium);
   box-shadow: none;
-  backdrop-filter: blur(18px) saturate(135%);
   -webkit-backdrop-filter: blur(18px) saturate(135%);
+  backdrop-filter: blur(18px) saturate(135%);
 }
 
 .titlebar {
@@ -149,8 +149,8 @@ body.theme-light .glass-panel {
   background: color-mix(in srgb, var(--chrome-surface) 92%, transparent);
   border-bottom: 1px solid var(--native-divider);
   box-shadow: none;
-  backdrop-filter: blur(22px) saturate(150%);
   -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
 }
 
 body.platform-darwin .titlebar {
@@ -238,8 +238,8 @@ body.sidebar-collapsed.platform-darwin .titlebar::after {
   border-right: 1px solid var(--native-divider);
   background: var(--sidebar-surface, color-mix(in srgb, var(--chrome-surface) 90%, transparent));
   box-shadow: none;
-  backdrop-filter: blur(24px) saturate(150%);
   -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
 }
 
 .sidebar.glass-panel {
@@ -376,8 +376,8 @@ body.theme-light .section-action {
   border-bottom: 1px solid var(--native-divider);
   border-radius: 0;
   box-shadow: none;
-  backdrop-filter: blur(20px) saturate(145%);
   -webkit-backdrop-filter: blur(20px) saturate(145%);
+  backdrop-filter: blur(20px) saturate(145%);
 }
 
 .toolbar-group {
@@ -628,8 +628,8 @@ body.theme-light .file-item.selected:hover {
   color: var(--text-tertiary);
   font-size: 11px;
   font-weight: 560;
-  backdrop-filter: blur(18px) saturate(140%);
   -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
 }
 
 .list-header-cell {
@@ -761,15 +761,15 @@ body.theme-light .home-drive-card {
   background: color-mix(in srgb, var(--chrome-surface) 92%, transparent);
   border-top: 1px solid var(--native-divider);
   box-shadow: none;
-  backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
 }
 
 body.platform-darwin .status-bar {
   background: color-mix(in srgb, var(--chrome-surface) 92%, transparent);
   border-top: 1px solid var(--native-divider);
-  backdrop-filter: blur(20px) saturate(140%);
   -webkit-backdrop-filter: blur(20px) saturate(140%);
+  backdrop-filter: blur(20px) saturate(140%);
 }
 
 .status-version,
@@ -797,31 +797,39 @@ body.platform-darwin .status-bar {
 
 .modal-overlay {
   background: rgba(0, 0, 0, 0.32);
-  backdrop-filter: blur(18px) saturate(120%);
-  -webkit-backdrop-filter: blur(18px) saturate(120%);
+  -webkit-backdrop-filter: blur(8px) saturate(120%);
+  backdrop-filter: blur(8px) saturate(120%);
 }
 
+/* Properties, Compress and Extract: dim only, no blur. */
 #compress-options-modal,
 #extract-modal,
 #properties-modal {
-  backdrop-filter: blur(4px) saturate(110%);
-  -webkit-backdrop-filter: blur(4px) saturate(110%);
+  background: rgba(0, 0, 0, 0.35);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+#properties-modal .modal {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 body.reduce-transparency #compress-options-modal,
 body.reduce-transparency #extract-modal,
 body.reduce-transparency #properties-modal {
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
   background: rgba(0, 0, 0, 0.9);
 }
 
 body.reduce-transparency .modal-overlay {
   background: rgba(0, 0, 0, 0.9);
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
+/* The panel is about 0.98 opaque, so it does not need its own blur. */
 .modal,
 .modal.glass-panel,
 body.theme-light .modal.glass-panel {
@@ -829,8 +837,38 @@ body.theme-light .modal.glass-panel {
   background: var(--glass-modal-bg);
   border: 1px solid var(--glass-modal-border);
   box-shadow: var(--shadow-xl);
-  backdrop-filter: blur(28px) saturate(155%);
-  -webkit-backdrop-filter: blur(28px) saturate(155%);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Modal and sort-menu surfaces stay near-opaque in every theme and with liquid glass.
+   body + 2 classes (0,2,1) ties the theme and liquid-glass .glass-panel rules, and this file
+   loads after them, so it wins. The win32 rule has higher specificity and uses an opaque token. */
+body .modal.glass-panel {
+  background: var(--glass-modal-bg);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+/* Outside liquid glass, modal panels are fully opaque. --glass-modal-bg is 0.98 alpha, so grid
+   icons behind a dialog showed through its top half. Relative color syntax keeps the origin alpha unless '/ 1' is given. The
+   first declaration is the fallback for engines without that syntax. */
+body:not(.liquid-glass) .modal.glass-panel {
+  background: var(--glass-modal-bg);
+  background: rgb(from var(--glass-modal-bg) r g b / 1);
+}
+
+body .sort-menu.glass-panel {
+  background: var(--dropdown-bg);
+}
+
+body.platform-win32 .modal.glass-panel {
+  background: var(--chrome-surface-raised);
+  background: rgb(from var(--chrome-surface-raised) r g b / 1);
+}
+
+body.platform-win32 .sort-menu.glass-panel {
+  background: var(--chrome-surface-raised);
 }
 
 .modal-header,
@@ -932,6 +970,22 @@ body.theme-light .toast-action-btn:not(:disabled) {
   background: var(--button-disabled-primary-bg);
   border-color: var(--button-disabled-primary-border);
   color: var(--button-disabled-primary-text);
+}
+
+/* Muted secondary button. The body.theme-light selector matches the light-theme
+   surface rule above, so it stays muted in light mode too. */
+.modal-button.secondary:not(:disabled),
+body.theme-light .modal-button.secondary:not(:disabled) {
+  background: color-mix(in srgb, var(--text-primary) 6%, transparent);
+  border-color: var(--native-divider);
+  color: var(--text-secondary);
+}
+
+.modal-button.secondary:not(:disabled):hover,
+body.theme-light .modal-button.secondary:not(:disabled):hover {
+  background: var(--interactive-hover);
+  border-color: var(--panel-border-strong);
+  color: var(--text-primary);
 }
 
 .search-filter-btn.primary:active {
@@ -1043,15 +1097,15 @@ body.theme-light .settings-card {
   border: 1px solid var(--native-divider);
   background: var(--dropdown-bg);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(24px) saturate(155%);
   -webkit-backdrop-filter: blur(24px) saturate(155%);
+  backdrop-filter: blur(24px) saturate(155%);
 }
 
 body.platform-darwin .context-menu,
 body.platform-darwin .context-submenu {
   background: var(--dropdown-bg);
-  backdrop-filter: blur(32px) saturate(160%);
   -webkit-backdrop-filter: blur(32px) saturate(160%);
+  backdrop-filter: blur(32px) saturate(160%);
   border: 1px solid var(--native-divider);
   box-shadow:
     0 8px 24px rgba(0, 0, 0, 0.28),
@@ -1091,8 +1145,8 @@ body.platform-darwin .context-menu-item {
   border: 1px solid var(--native-divider);
   background: var(--dropdown-bg);
   box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(24px) saturate(155%);
   -webkit-backdrop-filter: blur(24px) saturate(155%);
+  backdrop-filter: blur(24px) saturate(155%);
 }
 
 .toast.success {
@@ -1114,8 +1168,9 @@ body.platform-darwin .context-menu-item {
 .zoom-popup {
   border-radius: var(--radius-medium);
   border: 1px solid var(--native-divider);
-  background: color-mix(in srgb, var(--surface-1) 76%, transparent);
-  box-shadow: none;
+  /* Fully opaque. --chrome-surface-raised mixes in translucent text color, so icons showed through. */
+  background: color-mix(in srgb, var(--surface-1) 97%, #ffffff 3%);
+  box-shadow: var(--shadow-lg);
 }
 
 body.preview-right .preview-panel {
@@ -1212,8 +1267,8 @@ body.platform-win32 .progress-panel,
 body.platform-win32 .file-hover-card,
 body.platform-win32 .home-customize-btn,
 body.platform-win32 .zoom-popup {
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 body.platform-win32 .glass-panel,
@@ -1277,8 +1332,8 @@ body.reduce-transparency .status-bar,
 body.reduce-transparency .modal,
 body.reduce-transparency .context-menu,
 body.reduce-transparency .toast {
-  backdrop-filter: none;
   -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 body.compact-ui .toolbar {
