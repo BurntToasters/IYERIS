@@ -492,7 +492,9 @@ async function runBrowserSuites(executable, temporary, state) {
   );
   state.browserProcess = browser;
   const { call, onEvent } = makeCdpClient(browser, state);
-  const browserVersion = await call('Browser.getVersion');
+  // Cold Chrome starts on Windows runners can exceed the default 30s, so this first call
+  // gets a longer timeout; it doubles as the startup readiness probe.
+  const browserVersion = await call('Browser.getVersion', {}, undefined, 120000);
   const browserMetadata = {
     executable: path.basename(executable),
     product: browserVersion.product,
