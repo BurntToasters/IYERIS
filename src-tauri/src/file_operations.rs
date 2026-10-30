@@ -2338,6 +2338,15 @@ fn get_item_properties_sync(item_path: String) -> Result<ItemProperties, String>
         )
     };
     #[cfg(not(target_os = "windows"))]
+    type FileAttributeFlags = (
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+        Option<bool>,
+    );
+    #[cfg(not(target_os = "windows"))]
     let (
         is_hidden_attr,
         is_system_attr,
@@ -2345,14 +2354,7 @@ fn get_item_properties_sync(item_path: String) -> Result<ItemProperties, String>
         is_compressed_attr,
         is_encrypted_attr,
         is_indexed_attr,
-    ): (
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-        Option<bool>,
-    ) = (None, None, None, None, None, None);
+    ): FileAttributeFlags = (None, None, None, None, None, None);
 
     let mime_type = if is_plain_file {
         detect_item_mime_type(&path)

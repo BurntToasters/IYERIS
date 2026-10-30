@@ -15,8 +15,11 @@ use std::path::Path;
 pub enum SignatureStatus {
     Valid,
     Invalid,
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     Untrusted,
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     Expired,
+    #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
     Revoked,
     Unsigned,
     Unsupported,
