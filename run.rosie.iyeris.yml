@@ -1,9 +1,9 @@
 app-id: run.rosie.iyeris
 runtime: org.gnome.Platform
-runtime-version: '49'
+runtime-version: '51'
 sdk: org.gnome.Sdk
 sdk-extensions:
-  - org.freedesktop.Sdk.Extension.node22
+  - org.freedesktop.Sdk.Extension.node24
   - org.freedesktop.Sdk.Extension.rust-stable
 command: iyeris
 separate-locales: false
@@ -30,7 +30,7 @@ modules:
     build-options:
       build-args:
         - --share=network
-      append-path: /run/build/iyeris/npm-global/bin:/run/build/iyeris/cargo/bin:/usr/lib/sdk/node22/bin:/usr/lib/sdk/rust-stable/bin
+      append-path: /run/build/iyeris/npm-global/bin:/run/build/iyeris/cargo/bin:/usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
       env:
         CARGO_HOME: /run/build/iyeris/cargo
         RUSTUP_HOME: /run/build/iyeris/rustup
@@ -39,7 +39,7 @@ modules:
     build-commands:
       - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain 1.98.1 --profile minimal
       - test "$(rustc --version | cut -d' ' -f2)" = 1.98.1
-      # node22 SDK ships npm 10.x, which does not support --min-release-age.
+      # node24 SDK ships npm 11.x, which does not support --min-release-age.
       # npm@12 plus --before 3 days ago takes the newest 12.x that is old enough.
       - npm install --global npm@12 --ignore-scripts --engine-strict=false --before="$(date -u -d '3 days ago' +%Y-%m-%dT%H:%M:%SZ)" --prefix /run/build/iyeris/npm-global
       - npm ci
