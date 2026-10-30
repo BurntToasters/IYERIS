@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 // Failure inventory (before implementation): session/dotfile metadata reaches the
 // share; native recursive copy aborts; SMB rejects copyFile with EPERM/EACCES;
@@ -98,7 +98,11 @@ if (scenario === 'write-denied') {
   );
   const child = spawnSync(
     process.execPath,
-    ['--import', preload, path.join(root, 'scripts', 'finalize-release-assets.js')],
+    [
+      '--import',
+      pathToFileURL(preload).href,
+      path.join(root, 'scripts', 'finalize-release-assets.js'),
+    ],
     {
       cwd: root,
       encoding: 'utf8',
