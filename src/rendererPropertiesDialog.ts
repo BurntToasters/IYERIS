@@ -97,13 +97,20 @@ function parseOctal(text: string): number | null {
 }
 
 // valueHtml must already be escaped, or be trusted markup built by this file.
-function propertyRow(label: string, valueHtml: string, valueClass = ''): string {
+function propertyRow(label: string, valueHtml: string, valueClass = '', title?: string): string {
   const cls = valueClass ? `property-value ${valueClass}` : 'property-value';
+  const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
   return `
     <div class="property-row">
       <div class="property-label">${escapeHtml(label)}</div>
-      <div class="${cls}">${valueHtml}</div>
+      <div class="${cls}"${titleAttr}>${valueHtml}</div>
     </div>`;
+}
+
+// Long dates stay on one line; the full text is exposed as a tooltip when truncated.
+function dateRow(label: string, value: Date): string {
+  const text = formatLongDate(value);
+  return propertyRow(label, escapeHtml(text), 'property-date', text);
 }
 
 function identityHtml(name: string | undefined, id: string | undefined): string {
@@ -348,9 +355,9 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
       groups.push(
         [
-          propertyRow('Created:', escapeHtml(formatLongDate(props.created))),
-          propertyRow('Modified:', escapeHtml(formatLongDate(props.modified))),
-          propertyRow('Accessed:', escapeHtml(formatLongDate(props.accessed))),
+          dateRow('Created:', props.created),
+          dateRow('Modified:', props.modified),
+          dateRow('Accessed:', props.accessed),
         ].join('')
       );
 

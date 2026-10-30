@@ -33,6 +33,13 @@
   word-break: break-all;
 }
 
+.property-value.property-date {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .property-value.property-checksum {
   display: flex;
   align-items: center;
