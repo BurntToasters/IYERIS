@@ -30,7 +30,8 @@ modules:
     build-options:
       build-args:
         - --share=network
-      append-path: /run/build/iyeris/npm-global/bin:/run/build/iyeris/cargo/bin:/usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
+      # Prepend so the extension Node wins over any older SDK /usr/bin/node.
+      prepend-path: /run/build/iyeris/npm-global/bin:/run/build/iyeris/cargo/bin:/usr/lib/sdk/node24/bin:/usr/lib/sdk/rust-stable/bin
       env:
         CARGO_HOME: /run/build/iyeris/cargo
         RUSTUP_HOME: /run/build/iyeris/rustup
