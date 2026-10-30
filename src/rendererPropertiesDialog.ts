@@ -85,7 +85,15 @@ function formatPermissions(mode: number): string {
 }
 
 function formatLongDate(value: Date): string {
-  return new Date(value).toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'medium' });
+  return new Date(value).toLocaleString(undefined, {
+    weekday: 'short',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+  });
 }
 
 // Accepts 1 to 4 octal digits in the 0..0o777 range. Returns null otherwise.
