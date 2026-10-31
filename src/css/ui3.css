@@ -902,6 +902,44 @@ body.theme-light .settings-card-header {
   background: var(--surface-0);
 }
 
+/* Quick Look HUD: one continuous, translucent chrome bar around a compact opaque panel. */
+#quicklook-modal .modal.glass-panel {
+  border-radius: 12px;
+  border: 1px solid var(--glass-modal-border);
+  background: var(--glass-modal-bg);
+  background: rgb(from var(--glass-modal-bg) r g b / 1);
+  box-shadow: var(--native-elevation-2);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+#quicklook-modal .modal-header {
+  position: relative;
+  justify-content: center;
+  min-height: 40px;
+  padding: 0 46px;
+}
+
+#quicklook-modal .modal-header h3 {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 650;
+  letter-spacing: -0.005em;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#quicklook-modal .quicklook-content {
+  padding: 18px;
+}
+
+#quicklook-modal .modal-header,
+#quicklook-modal .modal-footer {
+  background: color-mix(in srgb, var(--surface-1) 58%, transparent);
+  border-color: var(--native-divider);
+}
+
 body.theme-light .modal-button:not(.primary):not(:disabled),
 body.theme-light .empty-action-btn:not(:disabled),
 body.theme-light .search-filter-btn:not(.primary):not(:disabled),
@@ -1089,9 +1127,17 @@ body.theme-light .settings-card {
 
 .context-menu,
 .context-submenu,
+.sort-menu {
+  border-radius: 6px;
+  border: 1px solid var(--native-divider);
+  background: var(--dropdown-bg);
+  box-shadow: var(--native-elevation-2);
+  -webkit-backdrop-filter: blur(24px) saturate(155%);
+  backdrop-filter: blur(24px) saturate(155%);
+}
+
 .breadcrumb-menu,
 .history-dropdown,
-.sort-menu,
 .selection-overflow-menu,
 .command-palette-modal {
   border-radius: 10px;
@@ -1108,17 +1154,31 @@ body.platform-darwin .context-submenu {
   -webkit-backdrop-filter: blur(32px) saturate(160%);
   backdrop-filter: blur(32px) saturate(160%);
   border: 1px solid var(--native-divider);
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.28),
-    0 1px 0 rgba(255, 255, 255, 0.06);
+  box-shadow: var(--native-elevation-2);
 }
 
 body.platform-darwin .context-menu-item {
   min-height: 22px;
-  padding: 4px 12px;
+  padding: 3px 10px;
+  border-radius: 5px;
+  line-height: 16px;
 }
 
-.context-menu-item,
+body.liquid-glass .context-menu,
+body.liquid-glass .context-submenu,
+body.liquid-glass .sort-menu {
+  background: var(--liquid-glass-menu-bg);
+  -webkit-backdrop-filter: var(--liquid-glass-menu-filter);
+  backdrop-filter: var(--liquid-glass-menu-filter);
+  border: 1px solid var(--liquid-glass-menu-border-color);
+  border-radius: var(--liquid-glass-menu-radius);
+  box-shadow: var(--liquid-glass-menu-shadow);
+}
+
+.context-menu-item {
+  border-radius: 5px;
+}
+
 .breadcrumb-menu-item,
 .selection-overflow-item,
 .command-palette-item {
@@ -1337,6 +1397,31 @@ body.reduce-transparency .toast {
   backdrop-filter: none;
 }
 
+/* Reduced transparency needs opaque surfaces, not just removed blur. */
+body.reduce-transparency .modal,
+body.reduce-transparency .modal.glass-panel {
+  background: var(--surface-1);
+  background: rgb(from var(--surface-1) r g b / 1);
+}
+
+body.reduce-transparency .context-menu,
+body.reduce-transparency .context-submenu,
+body.reduce-transparency .sort-menu {
+  background: var(--surface-1);
+  background: rgb(from var(--dropdown-bg) r g b / 1);
+}
+
+body.reduce-transparency .preview-panel {
+  background: var(--surface-1);
+}
+
+body.reduce-transparency #quicklook-modal .modal-header,
+body.reduce-transparency #quicklook-modal .modal-footer {
+  background: var(--surface-1);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
 body.compact-ui .toolbar {
   min-height: var(--toolbar-height);
 }
@@ -1379,5 +1464,21 @@ body.window-inactive .titlebar-button {
 }
 
 body.window-inactive .modal {
-  opacity: 0.88;
+  opacity: 1;
+}
+
+/* Inactive apps use the neutral menu selection instead of the accent fill. */
+body.window-inactive .context-menu-item:hover,
+body.window-inactive .context-menu-item.focused,
+body.window-inactive .context-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+body.window-inactive .context-menu-item:hover .context-menu-shortcut,
+body.window-inactive .context-menu-item.focused .context-menu-shortcut,
+body.window-inactive .context-menu-item:focus-visible .context-menu-shortcut {
+  color: var(--text-secondary);
+  opacity: 0.55;
 }

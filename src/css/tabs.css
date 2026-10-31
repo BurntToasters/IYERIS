@@ -4,9 +4,9 @@
   align-items: center;
   height: var(--titlebar-height);
   background: var(--chrome-surface);
-  border-bottom: 1px solid var(--native-divider);
-  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03);
-  padding: 0 0 0 12px;
+  border-bottom: none !important;
+  box-shadow: none;
+  padding: 0 0 0 10px;
   position: relative;
   z-index: var(--z-component);
 }
@@ -101,7 +101,7 @@
 }
 
 body.platform-darwin .titlebar {
-  padding-left: 78px;
+  padding-left: 74px !important;
   justify-content: center;
 }
 

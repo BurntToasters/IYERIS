@@ -133,6 +133,51 @@ body.platform-linux .file-item.selected {
   background: var(--file-selection-hover-bg);
 }
 
+/* Finder icon-grid selection: a soft rounded plate on the tile plus an accent pill
+   behind the filename. ui3.css (overrides layer) paints the tile with the shared
+   --file-selection-* tokens, so these declarations are marked important to keep the
+   plate neutral and borderless here without touching the shared overrides layer. */
+.file-grid:not(.list-view) .file-item.selected:not(.drag-over):not(.spring-loading) {
+  background: color-mix(in srgb, var(--system-accent-color) 14%, transparent) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+.file-grid:not(.list-view) .file-item.selected:not(.drag-over):not(.spring-loading):hover {
+  background: color-mix(in srgb, var(--system-accent-color) 18%, transparent) !important;
+}
+
+.file-grid:not(.list-view) .file-item.selected .file-name {
+  background: var(--system-accent-color);
+  color: var(--text-on-accent);
+  border-radius: 999px;
+  padding: 0 8px;
+  font-weight: 560;
+  transition:
+    background-color var(--animation-duration) var(--animation-easing),
+    color var(--animation-duration) var(--animation-easing);
+}
+
+/* Keep a visible keyboard focus ring on the borderless selected plate. */
+.file-grid:not(.list-view) .file-item.selected:focus-visible {
+  box-shadow: var(--focus-ring-strong) !important;
+}
+
+body.window-inactive .file-grid:not(.list-view) .file-item.selected:not(.drag-over) {
+  background: color-mix(in srgb, var(--text-primary) 9%, transparent) !important;
+  border-color: transparent !important;
+  box-shadow: none !important;
+}
+
+body.window-inactive .file-grid:not(.list-view) .file-item.selected .file-name {
+  background: color-mix(in srgb, var(--text-primary) 16%, transparent);
+  color: var(--text-primary);
+}
+
+body.reduce-motion .file-grid:not(.list-view) .file-item.selected .file-name {
+  transition: none;
+}
+
 .file-item:focus {
   outline: none;
 }
@@ -469,8 +514,12 @@ body:not(.show-file-checkboxes) .file-checkbox {
     );
   align-items: center;
   column-gap: 12px;
-  padding: var(--list-item-padding-v) var(--list-item-padding-h);
-  border-radius: 0;
+  margin: 0 4px;
+  padding: var(--list-item-padding-v) calc(var(--list-item-padding-h) - 4px);
+  /* NSTableView-style rows: no per-row rules, 6px inset rounded row surfaces.
+     ui3.css pins border-width 0 0 1px and border-radius 0 in the overrides layer. */
+  border: 0 !important;
+  border-radius: 6px !important;
   min-height: var(--list-item-min-height);
 }
 
@@ -526,6 +575,7 @@ body:not(.show-file-checkboxes) .file-checkbox {
 .file-grid.list-view .file-size,
 .file-grid.list-view .file-modified {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .file-item.cut {

@@ -70,18 +70,24 @@
   transition:
     background var(--animation-duration) var(--animation-easing),
     color var(--animation-duration) var(--animation-easing),
-    border-color var(--animation-duration) var(--animation-easing);
+    border-color var(--animation-duration) var(--animation-easing),
+    box-shadow var(--animation-duration) var(--animation-easing);
 }
 
 .home-item:hover {
   background: var(--interactive-hover);
   color: var(--text-primary);
-  transform: scale(1.02);
+  border-color: var(--panel-border-strong);
+  /* ui3.css pins box-shadow: none on the base surface in the overrides layer. */
+  box-shadow: var(--native-elevation-1) !important;
+  transform: none;
 }
 
 .home-item:active {
   background: var(--interactive-active);
-  transform: scale(0.99);
+  border-color: var(--panel-border-strong);
+  box-shadow: none !important;
+  transform: none;
 }
 
 /* Per-action color tints for Quick Access icons */

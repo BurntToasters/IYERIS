@@ -155,10 +155,15 @@
   --icon-size-status: 12px;
   --icon-size-settings-tab: 18px;
 
-  --toolbar-height: 42px;
-  --toolbar-padding-v: 6px;
+  --toolbar-height: 40px;
+  --toolbar-padding-v: 5px;
   --toolbar-padding-h: 8px;
   --toolbar-group-height: 30px;
+  --segmented-track-bg: color-mix(in srgb, var(--surface-1) 64%, transparent);
+  --segmented-active-bg: color-mix(in srgb, var(--surface-1) 88%, #ffffff 12%);
+  --segmented-active-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.26), 0 0 0 0.5px rgba(0, 0, 0, 0.16),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.16);
   --control-height-sm: 24px;
   --control-height-md: 24px;
   --control-height-lg: 30px;
@@ -187,6 +192,8 @@
   --nav-item-padding-v: 5px;
   --nav-item-padding-h: 9px;
   --nav-item-gap: 8px;
+  --sidebar-row-height: 28px;
+  --sidebar-row-radius: 6px;
   --sidebar-section-gap: 14px;
   --sidebar-padding-v: 10px;
   --sidebar-padding-h: 8px;
@@ -205,6 +212,7 @@
   --breadcrumb-padding-v: 4px;
   --breadcrumb-padding-h: 8px;
   --status-bar-padding-h: 10px;
+  --status-separator-height: 10px;
   --modal-max-width: 600px;
   --settings-modal-width: 980px;
   --settings-modal-height: 680px;
@@ -246,7 +254,7 @@ body.platform-darwin {
   --scrollbar-thumb-radius: 999px;
   --radius-small: 6px;
   --radius-medium: 10px;
-  --titlebar-height: 32px;
+  --titlebar-height: 30px;
 }
 
 body.platform-darwin.tabs-enabled {

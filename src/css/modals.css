@@ -630,10 +630,12 @@ body.theme-light .licenses-modal-content {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }
 
-.quicklook-modal {
-  min-width: min(600px, 90vw);
-  max-width: 90vw;
-  max-height: 90vh;
+/* Quick Look HUD: compact floating panel with one continuous chrome bar. */
+#quicklook-modal .quicklook-modal {
+  width: min(680px, 92vw);
+  min-width: min(520px, 88vw);
+  max-width: min(920px, 92vw);
+  max-height: 88vh;
   display: flex;
   flex-direction: column;
 }
@@ -641,14 +643,15 @@ body.theme-light .licenses-modal-content {
 .quicklook-content {
   max-height: 70vh;
   overflow: auto;
-  padding: 20px;
+  padding: 18px;
 }
 
 .quicklook-content img {
   max-width: 100%;
   max-height: 60vh;
   object-fit: contain;
-  border-radius: 8px;
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
   transition: max-height 0.3s ease;
 }
 
@@ -672,8 +675,25 @@ body.theme-light .licenses-modal-content {
   max-height: 60vh;
 }
 
+#quicklook-modal .modal-close {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+  transform: translateY(-50%);
+}
+
+#quicklook-modal .modal-footer {
+  min-height: 44px;
+  gap: 10px;
+  padding: 8px 14px;
+}
+
 #quicklook-info {
-  font-size: 12px;
+  font-size: 11.5px;
+  letter-spacing: 0.01em;
   color: var(--text-secondary);
 }
 

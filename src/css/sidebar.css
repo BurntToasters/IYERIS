@@ -53,12 +53,6 @@
   display: none;
 }
 
-.sidebar.collapsed .sidebar-section.quick-actions .section-header {
-  display: flex;
-  justify-content: flex-start;
-  padding: 0 4px 2px;
-}
-
 .sidebar.collapsed .section-body {
   display: none;
 }
@@ -79,28 +73,26 @@ body.sidebar-collapsed .sidebar-resize-handle {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: calc(var(--icon-size-sidebar-toggle) + 4px);
-  height: calc(var(--icon-size-sidebar-toggle) + 4px);
-  padding: 2px;
-  background: color-mix(in srgb, var(--interactive-selected) 92%, transparent);
-  border: 1px solid var(--interactive-selected-border);
-  border-radius: var(--radius-small);
+  width: var(--sidebar-row-height);
+  height: var(--sidebar-row-height);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--sidebar-row-radius);
   cursor: pointer;
-  color: var(--text-primary);
+  color: var(--text-secondary);
   transition: var(--transition-standard);
   z-index: var(--z-sidebar-header);
   flex-shrink: 0;
 }
 
 .sidebar-toggle:hover {
-  background: color-mix(in srgb, var(--interactive-selected) 78%, transparent);
-  border-color: color-mix(in srgb, var(--interactive-selected-border) 88%, transparent);
+  background: var(--interactive-hover);
   color: var(--text-primary);
 }
 
 .sidebar-toggle:active {
-  background: color-mix(in srgb, var(--interactive-selected) 66%, transparent);
-  border-color: color-mix(in srgb, var(--interactive-selected-border) 78%, transparent);
+  background: var(--interactive-active);
 }
 
 .sidebar-toggle-icon {
@@ -111,15 +103,6 @@ body.sidebar-collapsed .sidebar-resize-handle {
 
 .sidebar-toggle svg {
   transition: transform var(--animation-duration) var(--animation-easing);
-}
-
-.sidebar.collapsed .sidebar-toggle {
-  width: calc(var(--icon-size-sidebar-toggle) + 4px);
-  padding: 2px;
-}
-
-.sidebar.collapsed .sidebar-toggle svg {
-  transform: rotate(180deg);
 }
 
 .sidebar-resize-handle {
@@ -195,12 +178,8 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 1px 3px;
-  margin-bottom: 1px;
-}
-
-.section-header .sidebar-toggle {
-  margin-right: 2px;
+  padding: 2px 6px;
+  margin-bottom: 2px;
 }
 
 .section-toggle {
@@ -211,44 +190,53 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   width: 100%;
   background: transparent;
   border: none;
-  border-radius: var(--radius-small);
+  border-radius: var(--sidebar-row-radius);
   cursor: pointer;
-  padding: 1px 3px;
-  min-height: var(--control-height-sm);
-  color: var(--text-secondary);
-  font-size: var(--font-size-section-title);
+  padding: 2px 4px;
+  min-height: 20px;
+  color: var(--text-tertiary);
+  font-size: 11px;
   font-weight: 600;
   text-transform: none;
-  letter-spacing: 0;
+  letter-spacing: 0.01em;
   transition:
     background var(--animation-duration) var(--animation-easing),
     color var(--animation-duration) var(--animation-easing);
 }
 
 .section-toggle:hover {
-  background: var(--interactive-hover);
+  background: transparent;
   color: var(--text-secondary);
 }
 
 .section-toggle:active {
-  background: var(--interactive-active);
+  background: transparent;
   color: var(--text-primary);
 }
 
 .section-title {
-  font-size: var(--font-size-section-title);
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0.02em;
-  color: var(--text-secondary);
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  letter-spacing: 0.01em !important;
+  color: var(--text-secondary) !important;
   text-shadow: none;
   margin: 0;
   padding: 0;
 }
 
+.section-toggle .section-title {
+  color: var(--text-tertiary) !important;
+}
+
+.section-toggle:hover .section-title {
+  color: var(--text-secondary) !important;
+}
+
 .section-caret {
-  font-size: 11px;
-  opacity: 0.6;
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0.45;
   transition:
     transform var(--animation-duration) var(--animation-easing),
     opacity var(--animation-duration) var(--animation-easing);
@@ -310,9 +298,9 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   flex-direction: row;
   justify-content: flex-start;
   text-align: left;
-  padding: var(--nav-item-padding-v) var(--nav-item-padding-h);
+  padding: 0 var(--nav-item-padding-h);
   gap: var(--nav-item-gap);
-  font-size: var(--font-size-nav);
+  font-size: 12px;
 }
 
 .nav-item.quick-action .nav-icon {
@@ -349,11 +337,13 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   gap: var(--nav-item-gap);
-  padding: var(--nav-item-padding-v) var(--nav-item-padding-h);
-  border-radius: var(--radius-small);
+  min-height: var(--sidebar-row-height) !important;
+  padding: 0 var(--nav-item-padding-h);
+  border: 1px solid transparent;
+  border-radius: var(--sidebar-row-radius) !important;
   cursor: pointer;
   transition: var(--transition-standard);
-  font-size: var(--font-size-nav);
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
   position: relative;
@@ -372,7 +362,12 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
 }
 
 .nav-item.active {
-  background: var(--interactive-selected);
+  background: color-mix(
+    in srgb,
+    var(--system-accent-color, var(--accent-color)) 16%,
+    transparent
+  ) !important;
+  border-color: transparent !important;
   color: var(--text-primary);
 }
 
@@ -380,28 +375,37 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   display: none;
 }
 
+.nav-item.active .nav-icon,
+.tree-item.active .tree-icon,
+.bookmark-item.active .bookmark-icon {
+  color: var(--system-accent-color, var(--accent-color)) !important;
+  opacity: 1;
+}
+
 .folder-tree {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 1px;
 }
 
 .tree-item {
   display: flex;
   align-items: center;
   gap: var(--nav-item-gap);
-  padding: var(--nav-item-padding-v) var(--nav-item-padding-h);
-  padding-left: calc(6px + min(var(--tree-item-depth, 0) * 9px, 78px));
-  border-radius: var(--radius-small);
+  min-height: var(--sidebar-row-height) !important;
+  padding: 0 var(--nav-item-padding-h);
+  padding-left: calc(5px + min(var(--tree-item-depth, 0) * 8px, 72px));
+  border: 1px solid transparent;
+  border-radius: var(--sidebar-row-radius) !important;
   cursor: pointer;
-  font-size: var(--font-size-nav);
+  font-size: 12px;
   font-weight: 500;
   color: var(--text-secondary);
   position: relative;
 }
 
 .folder-tree[data-tree-indent-mode='legacy'] .tree-item {
-  padding-left: calc(6px + min(var(--tree-item-depth, 0) * 12px, 120px));
+  padding-left: calc(5px + min(var(--tree-item-depth, 0) * 11px, 110px));
 }
 
 .tree-item:hover {
@@ -410,7 +414,12 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
 }
 
 .tree-item.active {
-  background: var(--interactive-selected);
+  background: color-mix(
+    in srgb,
+    var(--system-accent-color, var(--accent-color)) 16%,
+    transparent
+  ) !important;
+  border-color: transparent !important;
   color: var(--text-primary);
 }
 
@@ -429,9 +438,11 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 10px;
-  opacity: 0.6;
+  font-size: 9px;
+  opacity: 0.45;
   flex-shrink: 0;
+  color: var(--text-tertiary);
+  transition: opacity var(--animation-duration) var(--animation-easing);
 }
 
 .tree-icon {
@@ -454,7 +465,7 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
 }
 
 .tree-item[data-expanded='true'] .tree-toggle {
-  opacity: 0.9;
+  opacity: 0.75;
 }
 
 .tree-label {
@@ -528,9 +539,10 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
 .bookmark-item {
   display: flex;
   align-items: center;
-  padding: 4px 6px;
-  min-height: var(--control-height-md);
-  border-radius: var(--radius-small);
+  padding: 0 8px;
+  min-height: var(--sidebar-row-height) !important;
+  border: 1px solid transparent;
+  border-radius: var(--sidebar-row-radius) !important;
   cursor: pointer;
   transition:
     background-color 0.2s ease,
@@ -542,12 +554,22 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   position: relative;
   gap: 6px;
   color: var(--text-secondary);
-  font-size: var(--font-size-nav);
+  font-size: 12px;
 }
 
 .bookmark-item:hover {
   background: var(--interactive-hover);
   box-shadow: none;
+  color: var(--text-primary);
+}
+
+.bookmark-item.active {
+  background: color-mix(
+    in srgb,
+    var(--system-accent-color, var(--accent-color)) 16%,
+    transparent
+  ) !important;
+  border-color: transparent !important;
   color: var(--text-primary);
 }
 

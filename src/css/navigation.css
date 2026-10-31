@@ -16,18 +16,19 @@
 .breadcrumb {
   display: inline-flex;
   align-items: center;
-  gap: var(--breadcrumb-gap);
+  gap: 1px;
   font-size: var(--font-size-breadcrumb);
   flex: 1;
   overflow: hidden;
+  color: var(--text-secondary);
 }
 
 .breadcrumb-item {
   display: inline-flex;
   align-items: center;
-  gap: var(--breadcrumb-gap);
-  padding: var(--breadcrumb-padding-v) var(--breadcrumb-padding-h);
-  border-radius: var(--radius-small);
+  gap: 1px;
+  padding: 2px 6px;
+  border-radius: 5px;
   cursor: pointer;
   transition: var(--transition-standard);
   white-space: nowrap;
@@ -68,21 +69,51 @@
 }
 
 .breadcrumb-caret {
-  font-size: 10px;
-  opacity: 0.6;
+  font-size: 9px;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
   cursor: pointer;
+  padding: 0 1px;
+  transition: opacity var(--animation-duration) var(--animation-easing);
+}
+
+.breadcrumb-item:hover .breadcrumb-caret,
+.breadcrumb-item:focus-within .breadcrumb-caret,
+.breadcrumb-caret:focus-visible {
+  opacity: 0.55;
+  pointer-events: auto;
+}
+
+.breadcrumb-item:hover .breadcrumb-caret:hover {
+  opacity: 0.9;
 }
 
 .breadcrumb-separator {
-  opacity: 0.4;
+  opacity: 0.28;
+  color: var(--text-tertiary);
   font-size: 10px;
+  padding: 0 1px;
   user-select: none;
   pointer-events: none;
 }
 
 .address-icon {
-  font-size: 14px;
-  opacity: 0.6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  opacity: 0.75;
+}
+
+.address-icon .twemoji,
+.address-icon svg {
+  width: 14px;
+  height: 14px;
+  display: block;
 }
 
 #address-input {

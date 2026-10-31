@@ -8,19 +8,50 @@
   position: relative;
   z-index: var(--z-toolbar);
   background: var(--chrome-surface);
-  border: 1px solid var(--native-divider);
-  box-shadow: var(--native-elevation-1);
+  border: none;
+  border-top: 1px solid var(--native-divider);
+  border-bottom: 1px solid var(--native-divider);
+  box-shadow: none;
+}
+
+.toolbar .sidebar-toggle {
+  width: var(--sidebar-row-height);
+  height: var(--sidebar-row-height);
+  padding: 0;
+  border: none;
+  border-radius: var(--sidebar-row-radius);
+  background: transparent;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.toolbar .sidebar-toggle:hover {
+  background: var(--interactive-hover);
+  color: var(--text-primary);
+}
+
+.toolbar .sidebar-toggle:active {
+  background: var(--interactive-active);
+}
+
+.toolbar .sidebar-toggle svg {
+  transition: transform var(--animation-duration) var(--animation-easing);
+}
+
+#sidebar-toggle[aria-expanded='false'] svg {
+  transform: rotate(180deg);
 }
 
 .toolbar .view-options {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 1px;
   padding: 2px;
-  min-height: var(--toolbar-group-height);
-  background: color-mix(in srgb, var(--surface-2) 80%, transparent);
-  border-radius: var(--radius-small);
-  border: 1px solid var(--panel-border);
+  min-height: 28px !important;
+  background: var(--segmented-track-bg) !important;
+  border-radius: 7px !important;
+  border: 1px solid var(--native-divider) !important;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.12) !important;
 }
 
 .toolbar .sort-badge {
@@ -87,9 +118,9 @@
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  width: var(--control-height-md);
-  height: var(--control-height-sm);
-  border-radius: var(--radius-small);
+  width: 30px;
+  height: 24px;
+  border-radius: 5px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -103,9 +134,9 @@
 }
 
 .view-option.active {
-  color: var(--text-primary);
-  background: var(--interactive-selected);
-  box-shadow: inset 0 0 0 1px var(--interactive-selected-border);
+  color: var(--text-primary) !important;
+  background: var(--segmented-active-bg) !important;
+  box-shadow: var(--segmented-active-shadow) !important;
 }
 
 #view-toggle-btn {

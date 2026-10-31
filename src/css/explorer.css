@@ -580,6 +580,7 @@ body.dual-pane-enabled.active-pane-right #dual-pane-secondary {
 .dual-pane-item .file-size,
 .dual-pane-item .file-modified {
   text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .dual-pane-item.has-thumbnail .file-icon {

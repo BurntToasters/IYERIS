@@ -93,26 +93,6 @@
       <nav class="sidebar glass-panel" id="sidebar" aria-label="Main navigation">
         <div class="sidebar-section quick-actions">
           <div class="section-header">
-            <button
-              class="sidebar-toggle"
-              id="sidebar-toggle"
-              title="Toggle Sidebar (Ctrl+B)"
-              aria-label="Toggle sidebar"
-              aria-expanded="true"
-            >
-              <span class="sidebar-toggle-icon" aria-hidden="true">
-                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
-                  <path
-                    d="M10 2 L4 8 L10 14"
-                    fill="none"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                  />
-                </svg>
-              </span>
-            </button>
             <div class="section-title">Quick Access</div>
           </div>
           <div class="quick-actions-grid" id="sidebar-quick-access-grid"></div>
@@ -198,7 +178,27 @@
 
       <div class="main-content">
         <div class="toolbar glass-panel" role="toolbar" aria-label="Main toolbar">
-          <div class="toolbar-left" role="group" aria-label="Navigation and selection">
+          <div class="toolbar-left" role="group" aria-label="Sidebar and navigation">
+            <button
+              class="toolbar-button sidebar-toggle"
+              id="sidebar-toggle"
+              title="Toggle Sidebar (Ctrl+B)"
+              aria-label="Toggle sidebar"
+              aria-expanded="true"
+            >
+              <span class="sidebar-toggle-icon" aria-hidden="true">
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+                  <path
+                    d="M10 2 L4 8 L10 14"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </span>
+            </button>
             <button
               class="toolbar-button"
               id="back-btn"
@@ -321,7 +321,7 @@
             <div class="address-bar-wrapper">
               <div class="address-bar glass-input">
                 <span class="address-icon"
-                  ><span class="twemoji" data-icon="1f4cd" alt="📍"></span
+                  ><span class="twemoji" data-icon="folder" alt="Folder"></span
                 ></span>
                 <div class="breadcrumb" id="breadcrumb-container"></div>
                 <input

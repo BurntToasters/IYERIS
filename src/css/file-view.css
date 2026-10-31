@@ -106,8 +106,11 @@ body.platform-linux .file-view {
   background: var(--surface-0);
   border-bottom: 1px solid var(--panel-border);
   font-size: 11px;
+  /* ui3.css (overrides layer) settles on 560; native NSTableView headers are semibold. */
+  font-weight: 600 !important;
+  line-height: 1;
   text-transform: none;
-  letter-spacing: 0.015em;
+  letter-spacing: 0.01em;
   color: var(--text-tertiary);
 }
 

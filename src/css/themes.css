@@ -138,9 +138,9 @@ body.theme-light .empty-action-btn:hover {
 }
 
 body.theme-light .context-submenu {
-  background: var(--dropdown-bg) !important;
-  border: 1px solid var(--separator) !important;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.12);
+  background: var(--dropdown-bg);
+  border: 1px solid var(--native-divider);
+  box-shadow: var(--native-elevation-2);
 }
 
 body.theme-light .status-bar {
@@ -385,11 +385,11 @@ body.theme-light .column-pane::-webkit-scrollbar-thumb:hover {
 }
 
 body.theme-light .preview-info {
-  background: rgba(0, 0, 0, 0.03);
+  background: transparent;
 }
 
 body.theme-light .preview-info-item {
-  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 1px solid var(--native-divider);
 }
 
 body.theme-light {
@@ -686,6 +686,9 @@ body.theme-custom {
   --text-secondary: var(--custom-text-secondary, rgba(255, 255, 255, 0.75));
   --glass-bg: var(--custom-glass-bg, rgba(255, 255, 255, 0.03));
   --glass-border: var(--custom-glass-border, rgba(255, 255, 255, 0.08));
+  --dropdown-bg: var(--custom-bg-secondary, #252525);
+  --glass-modal-bg: var(--custom-bg-secondary, #252525);
+  --glass-modal-border: color-mix(in srgb, var(--text-primary) 16%, transparent);
   --surface-0: var(--bg-primary);
   --surface-1: var(--bg-secondary);
   --surface-2: color-mix(in srgb, var(--bg-secondary) 88%, transparent);

@@ -2602,6 +2602,127 @@ async function runVisualUpliftSuite(results) {
       shownDisplay !== 'none'
     );
 
+    // Uplift failure modes: list rows, column selection, context menu, home tiles and the
+    // grid filename pill. Fixtures are appended offscreen so computed styles still come from
+    // the shipped stylesheets without disturbing the screenshots above.
+    const upliftFixture = document.createElement('div');
+    upliftFixture.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;';
+    document.body.append(upliftFixture);
+
+    grid.classList.add('list-view');
+    await frame();
+    const firstListRow = grid.querySelector('.file-item');
+    if (!firstListRow) throw new Error('visual-uplift: the list view rendered no .file-item');
+    const listRowBorder = getComputedStyle(firstListRow).borderBottomWidth;
+    check('list-view rows have no bottom border', listRowBorder, '0px', listRowBorder === '0px');
+    const listSize = firstListRow.querySelector('.file-size');
+    if (!listSize) throw new Error('visual-uplift: the list row has no .file-size');
+    const listSizeNumeric = getComputedStyle(listSize).fontVariantNumeric;
+    check(
+      'list view numerals are tabular',
+      listSizeNumeric,
+      'contains tabular-nums',
+      listSizeNumeric.includes('tabular-nums')
+    );
+
+    const columnPane = document.createElement('div');
+    columnPane.className = 'column-pane';
+    const columnSelected = document.createElement('div');
+    columnSelected.className = 'column-item selected';
+    columnSelected.textContent = 'Selected';
+    const columnExpanded = document.createElement('div');
+    columnExpanded.className = 'column-item expanded';
+    columnExpanded.textContent = 'Expanded';
+    columnPane.append(columnSelected, columnExpanded);
+    upliftFixture.append(columnPane);
+    const selectedColumnBackground = getComputedStyle(columnSelected).backgroundColor;
+    const expandedColumnBackground = getComputedStyle(columnExpanded).backgroundColor;
+    check(
+      'column view selected and expanded backgrounds differ',
+      `${selectedColumnBackground} vs ${expandedColumnBackground}`,
+      'different',
+      selectedColumnBackground !== expandedColumnBackground
+    );
+    const accentProbe = document.createElement('div');
+    accentProbe.style.backgroundColor = 'var(--system-accent-color)';
+    upliftFixture.append(accentProbe);
+    const accent = parseComputedColor(getComputedStyle(accentProbe).backgroundColor);
+    const selectedColumn = parseComputedColor(selectedColumnBackground);
+    const accentDelta = Math.max(
+      Math.abs(selectedColumn.r - accent.r),
+      Math.abs(selectedColumn.g - accent.g),
+      Math.abs(selectedColumn.b - accent.b)
+    );
+    check(
+      'column view selected uses accent',
+      selectedColumnBackground,
+      'accent rgba at alpha 1',
+      selectedColumn.a === 1 && accentDelta <= 1
+    );
+
+    const contextMenu = fromIndex('context-menu');
+    contextMenu.style.cssText = 'position:fixed;left:-10000px;top:0;display:block;';
+    upliftFixture.append(contextMenu);
+    const groupLabel = contextMenu.querySelector('.context-menu-group-label');
+    if (!groupLabel) {
+      throw new Error('visual-uplift: the context menu has no .context-menu-group-label');
+    }
+    const groupLabelDisplay = getComputedStyle(groupLabel).display;
+    check(
+      'context menu has no group labels',
+      groupLabelDisplay,
+      'none',
+      groupLabelDisplay === 'none'
+    );
+    const menuItem = contextMenu.querySelector('.context-menu-item');
+    if (!menuItem) throw new Error('visual-uplift: the context menu has no .context-menu-item');
+    const menuItemBefore = getComputedStyle(menuItem, '::before');
+    const beforeContent = menuItemBefore.content;
+    const beforeSize = `${menuItemBefore.width} x ${menuItemBefore.height}`;
+    const noBeforeBar =
+      beforeContent === 'none' ||
+      beforeContent === 'normal' ||
+      (menuItemBefore.width === '0px' && menuItemBefore.height === '0px');
+    check(
+      'context menu items have no left accent bar',
+      `content ${beforeContent}, ${beforeSize}`,
+      'content none or 0px x 0px',
+      noBeforeBar
+    );
+
+    const homeItem = document.createElement('button');
+    homeItem.type = 'button';
+    homeItem.className = 'home-item';
+    homeItem.textContent = 'Home';
+    upliftFixture.append(homeItem);
+    const homeTransform = getComputedStyle(homeItem).transform;
+    const noHomeScale = homeTransform === 'none' || homeTransform === 'matrix(1, 0, 0, 1, 0, 0)';
+    check(
+      'home items have no hover scaling',
+      homeTransform,
+      'none or matrix(1, 0, 0, 1, 0, 0)',
+      noHomeScale
+    );
+
+    grid.classList.remove('list-view');
+    const pillRow = grid.querySelector('.file-item');
+    if (!pillRow) throw new Error('visual-uplift: the grid view rendered no .file-item');
+    pillRow.classList.add('selected');
+    await frame();
+    const pillName = pillRow.querySelector('.file-name');
+    if (!pillName) throw new Error('visual-uplift: the selected row has no .file-name');
+    const pillStyle = getComputedStyle(pillName);
+    const pillBackground = pillStyle.backgroundColor;
+    const pillRadius = parseFloat(pillStyle.borderRadius) || 0;
+    check(
+      'grid selection paints filename pill',
+      `background ${pillBackground}, radius ${pillStyle.borderRadius}`,
+      'background alpha > 0 and radius >= 8px',
+      alphaOf(pillBackground) > 0 && pillRadius >= 8
+    );
+    pillRow.classList.remove('selected');
+    upliftFixture.remove();
+
     // Theme surfaces: the modal panel must stay near-opaque in these themes.
     for (const themeClass of ['theme-nord', 'theme-dracula', 'liquid-glass']) {
       document.body.className = themeClass;
