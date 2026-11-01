@@ -6,25 +6,23 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 14px;
-  background: var(--chrome-surface);
+  padding: 6px 10px;
+  background: var(--dropdown-bg);
   -webkit-backdrop-filter: blur(20px) saturate(160%);
   backdrop-filter: blur(20px) saturate(160%);
   border: 1px solid var(--native-divider);
-  border-radius: var(--radius-medium);
+  border-radius: var(--radius-small);
   box-shadow: var(--native-elevation-1);
   z-index: var(--z-zoom);
-  animation: zoomPopupSlideIn var(--animation-duration) var(--animation-easing);
+  animation: zoomPopupFadeIn var(--animation-duration) var(--animation-easing);
 }
 
-@keyframes zoomPopupSlideIn {
+@keyframes zoomPopupFadeIn {
   from {
     opacity: 0;
-    transform: translateX(-50%) translateY(10px);
   }
   to {
     opacity: 1;
-    transform: translateX(-50%) translateY(0);
   }
 }
 
@@ -52,6 +50,12 @@
 .zoom-btn:active {
   transform: none;
   background: var(--active-color);
+}
+
+.zoom-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+  box-shadow: var(--focus-ring);
 }
 
 .zoom-btn .twemoji {

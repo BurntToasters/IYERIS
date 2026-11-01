@@ -1,31 +1,28 @@
 #toast-container {
   position: fixed;
   top: 72px;
-  right: 24px;
+  right: 16px;
   z-index: var(--z-toast);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
   pointer-events: none;
 }
 
 .toast {
-  background: var(--chrome-surface-raised, var(--chrome-surface));
+  width: min(360px, calc(100vw - 32px));
+  min-width: min(280px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  background: var(--dropdown-bg);
   border: 1px solid var(--native-divider);
-  border-radius: 14px;
-  padding: 10px 12px;
-  min-width: 340px;
-  max-width: 380px;
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.22),
-    0 1px 0 rgba(255, 255, 255, 0.05);
-  -webkit-backdrop-filter: blur(30px) saturate(180%);
-  backdrop-filter: blur(30px) saturate(180%);
+  border-radius: var(--radius-medium);
+  padding: 9px 10px;
+  box-shadow: var(--native-elevation-1);
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 8px;
   pointer-events: all;
-  animation: toastSlideIn 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: toastFadeIn var(--animation-duration) var(--animation-easing);
   color: var(--text-primary);
   cursor: default;
   position: relative;
@@ -41,50 +38,26 @@ body.reduce-motion .toast.removing {
   animation: none;
 }
 
-.toast:hover {
-  transform: none;
-  box-shadow:
-    0 8px 24px rgba(0, 0, 0, 0.22),
-    0 1px 0 rgba(255, 255, 255, 0.05);
-}
-
-.toast:active {
-  transform: none;
+@keyframes toastFadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .toast.removing {
-  animation: toastSlideOut 0.22s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: none;
+  opacity: 0;
 }
 
-@keyframes toastSlideIn {
-  from {
-    transform: translateX(20px) scale(0.98);
-    opacity: 0;
-  }
-  to {
-    transform: translateX(0) scale(1);
-    opacity: 1;
-  }
-}
-
-@keyframes toastSlideOut {
-  from {
-    transform: translateX(0) scale(1);
-    opacity: 1;
-  }
-  to {
-    transform: translateX(20px) scale(0.98);
-    opacity: 0;
-  }
-}
-
-/* Icon tile — squircle, tinted per type */
 .toast-icon {
-  width: 28px;
-  height: 28px;
-  min-width: 28px;
-  min-height: 28px;
-  border-radius: 7px;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  min-height: 22px;
+  border-radius: var(--radius-small);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -140,9 +113,9 @@ body.reduce-motion .toast.removing {
   position: absolute;
   top: 6px;
   right: 6px;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius-small);
   border: none;
   background: color-mix(in srgb, var(--text-primary) 8%, transparent);
   color: var(--text-secondary);
@@ -170,7 +143,8 @@ body.reduce-motion .toast.removing {
   transform: translate(-50%, -50%);
 }
 
-.toast:hover .toast-dismiss {
+.toast:hover .toast-dismiss,
+.toast:focus-within .toast-dismiss {
   opacity: 1;
 }
 
@@ -188,9 +162,9 @@ body.reduce-motion .toast.removing {
 }
 
 .toast-action-btn {
-  background: var(--interactive-hover, color-mix(in srgb, var(--text-primary) 8%, transparent));
-  border: 1px solid color-mix(in srgb, var(--text-primary) 15%, transparent);
-  border-radius: 7px;
+  background: var(--surface-2);
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-small);
   color: var(--text-primary);
   font-size: 11px;
   font-weight: 500;
@@ -203,12 +177,12 @@ body.reduce-motion .toast.removing {
 }
 
 .toast-action-btn:hover {
-  background: color-mix(in srgb, var(--text-primary) 18%, transparent);
-  border-color: color-mix(in srgb, var(--text-primary) 25%, transparent);
+  background: var(--interactive-hover);
+  border-color: var(--panel-border-strong);
 }
 
 .toast-action-btn:active {
-  background: color-mix(in srgb, var(--text-primary) 25%, transparent);
+  background: var(--interactive-active);
 }
 
 body.liquid-glass .toast {
@@ -217,4 +191,17 @@ body.liquid-glass .toast {
   backdrop-filter: var(--liquid-glass-toast-filter);
   border: 1px solid var(--liquid-glass-toast-border-color);
   border-radius: var(--liquid-glass-toast-radius);
+}
+
+@media (max-width: 480px) {
+  #toast-container {
+    right: 12px;
+    left: 12px;
+  }
+
+  .toast {
+    width: 100%;
+    min-width: 0;
+    max-width: none;
+  }
 }

@@ -1,11 +1,48 @@
+/* Keep active selections and window controls legible while the app is inactive. */
+body.window-inactive .titlebar-title,
+body.window-inactive .titlebar-icon,
+body.window-inactive .titlebar-button {
+  opacity: 0.55;
+}
+
+body.window-inactive .nav-item.active,
+body.window-inactive .tree-item.active,
+body.window-inactive .bookmark-item.active,
+body.window-inactive .folder-tree-item.active,
+body.window-inactive .column-item.selected {
+  background: color-mix(in srgb, var(--text-primary) 12%, transparent);
+  box-shadow: none;
+}
+
+body.window-inactive .modal {
+  opacity: 1;
+}
+
+body.window-inactive .context-menu-item:hover,
+body.window-inactive .context-menu-item.focused,
+body.window-inactive .context-menu-item:focus-visible {
+  background: color-mix(in srgb, var(--text-primary) 14%, transparent);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+body.window-inactive .context-menu-item:hover .context-menu-shortcut,
+body.window-inactive .context-menu-item.focused .context-menu-shortcut,
+body.window-inactive .context-menu-item:focus-visible .context-menu-shortcut {
+  color: var(--text-secondary);
+  opacity: 0.55;
+}
+
 /* Backgrounded window flattening. rendererActivityState toggles `body.app-background`.
    Drops backdrop blur/shadow/animation (WebKit Graphics feeders). Reversible on focus. */
-
 body.app-background .glass-panel,
 body.app-background .context-submenu,
 body.app-background .context-menu,
+body.app-background .tab-context-menu,
 body.app-background .sort-menu,
+body.app-background .breadcrumb-menu,
 body.app-background .history-dropdown,
+body.app-background .selection-overflow-menu,
 body.app-background .sidebar,
 body.app-background .settings-sidebar,
 body.app-background .titlebar,
@@ -20,6 +57,8 @@ body.app-background .progress-panel,
 body.app-background .file-hover-card,
 body.app-background .home-customize-btn,
 body.app-background .zoom-popup,
+body.app-background .toast,
+body.app-background .tour-tooltip,
 body.app-background .status-bar,
 body.app-background .modal,
 body.app-background .modal-overlay {

@@ -154,30 +154,6 @@ export function createSortController(config: SortControllerConfig) {
           : 'none';
       cell.setAttribute('aria-sort', ariaSort);
     });
-
-    // Update grid sort badge
-    const badgeTextEl = document.getElementById('grid-sort-badge-text');
-    const badgeEl = document.getElementById('grid-sort-badge');
-    if (badgeEl && badgeTextEl) {
-      const currentSortLabel =
-        {
-          name: 'Name',
-          date: 'Date Modified',
-          size: 'Size',
-          type: 'Kind',
-        }[settings.sortBy] || 'Name';
-
-      const arrowSymbol = settings.sortOrder === 'asc' ? '▲' : '▼';
-      badgeTextEl.textContent = `${currentSortLabel} ${arrowSymbol}`;
-
-      const viewMode = settings.viewMode;
-      const isHome = document.getElementById('home-view')?.style.display !== 'none';
-      if (viewMode !== 'list' && !isHome) {
-        badgeEl.style.display = 'flex';
-      } else {
-        badgeEl.style.display = 'none';
-      }
-    }
   }
 
   async function changeSortMode(sortBy: string) {
@@ -200,14 +176,6 @@ export function createSortController(config: SortControllerConfig) {
     if (allFiles.length > 0) {
       config.renderFiles(allFiles);
     }
-  }
-
-  const badgeEl = document.getElementById('grid-sort-badge');
-  if (badgeEl) {
-    badgeEl.addEventListener('click', () => {
-      const settings = config.getCurrentSettings();
-      void changeSortMode(settings.sortBy);
-    });
   }
 
   return { showSortMenu, hideSortMenu, updateSortIndicators, changeSortMode, handleSortMenuKeyNav };

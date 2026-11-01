@@ -18,6 +18,7 @@ import { createHoverCardController } from '../src/rendererHoverCard.ts';
 import { createPropertiesDialogController } from '../src/rendererPropertiesDialog.ts';
 import { createUtilityDrawerController } from '../src/rendererUtilityDrawer.ts';
 import { createDefaultSettings } from '../src/settings.ts';
+import { runBrowserAppSmoke } from './browser-app-smoke.js';
 import { formatFileSize, getFileIcon, getFileTypeFromName } from '../src/rendererFileIcons.ts';
 import { HOVER_CARD_DELAY_MS } from '../src/rendererLocalConstants.ts';
 import '../src/css/main.css';
@@ -1527,8 +1528,11 @@ async function runOperationQueueLifetimeSuite(results) {
 // ── Visual uplift ───────────────────────────────────────────────────────────
 
 const SCREENSHOT_BINDING = 'iyerisSmokeScreenshot';
+const PSEUDO_STATE_BINDING = 'iyerisSmokePseudoState';
 const screenshotWaiters = new Map();
 let screenshotSequence = 0;
+const pseudoStateWaiters = new Map();
+let pseudoStateSequence = 0;
 // Node calls this with the reply to each requestScreenshot() call.
 globalThis.__iyerisSmokeScreenshotSettle = (reply) => {
   const waiter = screenshotWaiters.get(reply?.id);
@@ -1538,13 +1542,38 @@ globalThis.__iyerisSmokeScreenshotSettle = (reply) => {
   else waiter.resolve(reply);
 };
 // Resolves once Node has written coverage-headless/browser-smoke-<name>.png.
-const requestScreenshot = (name, regions = []) =>
+const requestScreenshot = (name, regions = [], metadata = null) =>
   new Promise((resolve, reject) => {
     const id = ++screenshotSequence;
     screenshotWaiters.set(id, { resolve, reject });
     window[SCREENSHOT_BINDING](
-      JSON.stringify({ id, name, regions, viewportWidth: window.innerWidth })
+      JSON.stringify({ id, name, regions, viewportWidth: window.innerWidth, metadata })
     );
+  });
+globalThis.iyerisSmokeRequestScreenshot = requestScreenshot;
+globalThis.__iyerisSmokePseudoStateSettle = (reply) => {
+  const waiter = pseudoStateWaiters.get(reply?.id);
+  if (!waiter) return;
+  pseudoStateWaiters.delete(reply.id);
+  clearTimeout(waiter.timeout);
+  if (reply.error) waiter.reject(new Error(`Smoke pseudo-state failed: ${reply.error}`));
+  else waiter.resolve(reply);
+};
+globalThis.iyerisSmokeForcePseudoState = (selector, forcedPseudoClasses) =>
+  new Promise((resolve, reject) => {
+    const id = ++pseudoStateSequence;
+    const timeout = setTimeout(() => {
+      pseudoStateWaiters.delete(id);
+      reject(new Error(`Smoke pseudo-state did not settle for ${selector}.`));
+    }, 5000);
+    pseudoStateWaiters.set(id, { resolve, reject, timeout });
+    if (typeof window[PSEUDO_STATE_BINDING] !== 'function') {
+      clearTimeout(timeout);
+      pseudoStateWaiters.delete(id);
+      reject(new Error('The CDP pseudo-state binding is unavailable.'));
+      return;
+    }
+    window[PSEUDO_STATE_BINDING](JSON.stringify({ id, selector, forcedPseudoClasses }));
   });
 
 // Parses the computed colors Chromium reports: rgb(), rgba() and color(srgb ...).
@@ -2059,15 +2088,17 @@ async function runVisualUpliftSuite(results) {
       'none',
       dialogPanelStyle.backdropFilter === 'none' || dialogPanelStyle.backdropFilter === ''
     );
-    // A shared overlay outside the dim-only group keeps the 8px blur from ui3.css.
+    // The shared default overlay stays dim-only; Liquid Glass may opt into translucency.
     const sharedOverlayBlur = getComputedStyle(
       document.getElementById('settings-modal')
     ).backdropFilter;
     check(
-      'shared modal overlay blur is 8px',
+      'default shared modal overlay does not blur',
       sharedOverlayBlur,
-      'blur(8px)',
-      /blur\(8px\)/.test(sharedOverlayBlur) && !/blur\(10px\)/.test(sharedOverlayBlur)
+      'no blur unless Liquid Glass is active',
+      document.body.classList.contains('liquid-glass') ||
+        sharedOverlayBlur === 'none' ||
+        sharedOverlayBlur === ''
     );
 
     const applyButton = document.getElementById('properties-apply');
@@ -2693,16 +2724,35 @@ async function runVisualUpliftSuite(results) {
     const homeItem = document.createElement('button');
     homeItem.type = 'button';
     homeItem.className = 'home-item';
+    homeItem.id = 'iyeris-home-hover-fixture';
     homeItem.textContent = 'Home';
     upliftFixture.append(homeItem);
-    const homeTransform = getComputedStyle(homeItem).transform;
-    const noHomeScale = homeTransform === 'none' || homeTransform === 'matrix(1, 0, 0, 1, 0, 0)';
+    const homeRestingShadow = getComputedStyle(homeItem).boxShadow;
+    const forcePseudoState = globalThis.iyerisSmokeForcePseudoState;
+    if (typeof forcePseudoState !== 'function') {
+      throw new Error('visual-uplift: the CDP pseudo-state helper is unavailable');
+    }
+    const homeSelector = `#${homeItem.id}`;
+    await forcePseudoState(homeSelector, ['hover']);
+    await frame();
+    const homeHoverStyle = getComputedStyle(homeItem);
+    const homeHoverShadow = homeHoverStyle.boxShadow;
+    const homeHoverTransform = homeHoverStyle.transform;
+    const noHomeTransform =
+      homeHoverTransform === 'none' || homeHoverTransform === 'matrix(1, 0, 0, 1, 0, 0)';
     check(
-      'home items have no hover scaling',
-      homeTransform,
-      'none or matrix(1, 0, 0, 1, 0, 0)',
-      noHomeScale
+      'home items do not gain hover elevation',
+      `resting ${homeRestingShadow}; hover ${homeHoverShadow}`,
+      'hover shadow matches resting shadow',
+      homeHoverShadow === homeRestingShadow
     );
+    check(
+      'home items do not transform on hover',
+      homeHoverTransform,
+      'none or matrix(1, 0, 0, 1, 0, 0)',
+      noHomeTransform
+    );
+    await forcePseudoState(homeSelector, []);
 
     grid.classList.remove('list-view');
     const pillRow = grid.querySelector('.file-item');
@@ -2785,6 +2835,29 @@ globalThis.runFileRenderSmoke = async () => {
   await runThumbnailFingerprintSuite(results);
   await runArchiveWhitespacePasswordSuite(results);
   await runOperationQueueLifetimeSuite(results);
-  await runVisualUpliftSuite(results);
+  const suiteFailures = [];
+  try {
+    await runVisualUpliftSuite(results);
+  } catch (error) {
+    suiteFailures.push(`visual-uplift: ${error?.message || error}`);
+  }
+  if (suiteFailures.length > 0) {
+    throw new Error(`Browser smoke suite failures: ${suiteFailures.join('; ')}`);
+  }
   return results;
+};
+
+globalThis.runFullAppSmokeOnly = async () => {
+  await documentReady();
+  const results = [];
+  globalThis.fullAppSmokeResults = results;
+  try {
+    await runBrowserAppSmoke(results);
+    return { suites: results };
+  } catch (error) {
+    return {
+      error: String(error?.stack || error),
+      suites: results,
+    };
+  }
 };

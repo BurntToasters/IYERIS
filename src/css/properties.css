@@ -249,10 +249,28 @@
   margin-right: 4px;
 }
 
-/* Dialog shell: 480px wide, Explorer-style tab strip, panels with one shared min-height. */
+/* Dialog shell: compact tab strip and one scrollable content area. */
 #properties-modal .modal {
-  width: 480px;
+  width: min(520px, calc(100vw - 32px));
+  min-width: min(320px, calc(100vw - 32px));
   max-width: calc(100vw - 32px);
+}
+
+#properties-modal .modal-footer {
+  gap: 6px;
+  padding: 10px 16px;
+}
+
+#properties-modal #properties-cancel {
+  order: 1;
+}
+
+#properties-modal #properties-apply {
+  order: 2;
+}
+
+#properties-modal #properties-ok {
+  order: 3;
 }
 
 #properties-modal .properties-tabs {
@@ -308,8 +326,8 @@
 
 #properties-modal .properties-panel {
   box-sizing: border-box;
-  min-height: 380px;
-  padding: 16px 20px;
+  min-height: clamp(220px, 42vh, 380px);
+  padding: 14px 18px;
 }
 
 #properties-modal .properties-panel[hidden],
@@ -355,7 +373,7 @@
 }
 
 #properties-modal .property-label {
-  min-width: 112px;
+  min-width: 108px;
 }
 
 #properties-modal .property-separator {
@@ -424,6 +442,26 @@
 
 #properties-modal .properties-tab[hidden] {
   display: none;
+}
+
+@media (max-width: 520px) {
+  #properties-modal .properties-tabs {
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 0 8px;
+  }
+
+  #properties-modal .properties-tab {
+    padding: 8px 9px;
+  }
+
+  #properties-modal .properties-panel {
+    padding: 12px;
+  }
+
+  #properties-modal .property-label {
+    min-width: 88px;
+  }
 }
 
 #properties-modal .signature-status {

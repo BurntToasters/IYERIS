@@ -25,6 +25,7 @@
 
 ## Changes in `v3.1.0-beta.1:`
 
+- **Interface:** Settings use compact, aligned rows and a collapsed Quick Toggles disclosure. Dialogs, Quick Look, customization previews, menus and operation feedback use quieter surfaces, with actions kept reachable in smaller windows. Built-in themes, custom palettes and saved settings continue to apply; reduced transparency takes precedence over Liquid Glass.
 - **Hover card:** The file hover card and floating panels (zoom popup, progress panel, search filters, archive panel) are now fully opaque, so icons no longer show through them. Liquid Glass keeps its translucent look.
 - **Properties:** Redesigned with General, Details and Security tabs and OK, Cancel and Apply buttons. General shows Opens with, Size on disk and attributes. Details shows the full path, extension, MIME type, symlink and shortcut targets, and checksums. Security shows owner and group names, a Unix permission grid that stays in sync with the octal value, and Windows attribute rows. Apply stays disabled until something changes.
 - **Properties:** Signed files and macOS bundles get a Digital Signatures tab after General. It lists each signer with its digest algorithm and timestamp, shows the certificate details for the selected signer, and warns when the signature is untrusted, expired, revoked or invalid.

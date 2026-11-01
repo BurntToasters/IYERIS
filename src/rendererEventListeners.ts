@@ -561,10 +561,12 @@ export function createEventListenersController(config: EventListenersConfig) {
             () => {
               const m = document.getElementById('more-actions-menu');
               if (m) {
+                const restoreFocus = m.contains(document.activeElement);
                 m.style.display = 'none';
                 const btn = document.getElementById('more-actions-btn');
                 btn?.setAttribute('aria-expanded', 'false');
                 m.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
+                if (restoreFocus && btn instanceof HTMLElement) btn.focus({ preventScroll: true });
               }
             },
           ],

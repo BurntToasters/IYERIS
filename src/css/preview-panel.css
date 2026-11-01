@@ -6,7 +6,6 @@
   overflow: hidden;
   position: relative;
   background: var(--surface-1);
-  animation: slideInRight 0.3s ease-out;
 }
 
 .preview-resize-handle {
@@ -38,28 +37,6 @@
   background: var(--accent-color);
 }
 
-@keyframes slideInRight {
-  from {
-    opacity: 0;
-    transform: translateX(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideInUp {
-  from {
-    opacity: 0;
-    transform: translateY(14px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
 .preview-header {
   display: flex;
   justify-content: space-between;
@@ -68,7 +45,7 @@
   min-height: 38px;
   padding: 0 10px 0 14px;
   border-bottom: 1px solid var(--native-divider);
-  background: color-mix(in srgb, var(--surface-1) 82%, transparent);
+  background: var(--surface-1);
   box-shadow: none;
 }
 
@@ -147,7 +124,6 @@ body.platform-darwin .preview-content:not(:hover)::-webkit-scrollbar-thumb {
   margin-bottom: var(--spacing-md);
   color: var(--text-tertiary);
   opacity: 0.5;
-  animation: preview-empty-float 3s ease-in-out infinite;
 }
 
 .preview-empty-svg {
@@ -164,23 +140,12 @@ body.platform-darwin .preview-content:not(:hover)::-webkit-scrollbar-thumb {
 .preview-empty small {
   font-size: 11px;
   color: var(--text-tertiary);
-  background: color-mix(in srgb, var(--surface-2) 40%, rgba(0, 0, 0, 0.15));
+  background: var(--surface-2);
   border: 1px solid var(--panel-border);
   border-radius: 4px;
   padding: 2px 6px;
   margin-top: 4px;
   display: inline-block;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.05);
-}
-
-@keyframes preview-empty-float {
-  0%,
-  100% {
-    transform: translateY(0);
-  }
-  50% {
-    transform: translateY(-4px);
-  }
 }
 
 .preview-image {
@@ -191,11 +156,11 @@ body.platform-darwin .preview-content:not(:hover)::-webkit-scrollbar-thumb {
   margin: 0 auto;
   border-radius: 6px;
   object-fit: contain;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--native-divider);
 }
 
 .preview-text {
-  background: color-mix(in srgb, var(--surface-2) 78%, transparent);
+  background: var(--surface-2);
   border: 1px solid var(--native-divider);
   border-radius: var(--radius-medium);
   padding: 12px 14px;
@@ -325,7 +290,7 @@ pre.preview-text code.hljs {
   gap: 10px;
   padding: 22px;
   text-align: center;
-  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  background: var(--surface-2);
   border: 1px solid var(--native-divider);
   border-radius: var(--radius-medium);
   margin-bottom: 4px;
@@ -370,7 +335,7 @@ pre.preview-text code.hljs {
   gap: 20px;
   margin-bottom: 4px;
   padding: 28px 20px;
-  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  background: var(--surface-2);
   border: 1px solid var(--native-divider);
   border-radius: var(--radius-medium);
 }
@@ -399,7 +364,7 @@ pre.preview-text code.hljs {
   min-height: 148px;
   margin-bottom: 4px;
   padding: 14px;
-  background: color-mix(in srgb, var(--surface-2) 72%, transparent);
+  background: var(--surface-2);
   border: 1px solid var(--native-divider);
   border-radius: var(--radius-medium);
 }
@@ -420,18 +385,8 @@ pre.preview-text code.hljs {
   gap: 20px;
 }
 
-body.preview-bottom .preview-panel {
-  animation: slideInUp 0.24s ease-out;
-}
-
 body.preview-bottom .preview-content {
   padding-top: 12px;
-}
-
-@media (max-width: 1200px) {
-  body.preview-right .preview-panel {
-    width: 260px;
-  }
 }
 
 @media (max-width: 900px) {
@@ -564,10 +519,6 @@ body.preview-bottom .preview-panel.closing {
   animation: slideOutDown 0.18s ease-in forwards;
 }
 
-.preview-content.fade-in-active {
-  animation: contentCrossfade 0.15s ease-out forwards;
-}
-
 @keyframes slideOutRight {
   from {
     opacity: 1;
@@ -587,16 +538,5 @@ body.preview-bottom .preview-panel.closing {
   to {
     opacity: 0;
     transform: translateY(14px);
-  }
-}
-
-@keyframes contentCrossfade {
-  from {
-    opacity: 0.4;
-    transform: scale(0.995);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1);
   }
 }

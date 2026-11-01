@@ -1,13 +1,13 @@
 @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
   body.liquid-glass {
-    --liquid-glass-blur: 18px;
-    --liquid-glass-saturation: 150%;
-    --liquid-glass-bg-opacity: 0.72;
-    --liquid-glass-border-opacity: 0.15;
-    --liquid-glass-luminosity: rgba(255, 255, 255, 0.08);
-    --liquid-glass-shadow: 0 8px 32px rgba(0, 0, 0, 0.25), 0 2px 8px rgba(0, 0, 0, 0.15);
-    --liquid-glass-radius: 16px;
-    --liquid-glass-panel-bg: color-mix(in srgb, var(--surface-overlay) 78%, transparent);
+    --liquid-glass-blur: 12px;
+    --liquid-glass-saturation: 120%;
+    --liquid-glass-bg-opacity: 0.88;
+    --liquid-glass-border-opacity: 0.12;
+    --liquid-glass-luminosity: rgba(255, 255, 255, 0.04);
+    --liquid-glass-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+    --liquid-glass-radius: var(--radius-large);
+    --liquid-glass-panel-bg: color-mix(in srgb, var(--surface-overlay) 90%, transparent);
     --liquid-glass-panel-border-color: color-mix(
       in srgb,
       var(--panel-border) 85%,
@@ -15,92 +15,90 @@
     );
     --liquid-glass-panel-shadow: var(--liquid-glass-shadow);
     --liquid-glass-panel-highlight-edge: var(--liquid-glass-luminosity);
-    --liquid-glass-panel-highlight-center: rgba(255, 255, 255, 0.15);
+    --liquid-glass-panel-highlight-center: rgba(255, 255, 255, 0.08);
     --liquid-glass-overlay-bg: rgba(0, 0, 0, 0.35);
     --liquid-glass-overlay-filter: blur(12px);
-    --liquid-glass-modal-bg: color-mix(in srgb, var(--surface-1) 78%, transparent);
+    --liquid-glass-modal-bg: color-mix(in srgb, var(--surface-1) 94%, transparent);
     --liquid-glass-modal-border-color: color-mix(
       in srgb,
       var(--panel-border-strong) 85%,
       transparent
     );
-    --liquid-glass-modal-radius: 18px;
-    --liquid-glass-modal-filter: blur(24px) saturate(170%);
-    --liquid-glass-modal-shadow:
-      0 24px 48px rgba(0, 0, 0, 0.35), 0 8px 16px rgba(0, 0, 0, 0.2),
-      inset 0 1px 0 rgba(255, 255, 255, 0.1);
-    --liquid-glass-menu-bg: color-mix(in srgb, var(--surface-1) 74%, transparent);
-    --liquid-glass-context-menu-bg: color-mix(in srgb, var(--surface-1) 74%, transparent);
+    --liquid-glass-modal-radius: var(--radius-large);
+    --liquid-glass-modal-filter: blur(12px) saturate(120%);
+    --liquid-glass-modal-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+    --liquid-glass-menu-bg: color-mix(in srgb, var(--surface-1) 90%, transparent);
+    --liquid-glass-context-menu-bg: color-mix(in srgb, var(--surface-1) 90%, transparent);
     --liquid-glass-menu-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
-    --liquid-glass-menu-radius: 14px;
+    --liquid-glass-menu-radius: var(--radius-medium);
     --liquid-glass-menu-filter: blur(var(--liquid-glass-blur))
       saturate(var(--liquid-glass-saturation));
     --liquid-glass-menu-shadow: var(--liquid-glass-shadow);
-    --liquid-glass-sidebar-bg: color-mix(in srgb, var(--surface-1) 68%, transparent);
-    --liquid-glass-sidebar-filter: blur(14px) saturate(130%);
+    --liquid-glass-sidebar-bg: color-mix(in srgb, var(--surface-1) 88%, transparent);
+    --liquid-glass-sidebar-filter: blur(10px) saturate(120%);
     --liquid-glass-sidebar-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
-    --liquid-glass-titlebar-bg: color-mix(in srgb, var(--surface-1) 82%, transparent);
-    --liquid-glass-titlebar-filter: blur(12px) saturate(120%);
-    --liquid-glass-tabbar-bg: color-mix(in srgb, var(--surface-1) 74%, transparent);
+    --liquid-glass-titlebar-bg: color-mix(in srgb, var(--surface-1) 90%, transparent);
+    --liquid-glass-titlebar-filter: blur(10px) saturate(120%);
+    --liquid-glass-tabbar-bg: color-mix(in srgb, var(--surface-1) 88%, transparent);
     --liquid-glass-tabbar-filter: blur(10px) saturate(115%);
-    --liquid-glass-statusbar-bg: color-mix(in srgb, var(--surface-1) 80%, transparent);
-    --liquid-glass-statusbar-filter: blur(12px) saturate(120%);
-    --liquid-glass-toolbar-bg: color-mix(in srgb, var(--surface-1) 72%, transparent);
-    --liquid-glass-toolbar-filter: blur(14px) saturate(130%);
-    --liquid-glass-input-bg: color-mix(in srgb, var(--interactive-hover) 55%, transparent);
-    --liquid-glass-input-bg-hover: color-mix(in srgb, var(--interactive-hover) 78%, transparent);
-    --liquid-glass-input-bg-focus: color-mix(in srgb, var(--interactive-selected) 58%, transparent);
+    --liquid-glass-statusbar-bg: color-mix(in srgb, var(--surface-1) 90%, transparent);
+    --liquid-glass-statusbar-filter: blur(10px) saturate(120%);
+    --liquid-glass-toolbar-bg: color-mix(in srgb, var(--surface-1) 88%, transparent);
+    --liquid-glass-toolbar-filter: blur(10px) saturate(120%);
+    --liquid-glass-input-bg: color-mix(in srgb, var(--interactive-hover) 70%, transparent);
+    --liquid-glass-input-bg-hover: color-mix(in srgb, var(--interactive-hover) 84%, transparent);
+    --liquid-glass-input-bg-focus: color-mix(in srgb, var(--interactive-selected) 72%, transparent);
     --liquid-glass-input-border-color: color-mix(in srgb, var(--panel-border) 92%, transparent);
     --liquid-glass-input-border-color-hover: color-mix(
       in srgb,
       var(--panel-border-strong) 92%,
       transparent
     );
-    --liquid-glass-input-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    --liquid-glass-input-focus-ring: 0 0 0 3px rgba(var(--accent-rgb), 0.25);
-    --liquid-glass-address-bg: color-mix(in srgb, var(--surface-2) 68%, transparent);
+    --liquid-glass-input-shadow: none;
+    --liquid-glass-input-focus-ring: var(--focus-ring);
+    --liquid-glass-address-bg: color-mix(in srgb, var(--surface-2) 90%, transparent);
     --liquid-glass-address-filter: blur(8px);
-    --liquid-glass-dropdown-bg: color-mix(in srgb, var(--surface-1) 78%, transparent);
+    --liquid-glass-dropdown-bg: color-mix(in srgb, var(--surface-1) 90%, transparent);
     --liquid-glass-dropdown-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
-    --liquid-glass-dropdown-radius: 14px;
+    --liquid-glass-dropdown-radius: var(--radius-medium);
     --liquid-glass-dropdown-filter: blur(var(--liquid-glass-blur))
       saturate(var(--liquid-glass-saturation));
     --liquid-glass-dropdown-shadow: var(--liquid-glass-shadow);
-    --liquid-glass-card-bg: color-mix(in srgb, var(--surface-1) 92%, transparent);
-    --liquid-glass-card-filter: blur(14px) saturate(140%);
+    --liquid-glass-card-bg: color-mix(in srgb, var(--surface-1) 94%, transparent);
+    --liquid-glass-card-filter: blur(10px) saturate(120%);
     --liquid-glass-card-border-color: color-mix(in srgb, var(--panel-border) 85%, transparent);
-    --liquid-glass-card-radius: 14px;
-    --liquid-glass-toast-bg: color-mix(in srgb, var(--surface-1) 82%, transparent);
-    --liquid-glass-toast-filter: blur(14px) saturate(130%);
+    --liquid-glass-card-radius: var(--radius-large);
+    --liquid-glass-toast-bg: color-mix(in srgb, var(--surface-1) 92%, transparent);
+    --liquid-glass-toast-filter: blur(10px) saturate(120%);
     --liquid-glass-toast-border-color: color-mix(in srgb, var(--panel-border) 82%, transparent);
-    --liquid-glass-toast-radius: 14px;
-    --liquid-glass-popup-bg: color-mix(in srgb, var(--surface-1) 92%, transparent);
+    --liquid-glass-toast-radius: var(--radius-large);
+    --liquid-glass-popup-bg: color-mix(in srgb, var(--surface-1) 94%, transparent);
     --liquid-glass-popup-filter: blur(var(--liquid-glass-blur))
       saturate(var(--liquid-glass-saturation));
-    --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--surface-2) 92%, transparent);
-    --liquid-glass-popup-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-    --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--surface-2) 92%, transparent);
-    --liquid-glass-archive-hover-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
-    --liquid-glass-card-hover-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+    --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--surface-2) 94%, transparent);
+    --liquid-glass-popup-hover-shadow: var(--liquid-glass-panel-shadow);
+    --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--surface-2) 94%, transparent);
+    --liquid-glass-archive-hover-shadow: var(--liquid-glass-panel-shadow);
+    --liquid-glass-card-hover-shadow: var(--liquid-glass-panel-shadow);
   }
 
   body.theme-light.liquid-glass {
-    --liquid-glass-bg-opacity: 0.78;
+    --liquid-glass-bg-opacity: 0.9;
     --liquid-glass-border-opacity: 0.2;
     --liquid-glass-luminosity: rgba(255, 255, 255, 0.46);
     --liquid-glass-panel-bg: rgba(255, 255, 255, var(--liquid-glass-bg-opacity));
     --liquid-glass-panel-border-color: rgba(32, 33, 36, 0.12);
     --liquid-glass-panel-highlight-edge: rgba(255, 255, 255, 0.7);
     --liquid-glass-panel-highlight-center: rgba(255, 255, 255, 0.9);
-    --liquid-glass-modal-bg: rgba(255, 255, 255, 0.85);
+    --liquid-glass-modal-bg: rgba(255, 255, 255, 0.95);
     --liquid-glass-modal-border-color: rgba(32, 33, 36, 0.14);
-    --liquid-glass-menu-bg: rgba(255, 255, 255, 0.82);
+    --liquid-glass-menu-bg: rgba(255, 255, 255, 0.9);
     --liquid-glass-menu-border-color: rgba(32, 33, 36, 0.14);
-    --liquid-glass-sidebar-bg: rgba(241, 241, 238, 0.76);
+    --liquid-glass-sidebar-bg: rgba(241, 241, 238, 0.9);
     --liquid-glass-sidebar-border-color: rgba(32, 33, 36, 0.1);
-    --liquid-glass-titlebar-bg: rgba(247, 247, 245, 0.9);
-    --liquid-glass-tabbar-bg: rgba(241, 241, 238, 0.84);
-    --liquid-glass-statusbar-bg: rgba(247, 247, 245, 0.88);
+    --liquid-glass-titlebar-bg: rgba(247, 247, 245, 0.92);
+    --liquid-glass-tabbar-bg: rgba(241, 241, 238, 0.9);
+    --liquid-glass-statusbar-bg: rgba(247, 247, 245, 0.92);
     --liquid-glass-input-bg: rgba(0, 0, 0, 0.04);
     --liquid-glass-input-border-color: rgba(32, 33, 36, 0.16);
     --liquid-glass-input-bg-hover: rgba(0, 0, 0, 0.06);
@@ -111,91 +109,90 @@
   }
 
   body.theme-custom.liquid-glass {
-    --liquid-glass-panel-bg: color-mix(in srgb, var(--bg-secondary) 72%, transparent);
+    --liquid-glass-panel-bg: color-mix(in srgb, var(--bg-secondary) 90%, transparent);
     --liquid-glass-panel-border-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
-    --liquid-glass-modal-bg: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
+    --liquid-glass-modal-bg: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
     --liquid-glass-modal-border-color: color-mix(in srgb, var(--text-primary) 18%, transparent);
-    --liquid-glass-menu-bg: color-mix(in srgb, var(--bg-secondary) 75%, transparent);
+    --liquid-glass-menu-bg: color-mix(in srgb, var(--bg-secondary) 90%, transparent);
     --liquid-glass-menu-border-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
-    --liquid-glass-sidebar-bg: color-mix(in srgb, var(--bg-secondary) 68%, transparent);
+    --liquid-glass-sidebar-bg: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
     --liquid-glass-sidebar-border-color: color-mix(in srgb, var(--text-primary) 8%, transparent);
-    --liquid-glass-titlebar-bg: color-mix(in srgb, var(--bg-secondary) 85%, transparent);
-    --liquid-glass-tabbar-bg: color-mix(in srgb, var(--bg-secondary) 75%, transparent);
-    --liquid-glass-statusbar-bg: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
-    --liquid-glass-toolbar-bg: color-mix(in srgb, var(--bg-secondary) 70%, transparent);
-    --liquid-glass-dropdown-bg: color-mix(in srgb, var(--bg-secondary) 78%, transparent);
+    --liquid-glass-titlebar-bg: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    --liquid-glass-tabbar-bg: color-mix(in srgb, var(--bg-secondary) 90%, transparent);
+    --liquid-glass-statusbar-bg: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    --liquid-glass-toolbar-bg: color-mix(in srgb, var(--bg-secondary) 88%, transparent);
+    --liquid-glass-dropdown-bg: color-mix(in srgb, var(--bg-secondary) 90%, transparent);
     --liquid-glass-dropdown-border-color: color-mix(in srgb, var(--text-primary) 15%, transparent);
-    --liquid-glass-card-bg: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
+    --liquid-glass-card-bg: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
     --liquid-glass-card-border-color: color-mix(in srgb, var(--text-primary) 12%, transparent);
-    --liquid-glass-toast-bg: color-mix(in srgb, var(--bg-secondary) 82%, transparent);
+    --liquid-glass-toast-bg: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
     --liquid-glass-toast-border-color: color-mix(in srgb, var(--text-primary) 10%, transparent);
-    --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
-    --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--bg-secondary) 92%, transparent);
-    --liquid-glass-card-hover-shadow: 0 12px 40px
-      color-mix(in srgb, var(--bg-primary) 40%, transparent);
+    --liquid-glass-popup-hover-bg: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+    --liquid-glass-archive-hover-bg: color-mix(in srgb, var(--bg-secondary) 94%, transparent);
+    --liquid-glass-card-hover-shadow: var(--liquid-glass-panel-shadow);
   }
 
   body.theme-nord.liquid-glass {
-    --liquid-glass-panel-bg: rgba(59, 66, 82, 0.72);
+    --liquid-glass-panel-bg: rgba(59, 66, 82, 0.9);
     --liquid-glass-panel-border-color: rgba(236, 239, 244, 0.15);
-    --liquid-glass-modal-bg: rgba(59, 66, 82, 0.78);
-    --liquid-glass-menu-bg: rgba(59, 66, 82, 0.75);
-    --liquid-glass-sidebar-bg: rgba(59, 66, 82, 0.68);
-    --liquid-glass-titlebar-bg: rgba(46, 52, 64, 0.85);
-    --liquid-glass-statusbar-bg: rgba(46, 52, 64, 0.85);
-    --liquid-glass-tabbar-bg: rgba(59, 66, 82, 0.75);
-    --liquid-glass-toolbar-bg: rgba(59, 66, 82, 0.75);
+    --liquid-glass-modal-bg: rgba(59, 66, 82, 0.94);
+    --liquid-glass-menu-bg: rgba(59, 66, 82, 0.9);
+    --liquid-glass-sidebar-bg: rgba(59, 66, 82, 0.88);
+    --liquid-glass-titlebar-bg: rgba(46, 52, 64, 0.92);
+    --liquid-glass-statusbar-bg: rgba(46, 52, 64, 0.92);
+    --liquid-glass-tabbar-bg: rgba(59, 66, 82, 0.9);
+    --liquid-glass-toolbar-bg: rgba(59, 66, 82, 0.88);
   }
 
   body.theme-catppuccin.liquid-glass {
-    --liquid-glass-panel-bg: rgba(49, 50, 68, 0.72);
+    --liquid-glass-panel-bg: rgba(49, 50, 68, 0.9);
     --liquid-glass-panel-border-color: rgba(205, 214, 244, 0.15);
-    --liquid-glass-modal-bg: rgba(49, 50, 68, 0.78);
-    --liquid-glass-menu-bg: rgba(49, 50, 68, 0.75);
-    --liquid-glass-sidebar-bg: rgba(49, 50, 68, 0.68);
-    --liquid-glass-titlebar-bg: rgba(30, 30, 46, 0.85);
-    --liquid-glass-statusbar-bg: rgba(30, 30, 46, 0.85);
-    --liquid-glass-tabbar-bg: rgba(49, 50, 68, 0.75);
-    --liquid-glass-toolbar-bg: rgba(49, 50, 68, 0.75);
+    --liquid-glass-modal-bg: rgba(49, 50, 68, 0.94);
+    --liquid-glass-menu-bg: rgba(49, 50, 68, 0.9);
+    --liquid-glass-sidebar-bg: rgba(49, 50, 68, 0.88);
+    --liquid-glass-titlebar-bg: rgba(30, 30, 46, 0.92);
+    --liquid-glass-statusbar-bg: rgba(30, 30, 46, 0.92);
+    --liquid-glass-tabbar-bg: rgba(49, 50, 68, 0.9);
+    --liquid-glass-toolbar-bg: rgba(49, 50, 68, 0.88);
   }
 
   body.theme-dracula.liquid-glass {
-    --liquid-glass-panel-bg: rgba(68, 71, 90, 0.72);
+    --liquid-glass-panel-bg: rgba(68, 71, 90, 0.9);
     --liquid-glass-panel-border-color: rgba(248, 248, 242, 0.15);
-    --liquid-glass-modal-bg: rgba(68, 71, 90, 0.78);
-    --liquid-glass-menu-bg: rgba(68, 71, 90, 0.75);
-    --liquid-glass-sidebar-bg: rgba(68, 71, 90, 0.68);
-    --liquid-glass-titlebar-bg: rgba(40, 42, 54, 0.85);
-    --liquid-glass-statusbar-bg: rgba(40, 42, 54, 0.85);
-    --liquid-glass-tabbar-bg: rgba(68, 71, 90, 0.75);
-    --liquid-glass-toolbar-bg: rgba(68, 71, 90, 0.75);
+    --liquid-glass-modal-bg: rgba(68, 71, 90, 0.94);
+    --liquid-glass-menu-bg: rgba(68, 71, 90, 0.9);
+    --liquid-glass-sidebar-bg: rgba(68, 71, 90, 0.88);
+    --liquid-glass-titlebar-bg: rgba(40, 42, 54, 0.92);
+    --liquid-glass-statusbar-bg: rgba(40, 42, 54, 0.92);
+    --liquid-glass-tabbar-bg: rgba(68, 71, 90, 0.9);
+    --liquid-glass-toolbar-bg: rgba(68, 71, 90, 0.88);
   }
 
   body.theme-solarized.liquid-glass {
-    --liquid-glass-panel-bg: rgba(7, 54, 66, 0.72);
+    --liquid-glass-panel-bg: rgba(7, 54, 66, 0.9);
     --liquid-glass-panel-border-color: rgba(131, 148, 150, 0.15);
-    --liquid-glass-modal-bg: rgba(7, 54, 66, 0.78);
-    --liquid-glass-menu-bg: rgba(7, 54, 66, 0.75);
-    --liquid-glass-sidebar-bg: rgba(7, 54, 66, 0.68);
-    --liquid-glass-titlebar-bg: rgba(0, 43, 54, 0.85);
-    --liquid-glass-statusbar-bg: rgba(0, 43, 54, 0.85);
-    --liquid-glass-tabbar-bg: rgba(7, 54, 66, 0.75);
-    --liquid-glass-toolbar-bg: rgba(7, 54, 66, 0.75);
+    --liquid-glass-modal-bg: rgba(7, 54, 66, 0.94);
+    --liquid-glass-menu-bg: rgba(7, 54, 66, 0.9);
+    --liquid-glass-sidebar-bg: rgba(7, 54, 66, 0.88);
+    --liquid-glass-titlebar-bg: rgba(0, 43, 54, 0.92);
+    --liquid-glass-statusbar-bg: rgba(0, 43, 54, 0.92);
+    --liquid-glass-tabbar-bg: rgba(7, 54, 66, 0.9);
+    --liquid-glass-toolbar-bg: rgba(7, 54, 66, 0.88);
   }
 
   body.theme-github.liquid-glass {
-    --liquid-glass-panel-bg: rgba(22, 27, 34, 0.72);
+    --liquid-glass-panel-bg: rgba(22, 27, 34, 0.9);
     --liquid-glass-panel-border-color: rgba(201, 209, 217, 0.15);
-    --liquid-glass-modal-bg: rgba(22, 27, 34, 0.78);
-    --liquid-glass-menu-bg: rgba(22, 27, 34, 0.75);
-    --liquid-glass-sidebar-bg: rgba(22, 27, 34, 0.68);
-    --liquid-glass-titlebar-bg: rgba(13, 17, 23, 0.85);
-    --liquid-glass-statusbar-bg: rgba(13, 17, 23, 0.85);
-    --liquid-glass-tabbar-bg: rgba(22, 27, 34, 0.75);
-    --liquid-glass-toolbar-bg: rgba(22, 27, 34, 0.75);
+    --liquid-glass-modal-bg: rgba(22, 27, 34, 0.94);
+    --liquid-glass-menu-bg: rgba(22, 27, 34, 0.9);
+    --liquid-glass-sidebar-bg: rgba(22, 27, 34, 0.88);
+    --liquid-glass-titlebar-bg: rgba(13, 17, 23, 0.92);
+    --liquid-glass-statusbar-bg: rgba(13, 17, 23, 0.92);
+    --liquid-glass-tabbar-bg: rgba(22, 27, 34, 0.9);
+    --liquid-glass-toolbar-bg: rgba(22, 27, 34, 0.88);
   }
 
-  body.liquid-glass .glass-panel {
+  body.liquid-glass .glass-panel:not(.sidebar):not(.toolbar):not(.status-bar):not(.modal) {
     background: var(--liquid-glass-panel-bg);
     -webkit-backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
     backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
@@ -205,6 +202,15 @@
     position: relative;
   }
 
+  body.liquid-glass .modal.glass-panel {
+    background: var(--liquid-glass-modal-bg);
+    -webkit-backdrop-filter: var(--liquid-glass-modal-filter);
+    backdrop-filter: var(--liquid-glass-modal-filter);
+    border: 1px solid var(--liquid-glass-modal-border-color);
+    border-radius: var(--liquid-glass-modal-radius);
+    box-shadow: var(--liquid-glass-modal-shadow);
+  }
+
   body.liquid-glass .sort-menu.glass-panel,
   body.liquid-glass .progress-panel.glass-panel,
   body.liquid-glass .status-bar.glass-panel {
@@ -212,38 +218,31 @@
   }
 
   body.liquid-glass .glass-panel::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent 0%,
-      var(--liquid-glass-panel-highlight-edge) 20%,
-      var(--liquid-glass-panel-highlight-center) 50%,
-      var(--liquid-glass-panel-highlight-edge) 80%,
-      transparent 100%
-    );
-    border-radius: var(--liquid-glass-radius) var(--liquid-glass-radius) 0 0;
-    pointer-events: none;
-    z-index: 1;
+    display: none;
   }
 
-  body.liquid-glass .context-submenu {
-    background: var(--dropdown-bg);
+  body.liquid-glass .context-menu,
+  body.liquid-glass .context-submenu,
+  body.liquid-glass .tab-context-menu,
+  body.liquid-glass .sort-menu,
+  body.liquid-glass .breadcrumb-menu,
+  body.liquid-glass .history-dropdown,
+  body.liquid-glass .selection-overflow-menu {
+    background: var(--liquid-glass-menu-bg);
     -webkit-backdrop-filter: var(--liquid-glass-menu-filter);
     backdrop-filter: var(--liquid-glass-menu-filter);
+    border: 1px solid var(--liquid-glass-menu-border-color);
     border-radius: var(--liquid-glass-menu-radius);
+    box-shadow: var(--liquid-glass-menu-shadow);
   }
 
   body.liquid-glass .sidebar {
     background: var(--liquid-glass-sidebar-bg);
     -webkit-backdrop-filter: var(--liquid-glass-sidebar-filter);
     backdrop-filter: var(--liquid-glass-sidebar-filter);
-    border: 1px solid var(--liquid-glass-sidebar-border-color);
-    border-radius: var(--liquid-glass-radius);
+    border: 0;
+    border-right: 1px solid var(--liquid-glass-sidebar-border-color);
+    border-radius: 0;
   }
 
   body.liquid-glass .titlebar {
@@ -341,12 +340,19 @@
   }
 
   body.reduce-transparency.liquid-glass .glass-panel,
+  body.reduce-transparency.liquid-glass .context-menu,
   body.reduce-transparency.liquid-glass .context-submenu,
+  body.reduce-transparency.liquid-glass .tab-context-menu,
+  body.reduce-transparency.liquid-glass .sort-menu,
+  body.reduce-transparency.liquid-glass .breadcrumb-menu,
+  body.reduce-transparency.liquid-glass .history-dropdown,
+  body.reduce-transparency.liquid-glass .selection-overflow-menu,
   body.reduce-transparency.liquid-glass .sidebar,
   body.reduce-transparency.liquid-glass .titlebar,
   body.reduce-transparency.liquid-glass .tab-bar,
   body.reduce-transparency.liquid-glass .status-bar,
   body.reduce-transparency.liquid-glass .toolbar,
+  body.reduce-transparency.liquid-glass .glass-input,
   body.reduce-transparency.liquid-glass .address-bar,
   body.reduce-transparency.liquid-glass .search-bar,
   body.reduce-transparency.liquid-glass .search-filters-panel,
@@ -358,12 +364,19 @@
   body.reduce-transparency.liquid-glass .home-customize-btn,
   body.reduce-transparency.liquid-glass .zoom-popup,
   body.performance-mode.liquid-glass .glass-panel,
+  body.performance-mode.liquid-glass .context-menu,
   body.performance-mode.liquid-glass .context-submenu,
+  body.performance-mode.liquid-glass .tab-context-menu,
+  body.performance-mode.liquid-glass .sort-menu,
+  body.performance-mode.liquid-glass .breadcrumb-menu,
+  body.performance-mode.liquid-glass .history-dropdown,
+  body.performance-mode.liquid-glass .selection-overflow-menu,
   body.performance-mode.liquid-glass .sidebar,
   body.performance-mode.liquid-glass .titlebar,
   body.performance-mode.liquid-glass .tab-bar,
   body.performance-mode.liquid-glass .status-bar,
   body.performance-mode.liquid-glass .toolbar,
+  body.performance-mode.liquid-glass .glass-input,
   body.performance-mode.liquid-glass .address-bar,
   body.performance-mode.liquid-glass .search-bar,
   body.performance-mode.liquid-glass .search-filters-panel,
@@ -380,7 +393,6 @@
 
   body.liquid-glass .zoom-popup:hover {
     background: var(--liquid-glass-popup-hover-bg);
-    box-shadow: var(--liquid-glass-popup-hover-shadow);
   }
 
   body.liquid-glass .zoom-popup:focus-visible {
@@ -391,12 +403,6 @@
 
   body.liquid-glass .archive-operations-panel:hover {
     background: var(--liquid-glass-archive-hover-bg);
-    box-shadow: var(--liquid-glass-archive-hover-shadow);
-  }
-
-  /* Allow glass panel shadows to render outside the rectangular clip boundary */
-  body.liquid-glass .content-wrapper {
-    overflow: visible;
   }
 
   /* Inset the scrollbar track so it doesn't overlap the 16px rounded corners */

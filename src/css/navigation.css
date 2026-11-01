@@ -1,16 +1,18 @@
 .address-bar-wrapper {
   position: relative;
   width: 100%;
+  min-width: 0;
   z-index: var(--z-navigation);
 }
 
 .address-bar {
   display: flex;
   align-items: center;
-  padding: 0 6px;
-  gap: 5px;
+  padding: 0 7px;
+  gap: 6px;
   height: var(--address-bar-height);
   width: 100%;
+  min-width: 0;
 }
 
 .breadcrumb {
@@ -18,7 +20,8 @@
   align-items: center;
   gap: 1px;
   font-size: var(--font-size-breadcrumb);
-  flex: 1;
+  flex: 1 1 100px;
+  min-width: 0;
   overflow: hidden;
   color: var(--text-secondary);
 }
@@ -117,14 +120,17 @@
 }
 
 #address-input {
-  flex: 1;
+  flex: 1 1 100px;
+  min-width: 100px;
   background: transparent;
   border: none;
+  border-left: 1px solid var(--native-divider);
   outline: none;
   color: var(--text-primary);
   font-size: 12px;
   font-family: var(--font-family);
   font-weight: 400;
+  padding: 2px 6px;
 }
 
 #address-input::placeholder {
@@ -133,6 +139,10 @@
 
 #address-input::selection {
   background: rgba(var(--accent-rgb), 0.35);
+}
+
+.address-bar:focus-within #address-input {
+  color: var(--text-primary);
 }
 
 .breadcrumb-item:focus-visible,

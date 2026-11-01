@@ -1,6 +1,7 @@
 .search-bar-wrapper {
   position: relative;
   width: 100%;
+  min-width: 0;
   z-index: var(--z-navigation);
 }
 
@@ -80,6 +81,7 @@
   border-radius: var(--radius-small);
   transition: var(--transition-standard);
   position: relative;
+  flex-shrink: 0;
 }
 
 .filter-badge {
@@ -105,8 +107,8 @@
 }
 
 .search-filter-toggle.active {
-  background: var(--accent-color);
-  color: var(--text-on-accent);
+  background: color-mix(in srgb, var(--system-accent-color, var(--accent-color)) 14%, transparent);
+  color: var(--system-accent-color, var(--accent-color));
 }
 
 .search-filters-panel {
@@ -119,8 +121,37 @@
   border-radius: var(--radius-medium);
   box-shadow: var(--shadow-md);
   z-index: var(--z-command-palette);
-  padding: 16px;
+  box-sizing: border-box;
+  max-height: min(70vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 12px;
   animation: dropdown-slide var(--animation-duration) var(--animation-easing);
+}
+
+.search-advanced-options {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding-bottom: 10px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--native-divider);
+}
+
+.search-advanced-title {
+  color: var(--text-tertiary);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.search-advanced-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .search-filter-group {
@@ -195,14 +226,26 @@
 
 .search-filter-actions {
   display: flex;
+  align-items: center;
   gap: 10px;
-  justify-content: flex-end;
+  justify-content: space-between;
   padding-top: 10px;
   border-top: 1px solid var(--separator);
 }
 
+.search-filter-actions-left,
+.search-filter-actions-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.search-filter-actions-right {
+  margin-left: auto;
+}
+
 .search-filter-btn {
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-radius: var(--radius-small);
   font-size: 13px;
   font-weight: 500;
@@ -361,14 +404,30 @@ body.theme-light .toggle-slider-small {
 .search-bar {
   display: flex;
   align-items: center;
-  padding: 0 8px;
-  gap: 8px;
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 0 7px;
+  gap: 6px;
   width: 100%;
   height: var(--address-bar-height);
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-small);
+  background: color-mix(in srgb, var(--surface-1) 76%, transparent);
+  box-shadow: none;
+}
+
+.search-bar:focus-within {
+  border-color: color-mix(
+    in srgb,
+    var(--system-accent-color, var(--accent-color)) 56%,
+    transparent
+  );
+  box-shadow: var(--focus-ring);
 }
 
 .search-bar input {
-  flex: 1;
+  flex: 1 1 100px;
+  min-width: 80px;
   background: transparent;
   border: none;
   outline: none;
@@ -428,17 +487,18 @@ body.theme-light .toggle-slider-small {
 }
 
 .search-save-btn {
-  background: none;
-  border: none;
-  color: var(--text-tertiary);
-  cursor: pointer;
-  width: 24px;
-  height: 24px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
+  gap: 7px;
+  min-height: 32px;
+  width: auto;
+  padding: 5px 10px;
+  border: 1px solid var(--native-divider);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
   border-radius: var(--radius-small);
-  padding: 0;
   transition:
     color 0.12s ease,
     background-color 0.12s ease;
@@ -457,6 +517,13 @@ body.theme-light .toggle-slider-small {
   opacity: 0.35;
   cursor: default;
   pointer-events: none;
+}
+
+.search-save-label {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 .saved-search-section {
@@ -533,9 +600,10 @@ body.theme-light .toggle-slider-small {
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px;
-  width: 28px;
+  padding: 4px 7px;
+  min-width: 68px;
   height: 28px;
+  gap: 5px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -562,18 +630,25 @@ body.theme-light .toggle-slider-small {
 }
 
 .search-scope-toggle.global {
-  background: var(--accent-gradient);
+  background: color-mix(in srgb, var(--system-accent-color, var(--accent-color)) 12%, transparent);
+  color: var(--system-accent-color, var(--accent-color));
   opacity: 1;
 }
 
 .search-scope-toggle.global:hover {
-  background: var(--accent-gradient);
-  filter: brightness(1.1);
+  background: color-mix(in srgb, var(--system-accent-color, var(--accent-color)) 18%, transparent);
 }
 
 .search-scope-toggle .twemoji {
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 14px;
+}
+
+.search-scope-text {
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 
 @keyframes searchJump {
@@ -589,14 +664,15 @@ body.theme-light .toggle-slider-small {
 }
 
 .search-regex-toggle {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 4px 6px;
-  height: 28px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-height: 32px;
+  padding: 5px 8px;
+  background: transparent;
+  border: 1px solid var(--native-divider);
+  cursor: pointer;
   border-radius: var(--radius-small);
   transition:
     background-color 0.12s cubic-bezier(0.4, 0, 0.2, 1),
@@ -613,6 +689,12 @@ body.theme-light .toggle-slider-small {
   line-height: 1;
 }
 
+.search-regex-text {
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
 .search-regex-toggle:hover {
   background: var(--hover-color, rgba(255, 255, 255, 0.08));
   opacity: 1;
@@ -623,12 +705,17 @@ body.theme-light .toggle-slider-small {
 }
 
 .search-regex-toggle.active {
-  background: var(--accent-gradient);
+  background: color-mix(in srgb, var(--system-accent-color, var(--accent-color)) 12%, transparent);
+  border-color: color-mix(
+    in srgb,
+    var(--system-accent-color, var(--accent-color)) 38%,
+    transparent
+  );
   opacity: 1;
 }
 
 .search-regex-toggle.active .regex-label {
-  color: var(--text-on-accent);
+  color: var(--system-accent-color, var(--accent-color));
 }
 
 .search-regex-toggle.active:hover {

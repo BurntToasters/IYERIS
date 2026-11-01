@@ -47,6 +47,19 @@ body.use-system-font-size {
 }
 
 body.large-text {
+  --font-size-base: 16px;
+  --font-size-file-name: 16px;
+  --font-size-nav: 15px;
+  --font-size-section-title: 14px;
+  --font-size-status: 13px;
+  --font-size-breadcrumb: 15px;
+  --toolbar-height: 44px;
+  --toolbar-group-height: 36px;
+  --status-bar-height: 28px;
+  --address-bar-height: 34px;
+  --tab-bar-height: 38px;
+  --sidebar-row-height: 34px;
+  --list-item-min-height: 38px;
   font-size: 16px !important;
 }
 
@@ -83,8 +96,16 @@ body.visible-focus *:focus {
   outline-offset: 2px !important;
 }
 
-body.reduce-transparency .glass-panel {
-  background: var(--bg-secondary) !important;
+body.reduce-transparency .glass-panel:not(.file-view):not(.toolbar):not(.sidebar):not(.status-bar) {
+  background: var(--surface-1) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+body.reduce-transparency .file-view {
+  background: var(--surface-0) !important;
+  border: 0 !important;
+  box-shadow: none !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -92,19 +113,51 @@ body.reduce-transparency .glass-panel {
 body.reduce-transparency .glass-input,
 body.reduce-transparency .address-bar,
 body.reduce-transparency .search-bar {
-  background: var(--bg-primary) !important;
+  background: var(--surface-1) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
 
+body.reduce-transparency .titlebar,
+body.reduce-transparency .tab-bar,
 body.reduce-transparency .toolbar {
-  background: var(--bg-secondary) !important;
+  background: var(--chrome-surface-opaque) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
 
 body.reduce-transparency .sidebar {
-  background: var(--bg-secondary) !important;
+  background: var(--sidebar-surface, var(--chrome-surface-opaque)) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+body.reduce-transparency .status-bar {
+  background: var(--chrome-surface-opaque) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+body.reduce-transparency .context-menu,
+body.reduce-transparency .context-submenu,
+body.reduce-transparency .tab-context-menu,
+body.reduce-transparency .sort-menu,
+body.reduce-transparency .breadcrumb-menu,
+body.reduce-transparency .history-dropdown,
+body.reduce-transparency .selection-overflow-menu {
+  background: var(--dropdown-bg) !important;
+  -webkit-backdrop-filter: none !important;
+  backdrop-filter: none !important;
+}
+
+body.reduce-transparency .toast,
+body.reduce-transparency .search-filters-panel,
+body.reduce-transparency .archive-operations-panel,
+body.reduce-transparency .progress-panel,
+body.reduce-transparency .file-hover-card,
+body.reduce-transparency .home-customize-btn,
+body.reduce-transparency .zoom-popup {
+  background: var(--surface-1) !important;
   -webkit-backdrop-filter: none !important;
   backdrop-filter: none !important;
 }
@@ -131,9 +184,10 @@ body.reduce-motion .toggle-slider::before {
   transition: none;
 }
 
-body.reduce-motion .glass-panel {
+body.reduce-motion .glass-panel:not(.file-view) {
+  -webkit-backdrop-filter: none;
   backdrop-filter: none;
-  background: var(--bg-secondary);
+  background: var(--surface-1);
 }
 
 @media (prefers-contrast: more) {

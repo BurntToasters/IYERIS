@@ -12,12 +12,10 @@ body {
   filter: none;
 }
 
-.glass-panel {
-  background: var(--chrome-surface);
-  -webkit-backdrop-filter: blur(10px) saturate(120%);
-  backdrop-filter: blur(10px) saturate(120%);
+.glass-panel:not(.file-view):not(.sidebar):not(.toolbar):not(.status-bar) {
+  background: var(--surface-1);
   border: 1px solid var(--native-divider);
-  box-shadow: var(--native-elevation-1);
+  box-shadow: none;
   border-radius: var(--radius-medium);
 }
 
@@ -109,23 +107,11 @@ select:focus-visible {
   color: var(--text-secondary);
   padding: 40px;
   text-align: center;
-  animation: emptyFadeIn 0.3s ease;
-}
-
-@keyframes emptyFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .empty-icon {
   opacity: 0.6;
-  filter: drop-shadow(0 0 20px rgba(var(--accent-rgb), 0.15));
+  filter: none;
 }
 
 .empty-icon .twemoji-xlarge {
@@ -162,7 +148,6 @@ select:focus-visible {
   color: var(--text-secondary);
   padding: 40px;
   text-align: center;
-  animation: emptyFadeIn 0.3s ease;
 }
 
 .fileview-error h3 {
@@ -216,11 +201,9 @@ select:focus-visible {
 @keyframes menu-fade {
   from {
     opacity: 0;
-    transform: scale(0.95);
   }
   to {
     opacity: 1;
-    transform: scale(1);
   }
 }
 
@@ -277,7 +260,6 @@ select:focus-visible {
     border-color 0.15s ease,
     color 0.15s ease,
     box-shadow 0.15s ease,
-    transform 0.15s ease,
     opacity 0.15s ease;
   border: 2px solid transparent;
   background: color-mix(in srgb, var(--text-primary) 5%, transparent);
@@ -285,7 +267,6 @@ select:focus-visible {
 
 .folder-icon-option:hover {
   background: var(--surface-border);
-  transform: scale(1.1);
 }
 
 .folder-icon-option.selected {
@@ -301,35 +282,31 @@ select:focus-visible {
 @keyframes popupSlideIn {
   from {
     opacity: 0;
-    transform: scale(0.9) translateY(-20px);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
   }
 }
 
 @keyframes commandPaletteSlideIn {
   from {
     opacity: 0;
-    transform: translateY(-20px) scale(0.98);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
 .file-hover-card {
   position: fixed;
   z-index: var(--z-progress);
-  background: var(--bg-secondary);
+  background: var(--surface-1);
   border: 1px solid var(--separator);
-  border-radius: var(--radius-medium);
+  border-radius: var(--radius-small);
   padding: 12px;
   min-width: 220px;
   max-width: 280px;
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: var(--shadow-md);
   display: none;
   opacity: 0;
   pointer-events: none;
@@ -345,7 +322,7 @@ select:focus-visible {
   width: 100%;
   height: 80px;
   margin-bottom: 10px;
-  border-radius: 6px;
+  border-radius: var(--radius-small);
   overflow: hidden;
   background: rgba(255, 255, 255, 0.05);
   display: flex;
@@ -590,15 +567,15 @@ body.dual-pane-enabled.active-pane-right #dual-pane-secondary {
   min-height: 40px;
   border-radius: 4px;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  background: rgba(0, 0, 0, 0.2);
+  box-shadow: none;
+  background: var(--surface-2);
 }
 
 .dual-pane-item.has-thumbnail .file-thumbnail {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 4px;
+  border-radius: var(--radius-small);
 }
 
 .dual-pane-item-name {

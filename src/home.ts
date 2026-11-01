@@ -30,9 +30,9 @@ const isHomeSectionId = (value: string): value is HomeSectionId =>
   HOME_SECTION_IDS.includes(value as HomeSectionId);
 const HOME_SECTION_LABELS: Record<(typeof HOME_SECTION_IDS)[number], string> = {
   'quick-access': 'Quick Access',
-  recents: 'Recents',
+  recents: 'Recent',
   bookmarks: 'Bookmarks',
-  drives: 'Drives',
+  drives: 'Locations',
 };
 const DRIVE_USAGE_CACHE_TTL_MS = 60000;
 const MAX_HOME_RECENTS = 10;
@@ -47,6 +47,22 @@ export function getPathDisplayValue(pathValue: string): string {
 
 type ToastType = 'success' | 'error' | 'info' | 'warning';
 type ConfirmType = 'info' | 'warning' | 'error' | 'success' | 'question';
+type HomeSettingsValueKey = Exclude<keyof HomeSettings, '_revision'>;
+
+const HOME_SETTINGS_VALUE_KEYS: HomeSettingsValueKey[] = [
+  'showQuickAccess',
+  'showRecents',
+  'showBookmarks',
+  'showDrives',
+  'showDiskUsage',
+  'hiddenQuickAccessItems',
+  'quickAccessOrder',
+  'sectionOrder',
+  'pinnedRecents',
+  'compactCards',
+  'sidebarQuickAccessOrder',
+  'hiddenSidebarQuickAccessItems',
+];
 
 type HomeControllerOptions = {
   twemojiImg: (emoji: string, className?: string, alt?: string) => string;
@@ -165,6 +181,30 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     );
   }
 
+  function homeSettingsValueEqual(
+    left: HomeSettings[HomeSettingsValueKey],
+    right: HomeSettings[HomeSettingsValueKey]
+  ): boolean {
+    if (Array.isArray(left) && Array.isArray(right)) {
+      return left.length === right.length && left.every((value, index) => value === right[index]);
+    }
+    return left === right;
+  }
+
+  function rebaseHomeSettingsChanges(
+    snapshot: HomeSettings,
+    live: HomeSettings,
+    latest: HomeSettings
+  ): HomeSettings {
+    const rebased = normalizeHomeSettings(latest);
+    for (const key of HOME_SETTINGS_VALUE_KEYS) {
+      if (!homeSettingsValueEqual(snapshot[key], live[key])) {
+        Object.assign(rebased, { [key]: live[key] });
+      }
+    }
+    return normalizeHomeSettings(rebased);
+  }
+
   function normalizeHomeSettings(settings?: Partial<HomeSettings> | null): HomeSettings {
     const sanitized = sanitizeHomeSettings(settings);
     const merged = sanitized;
@@ -212,6 +252,9 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     if (homeView) {
       homeView.classList.toggle('home-compact', settings.compactCards);
     }
+
+    const recentsTitle = homeRecentsSection?.querySelector<HTMLElement>('.home-section-title');
+    if (recentsTitle) recentsTitle.textContent = HOME_SECTION_LABELS.recents;
 
     if (homeQuickAccessSection) {
       homeQuickAccessSection.style.display = settings.showQuickAccess ? 'flex' : 'none';
@@ -269,18 +312,53 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     applyHomeSettings(currentHomeSettings);
   }
 
+  function applySuccessfulHomeSettingsSave(
+    submitted: HomeSettings,
+    currentAtSave: HomeSettings,
+    savedSettings: HomeSettings
+  ): void {
+    const saved = normalizeHomeSettings(
+      window.tauriAPI.reconcileHomeSettingsSnapshot(savedSettings, submitted)
+    );
+    currentHomeSettings = rebaseHomeSettingsChanges(
+      currentAtSave,
+      normalizeHomeSettings(currentHomeSettings),
+      saved
+    );
+    applyHomeSettings(currentHomeSettings);
+
+    if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
+      tempHomeSettings = normalizeHomeSettings(
+        window.tauriAPI.reconcileHomeSettingsSnapshot(savedSettings, tempHomeSettings)
+      );
+      syncHomeSettingsModal();
+    }
+  }
+
   async function saveHomeSettingsWithConflictResolution(settings: HomeSettings) {
-    const initial = await window.tauriAPI.saveHomeSettings(settings);
-    if (initial.success || !initial.settings || !initial.conflictKeys?.length) return initial;
+    const submitted = normalizeHomeSettings(settings);
+    const currentAtSave = normalizeHomeSettings(currentHomeSettings);
+    const initial = await window.tauriAPI.saveHomeSettings(submitted);
+    if (initial.success) {
+      applySuccessfulHomeSettingsSave(submitted, currentAtSave, initial.settings);
+      return initial;
+    }
+    if (!initial.settings || !initial.conflictKeys?.length) return initial;
 
     const latest = normalizeHomeSettings(initial.settings);
     const merged = normalizeHomeSettings(
-      window.tauriAPI.reconcileHomeSettingsSnapshot(initial.settings, settings)
+      window.tauriAPI.reconcileHomeSettingsSnapshot(initial.settings, submitted)
     );
-    currentHomeSettings = latest;
+    currentHomeSettings = rebaseHomeSettingsChanges(
+      currentAtSave,
+      normalizeHomeSettings(currentHomeSettings),
+      latest
+    );
     applyHomeSettings(currentHomeSettings);
     if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
-      tempHomeSettings = merged;
+      tempHomeSettings = normalizeHomeSettings(
+        window.tauriAPI.reconcileHomeSettingsSnapshot(initial.settings, tempHomeSettings)
+      );
       syncHomeSettingsModal();
     }
 
@@ -289,9 +367,14 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       'Home settings changed',
       'warning'
     );
+    const conflictCandidate = normalizeHomeSettings(
+      homeSettingsModal && homeSettingsModal.style.display === 'flex'
+        ? window.tauriAPI.reconcileHomeSettingsSnapshot(initial.settings, tempHomeSettings)
+        : merged
+    );
     const resolved = normalizeHomeSettings(
       window.tauriAPI.resolveHomeSettingsConflict(
-        merged,
+        conflictCandidate,
         initial.conflictKeys,
         keepLocal ? 'keepLocal' : 'useLatest'
       )
@@ -302,7 +385,12 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       tempHomeSettings = resolved;
       syncHomeSettingsModal();
     }
-    return window.tauriAPI.saveHomeSettings(resolved);
+    const currentAtRetry = normalizeHomeSettings(currentHomeSettings);
+    const retry = await window.tauriAPI.saveHomeSettings(resolved);
+    if (retry.success) {
+      applySuccessfulHomeSettingsSave(resolved, currentAtRetry, retry.settings);
+    }
+    return retry;
   }
 
   function createHomeItem(options: {
@@ -439,17 +527,6 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
       return;
     }
 
-    const HOME_ACTION_COLORS: Record<string, string> = {
-      userhome: 'blue',
-      desktop: 'purple',
-      documents: 'amber',
-      downloads: 'green',
-      music: 'pink',
-      videos: 'red',
-      browse: 'teal',
-      trash: 'gray',
-    };
-
     visibleItems.forEach((item) => {
       const icon = twemojiImg(item.icon, 'twemoji');
       const homeItem = createHomeItem({
@@ -458,8 +535,6 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
         ariaLabel: `Open ${item.label}`,
         dataAttr: { name: 'quickAction', value: item.action },
       });
-      const color = HOME_ACTION_COLORS[item.action];
-      if (color) homeItem.dataset.homeColor = color;
       homeQuickAccess.appendChild(homeItem);
     });
   }
@@ -524,12 +599,12 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     });
     const result = await saveHomeSettingsWithConflictResolution(currentHomeSettings);
     if (result.success) {
-      currentHomeSettings = normalizeHomeSettings(
-        window.tauriAPI.reconcileHomeSettingsSnapshot(result.settings, currentHomeSettings)
-      );
       renderHomeRecents();
       if (homeSettingsModal && homeSettingsModal.style.display === 'flex') {
-        tempHomeSettings = normalizeHomeSettings(currentHomeSettings);
+        tempHomeSettings = normalizeHomeSettings({
+          ...tempHomeSettings,
+          pinnedRecents: currentHomeSettings.pinnedRecents,
+        });
         syncHomeSettingsModal();
       }
     } else {
@@ -967,13 +1042,6 @@ export function createHomeController(options: HomeControllerOptions): HomeContro
     const submitted = normalizeHomeSettings({ ...tempHomeSettings });
     const result = await saveHomeSettingsWithConflictResolution(submitted);
     if (result.success) {
-      currentHomeSettings = normalizeHomeSettings(
-        window.tauriAPI.reconcileHomeSettingsSnapshot(result.settings, currentHomeSettings)
-      );
-      tempHomeSettings = normalizeHomeSettings(
-        window.tauriAPI.reconcileHomeSettingsSnapshot(result.settings, tempHomeSettings)
-      );
-      applyHomeSettings(currentHomeSettings);
       if (homeSettingsEqual(tempHomeSettings, currentHomeSettings)) {
         await closeHomeSettingsModal(true);
         showToast('Home settings saved!', 'Home', 'success');

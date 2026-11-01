@@ -11,12 +11,15 @@
 .context-menu {
   position: fixed;
   z-index: var(--z-dropdown);
-  min-width: 220px;
+  min-width: 200px;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 4px;
   background: var(--dropdown-bg);
   border: 1px solid var(--native-divider);
-  border-radius: 6px;
-  box-shadow: var(--native-elevation-2);
+  border-radius: var(--radius-small);
+  box-shadow: var(--native-elevation-1);
   animation: menu-fade var(--animation-duration) var(--animation-easing);
 }
 
@@ -26,15 +29,15 @@
   align-items: center;
   gap: 7px;
   width: 100%;
-  min-height: 22px;
-  padding: 3px 10px;
+  min-height: 26px;
+  padding: 4px 9px;
   border: none;
-  border-radius: 5px;
+  border-radius: 4px;
   background: none;
   color: var(--text-primary);
   cursor: default;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 400;
   line-height: 16px;
   text-align: left;
@@ -103,146 +106,25 @@
 }
 
 .context-submenu .context-menu-item {
-  min-height: 22px;
-  padding: 3px 10px;
-  border-radius: 5px;
-  font-size: 13px;
-}
-
-body.platform-darwin .context-menu {
-  padding: 4px;
-  background: var(--dropdown-bg);
-  border: 1px solid var(--native-divider);
-  border-radius: 6px;
-  box-shadow: var(--native-elevation-2);
-}
-
-body.platform-darwin .context-menu-item {
-  min-height: 22px;
-  padding: 3px 10px;
-  border-radius: 5px;
-  font-size: 13px;
-  font-weight: 400;
-}
-
-body.platform-darwin .context-menu-item:hover,
-body.platform-darwin .context-menu-item.focused,
-body.platform-darwin .context-menu-item:focus-visible {
-  background: var(--system-accent-color, var(--accent-color));
-  color: var(--text-on-accent);
-  box-shadow: none;
-}
-
-body.platform-darwin .context-menu-item:hover .context-menu-shortcut,
-body.platform-darwin .context-menu-item.focused .context-menu-shortcut,
-body.platform-darwin .context-menu-item:focus-visible .context-menu-shortcut {
-  color: inherit;
-  opacity: 0.8;
-}
-
-body.platform-darwin .context-menu-item:active {
-  background: var(--accent-active);
-  color: var(--text-on-accent);
-}
-
-body.platform-darwin .context-menu-separator {
-  margin: 4px 8px;
-  background: var(--native-divider);
-}
-
-body.platform-win32 .context-menu,
-body.platform-linux .context-menu {
-  padding: 4px;
-  background: var(--dropdown-bg);
-  border: 1px solid var(--native-divider);
-  border-radius: 6px;
-  box-shadow: var(--native-elevation-2);
-}
-
-body.platform-win32 .context-menu-item,
-body.platform-linux .context-menu-item {
-  min-height: 22px;
-  padding: 3px 10px;
-  border-radius: 5px;
-  font-size: 13px;
-  font-weight: 400;
-}
-
-body.platform-win32 .context-menu-item:hover,
-body.platform-win32 .context-menu-item.focused,
-body.platform-win32 .context-menu-item:focus-visible,
-body.platform-linux .context-menu-item:hover,
-body.platform-linux .context-menu-item.focused,
-body.platform-linux .context-menu-item:focus-visible {
-  background: var(--system-accent-color, var(--accent-color));
-  color: var(--text-on-accent);
-  box-shadow: none;
-}
-
-body.platform-win32 .context-menu-item:hover .context-menu-shortcut,
-body.platform-win32 .context-menu-item.focused .context-menu-shortcut,
-body.platform-win32 .context-menu-item:focus-visible .context-menu-shortcut,
-body.platform-linux .context-menu-item:hover .context-menu-shortcut,
-body.platform-linux .context-menu-item.focused .context-menu-shortcut,
-body.platform-linux .context-menu-item:focus-visible .context-menu-shortcut {
-  color: inherit;
-  opacity: 0.8;
-}
-
-body.platform-win32 .context-menu-item:active,
-body.platform-linux .context-menu-item:active {
-  background: var(--accent-active);
-  color: var(--text-on-accent);
-}
-
-body.platform-win32 .context-menu-separator,
-body.platform-linux .context-menu-separator {
-  margin: 4px 8px;
-  background: var(--native-divider);
+  min-height: 26px;
+  padding: 4px 9px;
+  border-radius: 4px;
+  font-size: 12.5px;
 }
 
 .sort-menu {
   position: fixed;
   z-index: var(--z-dropdown);
   min-width: 180px;
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
   padding: 4px;
   display: none;
   background: var(--dropdown-bg);
   border: 1px solid var(--native-divider);
-  border-radius: 6px;
-  box-shadow: var(--native-elevation-2);
-}
-
-body.theme-light .context-menu {
-  background: var(--dropdown-bg);
-  border-color: var(--native-divider);
-  box-shadow: var(--native-elevation-2);
-}
-
-body.theme-light .context-menu-item {
-  color: var(--text-primary);
-}
-
-body.theme-light .context-menu-item:hover,
-body.theme-light .context-menu-item.focused,
-body.theme-light .context-menu-item:focus-visible {
-  background: var(--system-accent-color, var(--accent-color));
-  color: var(--text-on-accent);
-  box-shadow: none;
-}
-
-body.theme-light .context-submenu .context-menu-item:hover {
-  background: var(--system-accent-color, var(--accent-color));
-  color: var(--text-on-accent);
-}
-
-body.theme-light .context-menu-item:active {
-  background: var(--accent-active);
-  color: var(--text-on-accent);
-}
-
-body.theme-light .context-menu-separator {
-  background: var(--native-divider);
+  border-radius: var(--radius-small);
+  box-shadow: var(--native-elevation-1);
 }
 
 .open-with-loading {

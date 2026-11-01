@@ -16,12 +16,7 @@
     <div id="sr-announcements" class="sr-only" aria-live="polite" aria-atomic="true"></div>
     <div class="titlebar" role="banner" data-tauri-drag-region>
       <div class="titlebar-drag-handle" data-tauri-drag-region aria-hidden="true"></div>
-      <div class="titlebar-drag-region" data-tauri-drag-region>
-        <div class="titlebar-icon">
-          <img id="titlebar-icon" src="/folder.png" alt="IYERIS" />
-        </div>
-        <div class="titlebar-title">IYERIS</div>
-      </div>
+      <div class="titlebar-drag-region" data-tauri-drag-region></div>
       <div
         class="titlebar-tabs"
         id="tab-bar"
@@ -255,6 +250,7 @@
                   stroke-linejoin="round"
                 />
               </svg>
+              <span class="toolbar-action-label">Up</span>
             </button>
             <span id="selection-indicator" class="selection-indicator" style="display: none">
               <span class="selection-count" id="selection-count">0</span>
@@ -402,6 +398,7 @@
                   aria-pressed="false"
                 >
                   <span class="regex-label">.*</span>
+                  <span class="search-regex-text">Regular expression</span>
                 </button>
                 <button
                   class="search-scope-toggle"
@@ -410,27 +407,16 @@
                   aria-label="Toggle between local and global search"
                   aria-pressed="false"
                 >
-                  <span class="twemoji" data-icon="1f4c1" alt="📁"></span>
+                  <span class="twemoji" data-icon="1f4c1" alt="📁" aria-hidden="true"></span>
+                  <span class="search-scope-text">Local</span>
                 </button>
                 <button class="search-close" id="search-close" aria-label="Close search">✕</button>
-                <button
-                  class="search-save-btn"
-                  id="search-save-btn"
-                  title="Save this search"
-                  aria-label="Save search"
-                >
-                  <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
-                    <path
-                      d="M8 1l2.2 4.4L15 6.1l-3.5 3.4.8 4.9L8 12.1 3.7 14.4l.8-4.9L1 6.1l4.8-.7z"
-                      fill="none"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                      stroke-linejoin="round"
-                    />
-                  </svg>
-                </button>
               </div>
               <div class="search-filters-panel" id="search-filters-panel" style="display: none">
+                <div class="search-advanced-options">
+                  <span class="search-advanced-title">Advanced</span>
+                  <div class="search-advanced-controls" id="search-advanced-controls"></div>
+                </div>
                 <div class="search-filter-group">
                   <label for="search-filter-type">Type</label>
                   <select id="search-filter-type">
@@ -504,10 +490,33 @@
                   </p>
                 </div>
                 <div class="search-filter-actions">
-                  <button id="search-filter-clear" class="search-filter-btn secondary">
-                    Clear
-                  </button>
-                  <button id="search-filter-apply" class="search-filter-btn primary">Apply</button>
+                  <div class="search-filter-actions-left" id="search-save-action-slot">
+                    <button
+                      class="search-save-btn"
+                      id="search-save-btn"
+                      title="Save this search"
+                      aria-label="Save search"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
+                        <path
+                          d="M8 1l2.2 4.4L15 6.1l-3.5 3.4.8 4.9L8 12.1 3.7 14.4l.8-4.9L1 6.1l4.8-.7z"
+                          fill="none"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          stroke-linejoin="round"
+                        />
+                      </svg>
+                      <span class="search-save-label">Save Search</span>
+                    </button>
+                  </div>
+                  <div class="search-filter-actions-right">
+                    <button id="search-filter-clear" class="search-filter-btn secondary">
+                      Clear
+                    </button>
+                    <button id="search-filter-apply" class="search-filter-btn primary">
+                      Apply
+                    </button>
+                  </div>
                 </div>
               </div>
               <div
@@ -644,6 +653,7 @@
                     stroke-linecap="round"
                   />
                 </svg>
+                <span class="toolbar-action-label">New Folder</span>
               </button>
               <button
                 class="toolbar-button"
@@ -695,6 +705,7 @@
                     <rect x="2" y="9" width="5" height="5" fill="currentColor" rx="1" />
                     <rect x="9" y="9" width="5" height="5" fill="currentColor" rx="1" />
                   </svg>
+                  <span class="view-option-label">Grid</span>
                 </button>
                 <button
                   class="view-option"
@@ -709,6 +720,7 @@
                     <rect x="2" y="7" width="12" height="2" fill="currentColor" rx="1" />
                     <rect x="2" y="11" width="12" height="2" fill="currentColor" rx="1" />
                   </svg>
+                  <span class="view-option-label">List</span>
                 </button>
                 <button
                   class="view-option"
@@ -723,15 +735,8 @@
                     <rect x="6" y="2" width="4" height="12" fill="currentColor" rx="1" />
                     <rect x="11" y="2" width="4" height="12" fill="currentColor" rx="1" />
                   </svg>
+                  <span class="view-option-label">Column</span>
                 </button>
-              </div>
-              <div
-                class="sort-badge"
-                id="grid-sort-badge"
-                style="display: none"
-                title="Change sort direction"
-              >
-                <span id="grid-sort-badge-text">Name ▲</span>
               </div>
               <button
                 class="toolbar-button"
@@ -919,7 +924,7 @@
               </div>
               <div class="home-section" id="home-section-drives">
                 <div class="home-section-header">
-                  <span class="home-section-title">Drives</span>
+                  <span class="home-section-title">Locations</span>
                 </div>
                 <div class="home-grid" id="home-drives"></div>
               </div>
@@ -2351,14 +2356,8 @@
             </div>
           </div>
           <div class="settings-pages">
-            <div class="settings-quick-actions" id="settings-quick-actions">
-              <div class="settings-quick-header">
-                <span>Quick toggles</span>
-                <span class="settings-quick-hint"
-                  >Tip: <kbd>Space</kbd>/<kbd>Enter</kbd> toggles • <kbd>Ctrl</kbd>/<kbd>⌘</kbd> +
-                  <kbd>F</kbd> focuses search • <kbd>Enter</kbd> jumps to a match</span
-                >
-              </div>
+            <details class="settings-quick-actions" id="settings-quick-actions">
+              <summary class="settings-quick-header">Quick toggles</summary>
               <div class="settings-quick-grid">
                 <div class="settings-quick-item">
                   <span>Match System Theme</span>
@@ -2397,7 +2396,7 @@
                   </label>
                 </div>
               </div>
-            </div>
+            </details>
             <div
               class="settings-section active"
               id="tab-appearance"
@@ -4025,12 +4024,33 @@
     </div>
 
     <div
-      class="sort-menu glass-panel"
+      class="sort-menu more-actions-menu glass-panel"
       id="more-actions-menu"
       role="menu"
       aria-label="More actions"
       style="display: none"
     >
+      <div
+        class="more-menu-section"
+        id="more-primary-actions"
+        role="group"
+        aria-label="Folder actions"
+      ></div>
+      <div class="more-menu-separator" id="more-primary-separator" role="separator"></div>
+      <div
+        class="more-menu-section"
+        id="more-overflow-items"
+        role="group"
+        aria-label="Additional toolbar actions"
+      ></div>
+      <div class="more-menu-separator" id="more-selection-separator" role="separator"></div>
+      <div
+        class="more-menu-section more-selection-actions"
+        id="more-selection-actions"
+        role="group"
+        aria-label="Selection actions"
+      ></div>
+      <div class="more-menu-separator" id="more-history-separator" role="separator"></div>
       <button type="button" class="context-menu-item" id="more-undo-btn" role="menuitem" disabled>
         <span>Undo</span>
         <span class="context-menu-shortcut">Ctrl+Z</span>

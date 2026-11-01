@@ -8,9 +8,11 @@
   -webkit-overflow-scrolling: auto;
   display: flex;
   flex-direction: column;
-  gap: calc(var(--sidebar-section-gap) - 2px);
+  gap: 5px;
   background: var(--chrome-surface);
-  border: 1px solid var(--native-divider);
+  border: 0;
+  border-right: 1px solid var(--native-divider);
+  border-radius: 0;
   box-shadow: none;
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
@@ -158,13 +160,13 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
 .sidebar-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
 }
 
 .sidebar-section + .sidebar-section {
-  padding-top: 0;
+  padding-top: 5px;
   margin-top: 2px;
-  border-top: none;
+  border-top: 1px solid color-mix(in srgb, var(--native-divider) 58%, transparent);
 }
 
 .sidebar-section.primary {
@@ -178,8 +180,8 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 6px;
-  margin-bottom: 2px;
+  padding: 1px 6px;
+  margin-bottom: 0;
 }
 
 .section-toggle {
@@ -195,10 +197,10 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   padding: 2px 4px;
   min-height: 20px;
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
   transition:
     background var(--animation-duration) var(--animation-easing),
     color var(--animation-duration) var(--animation-easing);
@@ -215,11 +217,11 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
 }
 
 .section-title {
-  font-size: 11px !important;
+  font-size: 10px !important;
   font-weight: 600 !important;
-  text-transform: none !important;
-  letter-spacing: 0.01em !important;
-  color: var(--text-secondary) !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.07em !important;
+  color: var(--text-tertiary) !important;
   text-shadow: none;
   margin: 0;
   padding: 0;
@@ -290,7 +292,7 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
 .quick-actions-grid {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 2px;
   padding: 0;
 }
 
@@ -300,7 +302,7 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   text-align: left;
   padding: 0 var(--nav-item-padding-h);
   gap: var(--nav-item-gap);
-  font-size: 12px;
+  font-size: 11.5px;
 }
 
 .nav-item.quick-action .nav-icon {
@@ -337,13 +339,13 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   gap: var(--nav-item-gap);
-  min-height: var(--sidebar-row-height) !important;
+  min-height: 26px !important;
   padding: 0 var(--nav-item-padding-h);
   border: 1px solid transparent;
   border-radius: var(--sidebar-row-radius) !important;
   cursor: pointer;
   transition: var(--transition-standard);
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   color: var(--text-secondary);
   position: relative;
@@ -392,13 +394,13 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   gap: var(--nav-item-gap);
-  min-height: var(--sidebar-row-height) !important;
+  min-height: 26px !important;
   padding: 0 var(--nav-item-padding-h);
   padding-left: calc(5px + min(var(--tree-item-depth, 0) * 8px, 72px));
   border: 1px solid transparent;
   border-radius: var(--sidebar-row-radius) !important;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 11.5px;
   font-weight: 500;
   color: var(--text-secondary);
   position: relative;
@@ -457,6 +459,7 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
 .tree-icon .twemoji {
   width: 14px;
   height: 14px;
+  filter: saturate(0.82);
 }
 
 .tree-icon .file-icon {
@@ -499,12 +502,13 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   justify-content: center;
-  opacity: 0.8;
-  filter: none;
+  opacity: 0.76;
+  filter: saturate(0.82);
 }
 
 .nav-item.active .nav-icon {
   opacity: 1;
+  filter: saturate(1);
 }
 
 .nav-label {
@@ -540,7 +544,7 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   padding: 0 8px;
-  min-height: var(--sidebar-row-height) !important;
+  min-height: 26px !important;
   border: 1px solid transparent;
   border-radius: var(--sidebar-row-radius) !important;
   cursor: pointer;
@@ -573,6 +577,11 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
   color: var(--text-primary);
 }
 
+.bookmark-item.active .bookmark-icon {
+  color: var(--system-accent-color, var(--accent-color));
+  filter: saturate(1);
+}
+
 .bookmark-item:focus-visible {
   outline: 2px solid var(--accent-color);
   outline-offset: 2px;
@@ -596,6 +605,7 @@ body.platform-darwin .sidebar:not(:hover)::-webkit-scrollbar-thumb {
 .bookmark-icon {
   font-size: 14px;
   flex-shrink: 0;
+  filter: saturate(0.82);
 }
 
 .bookmark-label {

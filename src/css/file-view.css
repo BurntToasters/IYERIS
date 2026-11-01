@@ -4,6 +4,7 @@
   padding: var(--spacing-md);
   overflow-y: auto;
   position: relative;
+  background: var(--surface-0);
 }
 
 .file-view::-webkit-scrollbar {
@@ -106,8 +107,7 @@ body.platform-linux .file-view {
   background: var(--surface-0);
   border-bottom: 1px solid var(--panel-border);
   font-size: 11px;
-  /* ui3.css (overrides layer) settles on 560; native NSTableView headers are semibold. */
-  font-weight: 600 !important;
+  font-weight: 600;
   line-height: 1;
   text-transform: none;
   letter-spacing: 0.01em;
@@ -135,6 +135,11 @@ body.platform-linux .file-view {
   border-radius: var(--radius-small);
 }
 
+.list-header-size,
+.list-header-modified {
+  justify-content: flex-end;
+}
+
 .list-header-sort {
   font-size: 0 !important;
   width: 10px;
@@ -149,7 +154,6 @@ body.platform-linux .file-view {
   -webkit-mask-size: contain;
   mask-repeat: no-repeat;
   -webkit-mask-repeat: no-repeat;
-  transition: transform 0.22s var(--animation-easing);
 }
 
 .list-header-cell[aria-sort='descending'] .list-header-sort {
@@ -215,37 +219,7 @@ body.platform-linux .file-view {
   font-size: 12px;
 }
 
-.file-view.nav-forward {
-  animation: slideLeft var(--nav-transition-duration, 200ms) ease-out;
-}
-
-.file-view.nav-back {
-  animation: slideRight var(--nav-transition-duration, 200ms) ease-out;
-}
-
-@keyframes slideLeft {
-  from {
-    opacity: 0.8;
-    transform: translateX(12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes slideRight {
-  from {
-    opacity: 0.8;
-    transform: translateX(-12px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-/* Skeleton Loading Shimmer */
+/* Keep loading placeholders quiet while preserving their rendered dimensions. */
 .file-item.skeleton-loading {
   pointer-events: none !important;
   user-select: none !important;
@@ -259,47 +233,7 @@ body.platform-linux .file-view {
 }
 
 .skeleton-shimmer {
-  background: linear-gradient(
-    90deg,
-    var(--bg-secondary, #f5f5f7) 25%,
-    var(--bg-tertiary, #e8e8ed) 37%,
-    var(--bg-secondary, #f5f5f7) 63%
-  ) !important;
-  background-size: 400% 100% !important;
-  animation: shimmer 1.4s ease infinite !important;
+  background: var(--surface-2);
   border: none !important;
   color: transparent !important;
-}
-
-body.dark-theme .skeleton-shimmer {
-  background: linear-gradient(90deg, #1e1e1e 25%, #2a2a2a 37%, #1e1e1e 63%) !important;
-  background-size: 400% 100% !important;
-}
-
-@keyframes shimmer {
-  0% {
-    background-position: 100% 0;
-  }
-  100% {
-    background-position: -300% 0;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .skeleton-shimmer {
-    animation: none !important;
-    background: var(--bg-tertiary, #e8e8ed) !important;
-  }
-  body.dark-theme .skeleton-shimmer {
-    background: #2a2a2a !important;
-  }
-}
-
-body.reduce-motion .skeleton-shimmer {
-  animation: none !important;
-  background: var(--bg-tertiary, #e8e8ed) !important;
-}
-
-body.dark-theme.reduce-motion .skeleton-shimmer {
-  background: #2a2a2a !important;
 }

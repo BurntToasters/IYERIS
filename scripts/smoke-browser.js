@@ -23,11 +23,14 @@ const EXPECTED_SUITE_MODES = [
   'archive-whitespace-password',
   'operation-queue-lifetime',
   'visual-uplift',
+  'full-app-310-redesign',
 ];
 const MAX_ERROR_LENGTH = 4000;
 const MAX_DIAGNOSTICS_LENGTH = 8000;
 // The page calls this binding to ask Node for a screenshot and then waits for the reply.
 const SCREENSHOT_BINDING = 'iyerisSmokeScreenshot';
+const VIEWPORT_BINDING = 'iyerisSmokeViewport';
+const PSEUDO_STATE_BINDING = 'iyerisSmokePseudoState';
 const SCREENSHOT_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const SCREENSHOT_FILE_RE = /^browser-smoke-[a-z0-9-]+\.png$/;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -52,6 +55,7 @@ const artifact = {
   browser: null,
   suiteCount: 0,
   suites: [],
+  suiteExecutions: [],
   screenshots: [],
   buildCss: null,
   diagnostics: '',
@@ -314,9 +318,17 @@ function auditBackdropFilterCss(cssText) {
 
 function removeStaleScreenshots() {
   const directory = path.dirname(artifactPath);
-  if (!fs.existsSync(directory)) return;
-  for (const entry of fs.readdirSync(directory)) {
-    if (SCREENSHOT_FILE_RE.test(entry)) fs.rmSync(path.join(directory, entry), { force: true });
+  if (!fs.existsSync(artifactPath)) return;
+  let previous;
+  try {
+    previous = JSON.parse(fs.readFileSync(artifactPath, 'utf8'));
+  } catch {
+    return;
+  }
+  for (const screenshot of previous?.screenshots || []) {
+    if (typeof screenshot?.file === 'string' && SCREENSHOT_FILE_RE.test(screenshot.file)) {
+      fs.rmSync(path.join(directory, screenshot.file), { force: true });
+    }
   }
 }
 
@@ -438,7 +450,13 @@ async function captureNamedScreenshot(call, sessionId, state, request) {
   }
   const file = `browser-smoke-${name}.png`;
   atomicWrite(path.join(path.dirname(artifactPath), file), bytes);
-  const shot = { name, file, bytes: bytes.length, regions: [] };
+  const shot = {
+    name,
+    file,
+    bytes: bytes.length,
+    regions: [],
+    metadata: request.metadata && typeof request.metadata === 'object' ? request.metadata : null,
+  };
   if (Array.isArray(request.regions) && request.regions.length > 0) {
     const image = decodePng(bytes);
     shot.regions = request.regions.map((region) =>
@@ -471,6 +489,225 @@ async function serviceScreenshotRequest(call, sessionId, state, payload) {
     },
     sessionId
   );
+}
+
+async function servicePseudoStateRequest(call, sessionId, state, pageState, payload) {
+  let request;
+  let reply;
+  try {
+    request = JSON.parse(payload);
+    if (
+      !Number.isInteger(request.id) ||
+      typeof request.selector !== 'string' ||
+      !/^#[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(request.selector) ||
+      !Array.isArray(request.forcedPseudoClasses) ||
+      request.forcedPseudoClasses.some((name) => name !== 'hover')
+    ) {
+      throw new Error('Invalid smoke pseudo-state request.');
+    }
+    if (!pageState.pseudoStateEnabled) {
+      await call('DOM.enable', {}, sessionId);
+      await call('CSS.enable', {}, sessionId);
+      pageState.pseudoStateEnabled = true;
+    }
+    const { root } = await call('DOM.getDocument', { depth: -1 }, sessionId);
+    const { nodeId } = await call(
+      'DOM.querySelector',
+      { nodeId: root.nodeId, selector: request.selector },
+      sessionId
+    );
+    if (!nodeId) throw new Error(`Pseudo-state target ${request.selector} was not found.`);
+    await call(
+      'CSS.forcePseudoState',
+      { nodeId, forcedPseudoClasses: request.forcedPseudoClasses },
+      sessionId
+    );
+    reply = { id: request.id, error: null };
+  } catch (error) {
+    reply = {
+      id: request?.id,
+      error: String(error?.message || error).slice(0, 500),
+    };
+  }
+  try {
+    await call(
+      'Runtime.evaluate',
+      {
+        expression: `globalThis.__iyerisSmokePseudoStateSettle(${JSON.stringify(reply)})`,
+        returnByValue: true,
+      },
+      sessionId
+    );
+  } catch (error) {
+    state.pseudoStateFailure = state.pseudoStateFailure || error;
+  }
+}
+
+async function bindSmokeTarget(call, onEvent, state, targetId, deadline) {
+  const remainingMs = () => Math.max(1, deadline - Date.now());
+  const { sessionId } = await call(
+    'Target.attachToTarget',
+    { targetId, flatten: true },
+    undefined,
+    remainingMs()
+  );
+  const callPage = (method, params = {}, pageSessionId = sessionId) =>
+    call(method, params, pageSessionId, remainingMs());
+  await callPage('Runtime.enable');
+  await callPage('Runtime.addBinding', { name: SCREENSHOT_BINDING });
+  await callPage('Runtime.addBinding', { name: VIEWPORT_BINDING });
+  await callPage('Runtime.addBinding', { name: PSEUDO_STATE_BINDING });
+
+  const pageState = { pseudoStateEnabled: false };
+  let screenshotQueue = Promise.resolve();
+  let viewportQueue = Promise.resolve();
+  let pseudoStateQueue = Promise.resolve();
+  onEvent((message) => {
+    if (message.method !== 'Runtime.bindingCalled' || message.sessionId !== sessionId) return;
+    if (message.params?.name === SCREENSHOT_BINDING) {
+      screenshotQueue = screenshotQueue
+        .then(() => serviceScreenshotRequest(callPage, sessionId, state, message.params.payload))
+        .catch((error) => {
+          state.screenshotFailure = state.screenshotFailure || error;
+        });
+      return;
+    }
+    if (message.params?.name === VIEWPORT_BINDING) {
+      viewportQueue = viewportQueue
+        .then(async () => {
+          const request = JSON.parse(message.params.payload);
+          if (
+            !Number.isInteger(request.width) ||
+            !Number.isInteger(request.height) ||
+            request.width < 320 ||
+            request.height < 240 ||
+            request.width > 4096 ||
+            request.height > 4096
+          ) {
+            throw new Error(`Invalid smoke viewport ${request.width}x${request.height}.`);
+          }
+          await callPage('Emulation.setDeviceMetricsOverride', {
+            width: request.width,
+            height: request.height,
+            deviceScaleFactor: 1,
+            mobile: false,
+            screenWidth: request.width,
+            screenHeight: request.height,
+          });
+          await callPage('Runtime.evaluate', {
+            expression: `globalThis.__iyerisSmokeViewportSettle(${JSON.stringify({ id: request.id, error: null })})`,
+            returnByValue: true,
+          });
+        })
+        .catch(async (error) => {
+          state.viewportFailure = state.viewportFailure || error;
+          try {
+            const request = JSON.parse(message.params.payload);
+            await callPage('Runtime.evaluate', {
+              expression: `globalThis.__iyerisSmokeViewportSettle(${JSON.stringify({ id: request.id, error: String(error?.message || error).slice(0, 500) })})`,
+              returnByValue: true,
+            });
+          } catch (settleError) {
+            state.viewportFailure = state.viewportFailure || settleError;
+          }
+        });
+      return;
+    }
+    if (message.params?.name === PSEUDO_STATE_BINDING) {
+      pseudoStateQueue = pseudoStateQueue
+        .then(() =>
+          servicePseudoStateRequest(callPage, sessionId, state, pageState, message.params.payload)
+        )
+        .catch((error) => {
+          state.pseudoStateFailure = state.pseudoStateFailure || error;
+        });
+    }
+  });
+
+  return {
+    sessionId,
+    callPage,
+    drain: async () => {
+      await Promise.all([screenshotQueue, viewportQueue, pseudoStateQueue]);
+    },
+  };
+}
+
+async function runSmokePage(call, onEvent, temporary, state, runnerName, deadline) {
+  const remainingMs = () => Math.max(1, deadline - Date.now());
+  let targetId = null;
+  let target = null;
+  let suites = [];
+  let failure = null;
+  try {
+    target = await call('Target.createTarget', { url: 'about:blank' }, undefined, remainingMs());
+    targetId = target.targetId;
+    const bindings = await bindSmokeTarget(call, onEvent, state, targetId, deadline);
+    await bindings.callPage('Page.navigate', {
+      url: pathToFileURL(path.join(temporary, 'page/index.html')).href,
+    });
+    const resultsName =
+      runnerName === 'runFullAppSmokeOnly' ? 'fullAppSmokeResults' : 'fileRenderSmokeResults';
+    const result = await bindings.callPage('Runtime.evaluate', {
+      expression: `new Promise((resolve) => {
+  const finish = (value) => resolve(value);
+  const start = Date.now();
+  const poll = () => {
+    if (typeof globalThis[${JSON.stringify(runnerName)}] === 'function') {
+      Promise.resolve(globalThis[${JSON.stringify(runnerName)}]()).then(
+        (output) => finish({
+          suites: Array.isArray(output) ? output : (Array.isArray(output?.suites) ? output.suites : []),
+          error: output && !Array.isArray(output) && typeof output.error === 'string' ? output.error : null,
+        }),
+        (error) => finish({
+          error: String(error?.stack || error),
+          suites: globalThis[${JSON.stringify(resultsName)}] || [],
+        })
+      );
+    } else if (Date.now() - start > 10000) {
+      finish({
+        error: 'Smoke page failed to load (a snap-confined browser cannot read pages under /tmp; use a folder in your home directory)',
+        suites: globalThis[${JSON.stringify(resultsName)}] || [],
+      });
+    } else {
+      setTimeout(poll, 20);
+    }
+  };
+  poll();
+})`,
+      awaitPromise: true,
+      returnByValue: true,
+    });
+    if (result.exceptionDetails) {
+      throw new Error(
+        result.exceptionDetails.exception?.description || JSON.stringify(result.exceptionDetails)
+      );
+    }
+    const value = result.result.value;
+    suites = Array.isArray(value?.suites) ? value.suites : [];
+    if (value?.error) failure = new Error(value.error);
+    await bindings.drain();
+  } catch (error) {
+    failure = failure || error;
+    if (Array.isArray(error?.partialSuites)) suites = error.partialSuites;
+  }
+
+  if (targetId) {
+    try {
+      await call('Target.closeTarget', { targetId }, undefined, Math.min(5000, remainingMs()));
+    } catch (error) {
+      failure = failure
+        ? new Error(`${boundedError(failure)}\nTarget cleanup: ${boundedError(error)}`)
+        : error;
+    }
+  }
+
+  if (!failure) {
+    if (state.screenshotFailure) failure = state.screenshotFailure;
+    else if (state.viewportFailure) failure = state.viewportFailure;
+    else if (state.pseudoStateFailure) failure = state.pseudoStateFailure;
+  }
+  return { targetId: targetId || target?.targetId || null, suites, error: failure };
 }
 
 async function runBrowserSuites(executable, temporary, state) {
@@ -506,71 +743,38 @@ async function runBrowserSuites(executable, temporary, state) {
   }
   state.onBrowserMetadata(browserMetadata);
 
-  const { targetId } = await call('Target.createTarget', { url: 'about:blank' });
-  const { sessionId } = await call('Target.attachToTarget', { targetId, flatten: true });
-  // Runtime events carry bindingCalled notifications. Register the binding before navigating
-  // so the smoke page can request screenshots from its first suite onward.
-  await call('Runtime.enable', {}, sessionId);
-  await call('Runtime.addBinding', { name: SCREENSHOT_BINDING }, sessionId);
-  let screenshotQueue = Promise.resolve();
-  onEvent((message) => {
-    if (message.method !== 'Runtime.bindingCalled' || message.sessionId !== sessionId) return;
-    if (message.params?.name !== SCREENSHOT_BINDING) return;
-    // Requests run one at a time, in the order the page sent them.
-    screenshotQueue = screenshotQueue
-      .then(() => serviceScreenshotRequest(call, sessionId, state, message.params.payload))
-      .catch((error) => {
-        state.screenshotFailure = state.screenshotFailure || error;
-      });
-  });
-  await call(
-    'Page.navigate',
-    { url: pathToFileURL(path.join(temporary, 'page/index.html')).href },
-    sessionId
-  );
-  const result = await call(
-    'Runtime.evaluate',
-    {
-      expression: `new Promise((resolve) => {
-  const finish = (value) => resolve(value);
-  const start = Date.now();
-  const poll = () => {
-    if (globalThis.runFileRenderSmoke) {
-      globalThis.runFileRenderSmoke().then(
-        (suites) => finish({ suites }),
-        (error) => finish({ error: String(error?.stack || error), suites: globalThis.fileRenderSmokeResults || [] })
-      );
-    } else if (Date.now() - start > 10000) {
-      finish({
-        error: 'Smoke page failed to load (a snap-confined browser cannot read pages under /tmp; use a folder in your home directory)',
-        suites: globalThis.fileRenderSmokeResults || [],
-      });
-    } else {
-      setTimeout(poll, 20);
-    }
-  };
-  poll();
-})`,
-      awaitPromise: true,
-      returnByValue: true,
-    },
-    sessionId,
-    120000
-  );
-  if (result.exceptionDetails) {
-    throw new Error(
-      result.exceptionDetails.exception?.description || JSON.stringify(result.exceptionDetails)
+  const suiteDeadline = Date.now() + 180000;
+  const failures = [];
+  // Controller suites retain global listeners, so the complete renderer gets a fresh target and
+  // JavaScript realm. Both suites still share the same bounded browser budget and artifact.
+  for (const runnerName of ['runFileRenderSmoke', 'runFullAppSmokeOnly']) {
+    const pageResult = await runSmokePage(
+      call,
+      onEvent,
+      temporary,
+      state,
+      runnerName,
+      suiteDeadline
     );
+    state.suites.push(...pageResult.suites);
+    state.suiteExecutions.push({
+      runner: runnerName,
+      targetId: pageResult.targetId,
+      suiteModes: pageResult.suites.map((suite) => suite?.mode).filter(Boolean),
+      error: pageResult.error ? boundedError(pageResult.error) : null,
+    });
+    if (pageResult.error) failures.push(`${runnerName}: ${boundedError(pageResult.error)}`);
   }
-  const value = result.result.value;
-  state.suites = Array.isArray(value?.suites) ? value.suites : [];
-  if (value?.error) {
-    const error = new Error(value.error);
+  try {
+    validateSuites(state.suites);
+  } catch (error) {
+    failures.push(boundedError(error));
+  }
+  if (failures.length > 0) {
+    const error = new Error(`Browser smoke page failures: ${failures.join('; ')}`);
     error.partialSuites = state.suites;
     throw error;
   }
-  if (state.screenshotFailure) throw state.screenshotFailure;
-  validateSuites(state.suites);
 }
 
 function cleanupBrowser(browser) {
@@ -595,7 +799,13 @@ function cleanupBrowser(browser) {
 }
 
 async function main() {
-  const state = { browserProcess: null, diagnostics: '', suites: [], screenshots: [] };
+  const state = {
+    browserProcess: null,
+    diagnostics: '',
+    suites: [],
+    suiteExecutions: [],
+    screenshots: [],
+  };
   let temporary;
   let failure;
 
@@ -635,6 +845,10 @@ async function main() {
         },
       },
     });
+    const publicDirectory = path.join(root, 'public');
+    if (fs.existsSync(publicDirectory)) {
+      fs.cpSync(publicDirectory, path.join(temporary, 'page'), { recursive: true });
+    }
     // Fail before any browser runs if the minifier dropped an unprefixed backdrop-filter.
     artifact.buildCss = auditBackdropFilterCss(
       fs.readFileSync(path.join(temporary, 'page/smoke.css'), 'utf8')
@@ -657,10 +871,12 @@ async function main() {
     await runBrowserSuites(executable, temporary, state);
     artifact.suites = state.suites;
     artifact.suiteCount = state.suites.length;
+    artifact.suiteExecutions = state.suiteExecutions;
   } catch (error) {
     if (Array.isArray(error?.partialSuites)) state.suites = error.partialSuites;
     artifact.suites = state.suites;
     artifact.suiteCount = state.suites.length;
+    artifact.suiteExecutions = state.suiteExecutions;
     failure = error;
   }
 
@@ -683,6 +899,7 @@ async function main() {
 
   artifact.diagnostics = state.diagnostics.slice(-MAX_DIAGNOSTICS_LENGTH);
   artifact.screenshots = state.screenshots;
+  artifact.suiteExecutions = state.suiteExecutions;
   artifact.completedAt = new Date().toISOString();
   artifact.status = failure ? 'failed' : 'passed';
   artifact.passed = !failure;
