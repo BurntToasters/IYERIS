@@ -2139,11 +2139,12 @@ async function runVisualUpliftSuite(results) {
     const panelRect = panelEl.getBoundingClientRect();
     const tabsRect = propertiesModal.querySelector('.properties-tabs').getBoundingClientRect();
     const footerRect = propertiesModal.querySelector('.modal-footer').getBoundingClientRect();
+    // Stop before the dialog's own file icon row so this strict uniformity check samples only the background band.
     const bandArea = {
       left: panelRect.left,
       right: panelRect.right,
       top: tabsRect.bottom + 4,
-      bottom: tabsRect.bottom + 40,
+      bottom: tabsRect.bottom + 24,
     };
     const behindBand = Array.from(grid.querySelectorAll('.file-item'))
       .map((element) => element.getBoundingClientRect())

@@ -518,8 +518,9 @@ body.platform-linux .toolbar-button:active:not(:disabled) {
   color: var(--text-primary);
 }
 
-.more-actions-menu .selection-overflow-danger {
-  color: var(--danger-color);
+.more-actions-menu
+  .selection-overflow-danger:not(:hover):not(:active):not(.focused):not(:focus-visible) {
+  color: var(--danger-color) !important;
 }
 
 .more-actions-menu .focused,

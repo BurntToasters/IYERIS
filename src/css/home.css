@@ -31,6 +31,7 @@
 .home-view.home-compact .home-drive-card {
   min-height: var(--list-item-min-height);
   padding-block: 2px;
+  gap: 1px;
 }
 
 .home-section-header {
@@ -222,9 +223,9 @@
 
 .home-drive-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) max-content minmax(72px, 120px);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 3px;
   min-width: 0;
   min-height: var(--list-item-min-height);
   padding: 4px 8px;
@@ -253,13 +254,15 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  grid-column: 1 / -1;
   min-width: 0;
-  overflow: hidden;
   font-weight: 400;
   color: inherit;
 }
 
 .home-drive-header > span:last-child {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -270,13 +273,16 @@
 }
 
 .home-drive-meta {
+  min-width: 0;
   font-size: var(--font-size-status);
   color: var(--text-secondary);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
 }
 
 .home-drive-bar {
+  min-width: 32px;
   height: 4px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--text-primary) 12%, transparent);
@@ -300,13 +306,7 @@
   }
 
   .home-drive-card {
-    grid-template-columns: minmax(0, 1fr) max-content;
-    gap: 4px 10px;
-  }
-
-  .home-drive-bar {
-    grid-column: 1 / -1;
-    margin-left: 26px;
+    gap: 2px;
   }
 }
 

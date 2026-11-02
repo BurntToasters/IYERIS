@@ -1,7 +1,6 @@
 import type { FileItem, Settings } from './types';
 import { ignoreError } from './shared.js';
 import { encodeFileUrl } from './rendererUtils.js';
-import { generatePdfThumbnailPdfJs } from './rendererPdfViewer.js';
 import { ANIMATED_IMAGE_EXTENSIONS } from './fileTypes.js';
 import { isForeground, onActivityChange } from './rendererActivityState.js';
 import {
@@ -439,7 +438,13 @@ export function createThumbnailController(deps: ThumbnailDeps) {
     });
   }
 
-  function generatePdfThumbnail(pdfUrl: string, quality: ThumbnailQuality): Promise<string> {
+  async function generatePdfThumbnail(
+    pdfUrl: string,
+    quality: ThumbnailQuality,
+    shouldContinue: () => boolean
+  ): Promise<string> {
+    const { generatePdfThumbnailPdfJs } = await import('./rendererPdfViewer.js');
+    if (!shouldContinue()) throw new Error('PDF thumbnail request was canceled');
     return generatePdfThumbnailPdfJs(pdfUrl, quality);
   }
 
@@ -589,7 +594,12 @@ export function createThumbnailController(deps: ThumbnailDeps) {
           const thumbnailGenerators: Record<string, (url: string) => Promise<string>> = {
             video: (url) => generateVideoThumbnail(url, qualityValue),
             audio: (url) => generateAudioWaveform(url, qualityValue),
-            pdf: (url) => generatePdfThumbnail(url, quality),
+            pdf: (url) =>
+              generatePdfThumbnail(
+                url,
+                quality,
+                () => isForeground() && [...inflight.waiters.values()].some(isCurrentWaiter)
+              ),
           };
           const generator = thumbnailGenerators[thumbnailType];
           if (generator) {

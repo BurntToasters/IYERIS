@@ -777,6 +777,8 @@ export function createEventListenersController(config: EventListenersConfig) {
       const emptySpaceMenu = document.getElementById('empty-space-context-menu');
       const sortMenu = document.getElementById('sort-menu');
       const menuItem = target.closest('.context-menu-item') as HTMLElement;
+      const contextSubmenu = target.closest<HTMLElement>('.context-submenu');
+      const isContextMenuSubmenu = contextSubmenu?.dataset.contextMenuOwner === contextMenu?.id;
 
       if (menuItem) {
         if (
@@ -819,7 +821,12 @@ export function createEventListenersController(config: EventListenersConfig) {
         }
       }
 
-      if (contextMenu && contextMenu.style.display === 'block' && !contextMenu.contains(target)) {
+      if (
+        contextMenu &&
+        contextMenu.style.display === 'block' &&
+        !contextMenu.contains(target) &&
+        !isContextMenuSubmenu
+      ) {
         config.hideContextMenu();
       }
       if (

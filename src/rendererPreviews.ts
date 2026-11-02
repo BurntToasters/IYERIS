@@ -8,7 +8,7 @@ import {
   openFileWithFeedback,
   twemojiImg,
 } from './rendererUtils.js';
-import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
+import type { PdfViewerHandle } from './rendererPdfViewer.js';
 import { loadHighlightJs, getLanguageForExt } from './rendererHighlight.js';
 import { createQuicklookController, type QuicklookDeps } from './rendererQuicklook.js';
 import {
@@ -767,10 +767,13 @@ export function createPreviewController(deps: PreviewDeps) {
     const info = props.success ? props.properties : null;
 
     let fileUrl = encodeFileUrl(file.path);
+    const pdfSignal = pdfAbortController?.signal;
 
     try {
+      const { createPdfViewer } = await import('./rendererPdfViewer.js');
+      if (requestId !== previewRequestId || pdfSignal?.aborted) return;
       const viewer = await createPdfViewer(fileUrl, {
-        signal: pdfAbortController?.signal,
+        signal: pdfSignal,
         maxWidth: 600,
         containerClass: 'preview-panel-pdf',
         showPageControls: true,
@@ -811,16 +814,23 @@ export function createPreviewController(deps: PreviewDeps) {
       }
       previewContent.appendChild(fragment);
     } catch {
-      if (requestId !== previewRequestId) return;
+      if (requestId !== previewRequestId || pdfSignal?.aborted) return;
       const fallbackDataUrl = await getFileDataUrlWithCache(
         file.path,
         createPreviewDataUrlRequest(file, maxSizeMB * 1024 * 1024)
       );
-      if (fallbackDataUrl && fallbackDataUrl !== fileUrl && requestId === previewRequestId) {
+      if (
+        fallbackDataUrl &&
+        fallbackDataUrl !== fileUrl &&
+        requestId === previewRequestId &&
+        !pdfSignal?.aborted
+      ) {
         try {
           fileUrl = fallbackDataUrl;
+          const { createPdfViewer } = await import('./rendererPdfViewer.js');
+          if (requestId !== previewRequestId || pdfSignal?.aborted) return;
           const viewer = await createPdfViewer(fileUrl, {
-            signal: pdfAbortController?.signal,
+            signal: pdfSignal,
             maxWidth: 600,
             containerClass: 'preview-panel-pdf',
             showPageControls: true,

@@ -57,6 +57,48 @@ const PREVIEW_FIXTURE_ID = 'readme-preview-markdown-v1';
 const PROPERTIES_FIXTURE_ID = 'item-properties-raw-schema-v1';
 const HOME_SETTINGS_SAVE_RACE_FIXTURE_ID = 'home-settings-inflight-edit-v1';
 const SEARCH_LOADING_FIXTURE_ID = 'search-loading-state-v1';
+const HOME_DRIVE_INFO_FIXTURE = [
+  {
+    name: 'Smoke Volume',
+    mountPoint: '/fixture',
+    totalSpace: 1_000_000_000,
+    availableSpace: 600_000_000,
+    fsType: 'fixture',
+    isRemovable: false,
+  },
+  {
+    name: '',
+    mountPoint: '/fixture/empty-label',
+    totalSpace: 1_000_000_000,
+    availableSpace: 250_000_000,
+    fsType: 'fixture',
+    isRemovable: false,
+  },
+  {
+    name: 'A deliberately long removable volume label for Home layout coverage',
+    mountPoint: '/fixture/long-label',
+    totalSpace: 1_000_000_000,
+    availableSpace: 125_000_000,
+    fsType: 'fixture',
+    isRemovable: true,
+  },
+  {
+    name: 'Unavailable Usage Volume',
+    mountPoint: '/fixture/no-usage',
+    totalSpace: 0,
+    availableSpace: 0,
+    fsType: 'fixture',
+    isRemovable: false,
+  },
+];
+const CONTEXT_MENU_DESTINATIONS = Array.from(
+  { length: 8 },
+  (_, index) => `${WORKSPACE_PATH}/Destination-${index + 1}`
+);
+const OPEN_WITH_APPS_FIXTURE = Array.from({ length: 18 }, (_, index) => ({
+  id: `fixture-app-${String(index + 1).padStart(2, '0')}`,
+  name: `Fixture Viewer ${String(index + 1).padStart(2, '0')}`,
+}));
 const DUAL_PANE_FIXTURE_IDS = {
   copy: 'dual-pane-copy-to-primary-v1',
   move: 'dual-pane-move-to-primary-v1',
@@ -109,6 +151,7 @@ function makeSettings() {
       glassBorder: '#ffffff',
       iconHue: '#2979d8',
     },
+    recentTransferDestinations: [...CONTEXT_MENU_DESTINATIONS],
   });
   return settings;
 }
@@ -250,6 +293,7 @@ function installNativeFixture() {
       timeout: null,
     },
     directoryLoads: [],
+    driveInfo: HOME_DRIVE_INFO_FIXTURE,
   };
 
   function invocationFixtureId(command) {
@@ -324,17 +368,8 @@ function installNativeFixture() {
       };
       return paths[directory] || '/fixture/Home';
     },
-    get_drives: () => [{ mountPoint: '/fixture' }],
-    get_drive_info: () => [
-      {
-        name: 'Smoke Volume',
-        mountPoint: '/fixture',
-        totalSpace: 1_000_000_000,
-        availableSpace: 600_000_000,
-        fsType: 'fixture',
-        isRemovable: false,
-      },
-    ],
+    get_drives: () => fixture.driveInfo.map(({ mountPoint }) => ({ mountPoint })),
+    get_drive_info: () => clone(fixture.driveInfo),
     get_directory_contents: ({ dirPath }) => {
       const path = normalizeFixturePath(dirPath);
       fixture.directoryLoads.push(path);
@@ -386,7 +421,15 @@ function installNativeFixture() {
     get_undo_redo_state: () => ({ canUndo: false, canRedo: false }),
     undo_action: () => ({ canUndo: false, canRedo: false }),
     redo_action: () => ({ canUndo: false, canRedo: false }),
-    get_disk_space: () => ({ total: 1_000_000_000, free: 600_000_000 }),
+    get_disk_space: ({ drivePath }) =>
+      drivePath === '/fixture/no-usage'
+        ? {}
+        : {
+            total: 1_000_000_000,
+            free: drivePath === '/fixture/long-label' ? 125_000_000 : 600_000_000,
+          },
+    get_open_with_apps: () => clone(OPEN_WITH_APPS_FIXTURE),
+    open_file_with_app: () => ({ success: true }),
     read_file_content: ({ filePath }) => {
       if (normalizeFixturePath(filePath) !== `${WORKSPACE_PATH}/Readme.md`) {
         throw new Error(`Preview fixture has no text content for ${String(filePath)}`);
@@ -762,6 +805,35 @@ function caseMetadata(caseId, options = {}) {
   };
 }
 
+function beginPointerRequest() {
+  let sequence = 0;
+  const waiters = new Map();
+  globalThis.__iyerisSmokePointerSettle = (result) => {
+    const waiter = waiters.get(result?.id);
+    if (!waiter) return;
+    waiters.delete(result.id);
+    clearTimeout(waiter.timeout);
+    if (result.error) waiter.reject(new Error(`Smoke pointer failed: ${result.error}`));
+    else waiter.resolve(result);
+  };
+  return (x, y, action = 'move', button = 'left') =>
+    new Promise((resolve, reject) => {
+      const id = ++sequence;
+      const timeout = setTimeout(() => {
+        waiters.delete(id);
+        reject(new Error(`Pointer ${action} at ${x},${y} did not settle.`));
+      }, 5000);
+      waiters.set(id, { resolve, reject, timeout });
+      if (typeof globalThis.iyerisSmokePointer !== 'function') {
+        clearTimeout(timeout);
+        waiters.delete(id);
+        reject(new Error('The CDP pointer binding is unavailable.'));
+        return;
+      }
+      globalThis.iyerisSmokePointer(JSON.stringify({ id, x, y, action, button }));
+    });
+}
+
 async function changeSetting(inputId, value) {
   const input = document.getElementById(inputId);
   if (!(input instanceof HTMLInputElement || input instanceof HTMLSelectElement)) {
@@ -843,6 +915,7 @@ export async function runBrowserAppSmoke(results) {
   results.push(record);
   let fixture = null;
   let requestViewport = null;
+  let requestPointer = null;
   const failures = [];
 
   const beginCase = (caseId, options = {}) => {
@@ -926,6 +999,7 @@ export async function runBrowserAppSmoke(results) {
       'The real renderer did not finish its first directory load.',
       20000
     );
+    requestPointer = beginPointerRequest();
 
     // Keep a full-window image at each approved size before any redesign assertion runs.
     for (const viewport of VIEWPORTS) {
@@ -3367,6 +3441,618 @@ export async function runBrowserAppSmoke(results) {
           `setting=${fixture.settingsStore.showUtilityDashboard}; display=${getComputedStyle(document.getElementById('utility-drawer')).display}`,
           'setting off; drawer hidden'
         );
+      }
+    );
+
+    await runCase(
+      'home-drive-cards-layout',
+      { viewport: { width: 1200, height: 800 } },
+      async (testCase) => {
+        const home = document.querySelector('#sidebar-quick-access-grid [data-action="home"]');
+        if (!home) throw new Error('Home sidebar destination is missing for drive layout.');
+        if (!isVisible(document.getElementById('home-view'))) {
+          home.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+        }
+        await waitFor(
+          () => isVisible(document.getElementById('home-section-drives')),
+          'Home Locations did not open for the drive layout check.'
+        );
+
+        const expectedDrives = [
+          { path: '/fixture', name: 'Smoke Volume', usage: 'free of' },
+          {
+            path: '/fixture/empty-label',
+            name: '/fixture/empty-label',
+            usage: 'free of',
+          },
+          {
+            path: '/fixture/long-label',
+            name: 'A deliberately long removable volume label for Home layout coverage',
+            usage: 'free of',
+          },
+          {
+            path: '/fixture/no-usage',
+            name: 'Unavailable Usage Volume',
+            usage: 'Usage unavailable',
+          },
+        ];
+
+        const checkHomeDriveCardsAt = async (viewport, variant = 'default') => {
+          await currentViewport(viewport.width, viewport.height);
+          await waitForStable(
+            () =>
+              document.querySelectorAll('#home-drives .home-drive-card').length ===
+                expectedDrives.length &&
+              Array.from(document.querySelectorAll('#home-drives .home-drive-meta')).every(
+                (meta) => !textOf(meta).includes('Loading')
+              ),
+            `Home drive cards did not finish rendering at ${viewport.width}x${viewport.height}.`
+          );
+
+          const drivesGrid = document.getElementById('home-drives');
+          const gridRect = drivesGrid.getBoundingClientRect();
+          const cards = Array.from(drivesGrid.querySelectorAll('.home-drive-card'));
+          check(
+            testCase,
+            `Home renders all fixture drives at ${viewport.width}x${viewport.height}`,
+            cards.length === expectedDrives.length,
+            cards.length,
+            expectedDrives.length
+          );
+
+          for (const expected of expectedDrives) {
+            const card = cards.find((candidate) => candidate.dataset.drivePath === expected.path);
+            const header = card?.querySelector('.home-drive-header');
+            const icon = header?.querySelector('.home-item-icon');
+            const name = header?.querySelector(':scope > span:last-child');
+            const meta = card?.querySelector('.home-drive-meta');
+            const bar = card?.querySelector('.home-drive-bar');
+            const barFill = bar?.querySelector('span');
+            if (!card || !header || !icon || !name || !meta || !bar || !barFill) {
+              throw new Error(`Home drive card is incomplete for ${expected.path}.`);
+            }
+
+            const cardRect = card.getBoundingClientRect();
+            const headerRect = header.getBoundingClientRect();
+            const iconRect = icon.getBoundingClientRect();
+            const nameRect = name.getBoundingClientRect();
+            const metaRect = meta.getBoundingClientRect();
+            const barRect = bar.getBoundingClientRect();
+            const within = (inner, outer) =>
+              inner.left >= outer.left - 1 &&
+              inner.top >= outer.top - 1 &&
+              inner.right <= outer.right + 1 &&
+              inner.bottom <= outer.bottom + 1;
+            const separated = (first, second) =>
+              first.right <= second.left + 1 ||
+              second.right <= first.left + 1 ||
+              first.bottom <= second.top + 1 ||
+              second.bottom <= first.top + 1;
+            const iconVisible =
+              iconRect.width >= 14 &&
+              iconRect.height >= 14 &&
+              getComputedStyle(icon).visibility !== 'hidden';
+            const nameReadable =
+              textOf(name) === expected.name &&
+              nameRect.width >= 32 &&
+              nameRect.height >= 12 &&
+              within(headerRect, cardRect) &&
+              within(iconRect, headerRect) &&
+              within(nameRect, headerRect) &&
+              separated(iconRect, nameRect);
+            const usageContained =
+              textOf(meta).includes(expected.usage) &&
+              within(metaRect, cardRect) &&
+              meta.scrollWidth <= meta.clientWidth + 1 &&
+              meta.scrollHeight <= meta.clientHeight + 1;
+            const barContained =
+              within(barRect, cardRect) &&
+              barRect.width >= 32 &&
+              (expected.path === '/fixture/no-usage'
+                ? barFill.style.width === '0%'
+                : Number.parseFloat(barFill.style.width) > 0);
+            const contentDoesNotOverlap = [
+              [iconRect, nameRect],
+              [iconRect, metaRect],
+              [iconRect, barRect],
+              [nameRect, metaRect],
+              [nameRect, barRect],
+              [metaRect, barRect],
+            ].every(([first, second]) => separated(first, second));
+            const layoutLabel =
+              variant === 'default'
+                ? `${viewport.width}x${viewport.height}`
+                : `${variant} at ${viewport.width}x${viewport.height}`;
+
+            check(
+              testCase,
+              `Home drive icon and name have readable bounds for ${expected.path} in ${layoutLabel}`,
+              iconVisible && nameReadable && within(iconRect, cardRect),
+              `icon=${Math.round(iconRect.width)}x${Math.round(iconRect.height)}; name=${Math.round(nameRect.width)}x${Math.round(nameRect.height)}; label=${textOf(name)}`,
+              'visible icon and non-overlapping readable name inside the card'
+            );
+            check(
+              testCase,
+              `Home drive usage stays contained for ${expected.path} in ${layoutLabel}`,
+              usageContained,
+              `${textOf(meta)}; scroll=${meta.scrollWidth}/${meta.clientWidth}; card=${Math.round(cardRect.left)}..${Math.round(cardRect.right)}`,
+              `${expected.usage} text inside the card without clipping`
+            );
+            check(
+              testCase,
+              `Home drive usage bar stays contained for ${expected.path} in ${layoutLabel}`,
+              barContained,
+              `bar=${Math.round(barRect.left)}..${Math.round(barRect.right)}; card=${Math.round(cardRect.left)}..${Math.round(cardRect.right)}; fill=${barFill.style.width}`,
+              'bar inside the card, separated from usage text, with matching fill state'
+            );
+            check(
+              testCase,
+              `Home drive card stays inside Locations for ${expected.path} in ${layoutLabel}`,
+              within(cardRect, gridRect),
+              `${Math.round(cardRect.left)},${Math.round(cardRect.top)}..${Math.round(cardRect.right)},${Math.round(cardRect.bottom)}`,
+              'card fully inside the Locations grid'
+            );
+            check(
+              testCase,
+              `Home drive icon, name, usage, and bar do not overlap for ${expected.path} in ${layoutLabel}`,
+              contentDoesNotOverlap,
+              `icon=${Math.round(iconRect.left)},${Math.round(iconRect.top)}..${Math.round(iconRect.right)},${Math.round(iconRect.bottom)}; name=${Math.round(nameRect.left)},${Math.round(nameRect.top)}..${Math.round(nameRect.right)},${Math.round(nameRect.bottom)}; usage=${Math.round(metaRect.left)},${Math.round(metaRect.top)}..${Math.round(metaRect.right)},${Math.round(metaRect.bottom)}; bar=${Math.round(barRect.left)},${Math.round(barRect.top)}..${Math.round(barRect.right)},${Math.round(barRect.bottom)}`,
+              'each card element separated horizontally or vertically'
+            );
+          }
+
+          await screenshot(
+            testCase,
+            `home-drive-cards-${variant}-${viewport.width}x${viewport.height}`
+          );
+        };
+
+        for (const viewport of VIEWPORTS) {
+          await checkHomeDriveCardsAt(viewport);
+        }
+
+        document.getElementById('home-customize-btn')?.click();
+        await waitFor(
+          () => document.getElementById('home-settings-modal')?.style.display === 'flex',
+          'Home preferences did not open for compact drive cards.'
+        );
+        const compactCards = document.getElementById('home-toggle-compact');
+        if (!(compactCards instanceof HTMLInputElement)) {
+          throw new Error('Home compact cards toggle is missing.');
+        }
+        compactCards.checked = true;
+        compactCards.dispatchEvent(new Event('change', { bubbles: true }));
+        document.getElementById('home-settings-save')?.click();
+        await waitFor(
+          () => document.getElementById('home-settings-modal')?.style.display === 'none',
+          'Home preferences did not close after enabling compact drive cards.'
+        );
+        check(
+          testCase,
+          'compact drive card preference is active',
+          fixture.homeSettingsStore.compactCards === true &&
+            document.getElementById('home-view')?.classList.contains('home-compact'),
+          `stored=${fixture.homeSettingsStore.compactCards}; class=${document.getElementById('home-view')?.classList.contains('home-compact')}`,
+          'compact cards saved and applied'
+        );
+        await checkHomeDriveCardsAt({ width: 800, height: 500 }, 'compact');
+
+        await setSettingAndSave('large-text-toggle', true);
+        await checkHomeDriveCardsAt({ width: 1200, height: 800 }, 'large-text');
+        await setSettingAndSave('large-text-toggle', false);
+
+        document.getElementById('home-customize-btn')?.click();
+        await waitFor(
+          () => document.getElementById('home-settings-modal')?.style.display === 'flex',
+          'Home preferences did not reopen to restore regular drive cards.'
+        );
+        compactCards.checked = false;
+        compactCards.dispatchEvent(new Event('change', { bubbles: true }));
+        document.getElementById('home-settings-save')?.click();
+        await waitFor(
+          () => document.getElementById('home-settings-modal')?.style.display === 'none',
+          'Home preferences did not close after restoring regular drive cards.'
+        );
+      }
+    );
+
+    let originalLiquidGlass = false;
+    let originalReduceTransparency = false;
+    let originalPerformanceMode = false;
+    await runCase(
+      'context-menu-submenus-at-edges',
+      { viewport: { width: 800, height: 500 } },
+      async (testCase) => {
+        originalLiquidGlass = Boolean(fixture.settingsStore.liquidGlassMode);
+        originalReduceTransparency = Boolean(fixture.settingsStore.reduceTransparency);
+        originalPerformanceMode = document.body.classList.contains('performance-mode');
+        await currentViewport(800, 500);
+        await navigateToDirectory(WORKSPACE_PATH);
+        const itemPath = `${WORKSPACE_PATH}/Readme.md`;
+        let row = await findStableRow(itemPath, 'The context menu fixture row is not connected.');
+        const menu = document.getElementById('context-menu');
+        const parent = document.getElementById('open-with-submenu');
+        const panel = document.getElementById('open-with-apps-panel');
+        if (!menu || !parent || !panel) {
+          throw new Error('The file context menu or Open With submenu is missing.');
+        }
+
+        const openAt = async (x, y) => {
+          row = await findStableRow(
+            itemPath,
+            'The context menu fixture row is not connected before opening a menu.'
+          );
+          row.dispatchEvent(
+            new MouseEvent('contextmenu', {
+              bubbles: true,
+              cancelable: true,
+              button: 2,
+              clientX: x,
+              clientY: y,
+            })
+          );
+          await waitForStable(
+            () => menu.style.display === 'block',
+            'The file context menu did not open.'
+          );
+        };
+        const withinViewport = (rect) =>
+          rect.left >= -1 &&
+          rect.top >= -1 &&
+          rect.right <= window.innerWidth + 1 &&
+          rect.bottom <= window.innerHeight + 1;
+
+        const menuModes = [
+          { label: 'Liquid Glass off', slug: 'standard', enabled: false },
+          { label: 'Liquid Glass on', slug: 'liquid-glass', enabled: true },
+        ];
+        testCase.liquidGlassModes = menuModes.map((mode) => mode.label);
+
+        const submenuAdjacency = (submenuRect, parentRect) => {
+          const verticalGap =
+            submenuRect.top > parentRect.bottom
+              ? submenuRect.top - parentRect.bottom
+              : parentRect.top > submenuRect.bottom
+                ? parentRect.top - submenuRect.bottom
+                : 0;
+          const horizontalOverlap =
+            submenuRect.left <= parentRect.right && submenuRect.right >= parentRect.left;
+          const viewportClampOverlap =
+            horizontalOverlap &&
+            (submenuRect.left <= 1 || submenuRect.right >= window.innerWidth - 1);
+          const sideGap = Math.min(
+            Math.abs(submenuRect.left - parentRect.right),
+            Math.abs(submenuRect.right - parentRect.left)
+          );
+          return {
+            adjacent: verticalGap <= 6 && (sideGap <= 6 || viewportClampOverlap),
+            verticalGap,
+            sideGap,
+            viewportClampOverlap,
+          };
+        };
+
+        const movePointerInSteps = async (fromX, fromY, toX, toY) => {
+          const steps = Math.max(3, Math.ceil(Math.hypot(toX - fromX, toY - fromY) / 16));
+          for (let index = 1; index <= steps; index += 1) {
+            const progress = index / steps;
+            await requestPointer(
+              fromX + (toX - fromX) * progress,
+              fromY + (toY - fromY) * progress
+            );
+          }
+          return steps;
+        };
+
+        for (const mode of menuModes) {
+          await setSettingAndSave('reduce-transparency-toggle', false);
+          await setSettingAndSave('liquid-glass-toggle', mode.enabled);
+          document.body.classList.remove('performance-mode');
+          testCase.liquidGlass = mode.enabled;
+          document.getElementById('toast-container')?.replaceChildren();
+          await doubleFrame();
+          check(
+            testCase,
+            `${mode.label}: glass mode is applied without transparency or performance overrides`,
+            document.body.classList.contains('liquid-glass') === mode.enabled &&
+              !document.body.classList.contains('reduce-transparency') &&
+              !document.body.classList.contains('performance-mode'),
+            `glass=${document.body.classList.contains('liquid-glass')}; reduced=${document.body.classList.contains('reduce-transparency')}; performance=${document.body.classList.contains('performance-mode')}`,
+            `glass=${mode.enabled}; reduced=false; performance=false`
+          );
+
+          await requestPointer(12, 12);
+          await openAt(795, 495);
+          const menuRect = menu.getBoundingClientRect();
+          check(
+            testCase,
+            `${mode.label}: context menu opened at the bottom-right stays inside the viewport`,
+            withinViewport(menuRect),
+            `${Math.round(menuRect.left)},${Math.round(menuRect.top)}..${Math.round(menuRect.right)},${Math.round(menuRect.bottom)}`,
+            'inside 0,0 to 800,500'
+          );
+          if (mode.enabled) {
+            const contextMenuBackdropFilter = getComputedStyle(menu).backdropFilter;
+            check(
+              testCase,
+              'Liquid Glass on: context menu has an active computed backdrop filter',
+              contextMenuBackdropFilter !== 'none' && contextMenuBackdropFilter !== '',
+              contextMenuBackdropFilter,
+              'a computed backdrop filter other than none'
+            );
+          }
+
+          const openWithCallsBeforePointer = fixture.calls.filter(
+            (call) => call.command === 'get_open_with_apps'
+          ).length;
+          const parentRect = parent.getBoundingClientRect();
+          await requestPointer(
+            parentRect.left + Math.min(parentRect.width / 2, 36),
+            parentRect.top + parentRect.height / 2
+          );
+          await waitFor(
+            () =>
+              panel.querySelectorAll('.context-menu-item').length ===
+                OPEN_WITH_APPS_FIXTURE.length &&
+              fixture.calls.filter((call) => call.command === 'get_open_with_apps').length >
+                openWithCallsBeforePointer,
+            'Pointer hover did not load the Open With fixture actions.',
+            4000
+          );
+          let previousPanelGeometry = '';
+          let stablePanelGeometrySamples = 0;
+          await waitForStable(
+            () => {
+              if (
+                panel.querySelectorAll('.context-menu-item').length !==
+                OPEN_WITH_APPS_FIXTURE.length
+              ) {
+                return false;
+              }
+              const rect = panel.getBoundingClientRect();
+              const geometry = [rect.left, rect.top, rect.right, rect.bottom]
+                .map((value) => Math.round(value * 10) / 10)
+                .join(',');
+              if (geometry === previousPanelGeometry) stablePanelGeometrySamples += 1;
+              else {
+                previousPanelGeometry = geometry;
+                stablePanelGeometrySamples = 0;
+              }
+              return stablePanelGeometrySamples > 0;
+            },
+            `${mode.label}: Open With submenu geometry did not settle after loading apps.`,
+            4000
+          );
+          check(
+            testCase,
+            `${mode.label}: pointer hover loads Open With actions`,
+            parent.matches(':hover') &&
+              fixture.calls.filter((call) => call.command === 'get_open_with_apps').length ===
+                openWithCallsBeforePointer + 1,
+            `hover=${parent.matches(':hover')}; app-list requests=${fixture.calls.filter((call) => call.command === 'get_open_with_apps').length - openWithCallsBeforePointer}`,
+            'parent hovered and one deterministic app-list request'
+          );
+          const panelRect = panel.getBoundingClientRect();
+          const panelStyle = getComputedStyle(panel);
+          const firstPanelItemRect = panel
+            .querySelector('.context-menu-item')
+            ?.getBoundingClientRect();
+          const panelPositionDiagnostics = `cssText=${panel.style.cssText}; position=${panelStyle.position}; left=${panelStyle.left}; top=${panelStyle.top}; owner=${panel.parentElement?.id || panel.parentElement?.tagName || 'missing'}; expanded=${parent.getAttribute('aria-expanded')}; viewport=${window.innerWidth}x${window.innerHeight}; stable-geometry=${previousPanelGeometry}; first-item=${firstPanelItemRect ? `${Math.round(firstPanelItemRect.left)},${Math.round(firstPanelItemRect.top)}..${Math.round(firstPanelItemRect.right)},${Math.round(firstPanelItemRect.bottom)}` : 'missing'}`;
+          const submenuAnchor = submenuAdjacency(panelRect, parent.getBoundingClientRect());
+          const lastApp = panel.querySelector('.context-menu-item:last-child');
+          const lastAppRect = lastApp?.getBoundingClientRect();
+          const menuHasNoHorizontalScroll =
+            menu.scrollWidth <= menu.clientWidth + 1 &&
+            panel.scrollWidth <= panel.clientWidth + 1 &&
+            document.documentElement.scrollWidth <= window.innerWidth + 1;
+          const submenuCanReachLastAction = Boolean(
+            lastApp &&
+            lastAppRect &&
+            (panel.scrollHeight <= panel.clientHeight + 1 ||
+              ['auto', 'scroll'].includes(panelStyle.overflowY))
+          );
+          check(
+            testCase,
+            `${mode.label}: pointer Open With submenu stays inside the bottom-right viewport edge`,
+            withinViewport(panelRect),
+            `${Math.round(panelRect.left)},${Math.round(panelRect.top)}..${Math.round(panelRect.right)},${Math.round(panelRect.bottom)}; overflow=${panelStyle.overflowY}; items=${panel.querySelectorAll('.context-menu-item').length}`,
+            'submenu inside 0,0 to 800,500'
+          );
+          check(
+            testCase,
+            `${mode.label}: pointer Open With submenu remains anchored to its trigger`,
+            submenuAnchor.adjacent,
+            `side-gap=${Math.round(submenuAnchor.sideGap)}; vertical-gap=${Math.round(submenuAnchor.verticalGap)}; viewport-clamp-overlap=${submenuAnchor.viewportClampOverlap}; trigger=${Math.round(parent.getBoundingClientRect().left)},${Math.round(parent.getBoundingClientRect().top)}..${Math.round(parent.getBoundingClientRect().right)},${Math.round(parent.getBoundingClientRect().bottom)}; submenu=${Math.round(panelRect.left)},${Math.round(panelRect.top)}..${Math.round(panelRect.right)},${Math.round(panelRect.bottom)}; ${panelPositionDiagnostics}`,
+            'submenu beside its trigger or overlapping it at a viewport clamp'
+          );
+          check(
+            testCase,
+            `${mode.label}: context menu layers do not introduce horizontal scrolling and keep the last action reachable`,
+            menuHasNoHorizontalScroll && submenuCanReachLastAction,
+            `menu=${menu.scrollWidth}/${menu.clientWidth}; submenu=${panel.scrollWidth}/${panel.clientWidth}; page=${document.documentElement.scrollWidth}/${window.innerWidth}; overflowY=${panelStyle.overflowY}; last=${lastAppRect ? `${Math.round(lastAppRect.top)}..${Math.round(lastAppRect.bottom)}` : 'missing'}`,
+            'no horizontal overflow and the final submenu action can be reached'
+          );
+          await screenshot(testCase, `context-menu-${mode.slug}-open-with-edge`);
+
+          const firstApp = panel.querySelector('.context-menu-item:first-child');
+          if (!firstApp) throw new Error('The first Open With fixture action is missing.');
+          const pointerActionCallsBefore = fixture.calls.filter(
+            (call) => call.command === 'open_file_with_app'
+          ).length;
+          const firstAppRect = firstApp.getBoundingClientRect();
+          const parentPointerX = parentRect.left + Math.min(parentRect.width / 2, 36);
+          const parentPointerY = parentRect.top + parentRect.height / 2;
+          const firstAppPointerX = firstAppRect.left + firstAppRect.width / 2;
+          const firstAppPointerY = firstAppRect.top + firstAppRect.height / 2;
+          const pointerSteps = await movePointerInSteps(
+            parentPointerX,
+            parentPointerY,
+            firstAppPointerX,
+            firstAppPointerY
+          );
+          const pointerCrossedIntoSubmenu =
+            getComputedStyle(panel).display !== 'none' &&
+            firstApp.matches(':hover') &&
+            panel.contains(document.elementFromPoint(firstAppPointerX, firstAppPointerY));
+          check(
+            testCase,
+            `${mode.label}: stepped pointer travel crosses into the submenu without closing it`,
+            pointerCrossedIntoSubmenu,
+            `steps=${pointerSteps}; panel-display=${getComputedStyle(panel).display}; action-hovered=${firstApp.matches(':hover')}`,
+            'submenu remains open and the destination action receives pointer hover'
+          );
+          await requestPointer(firstAppPointerX, firstAppPointerY, 'click');
+          const pointerActionReached = await waitFor(
+            () =>
+              fixture.calls.some(
+                (call) =>
+                  call.command === 'open_file_with_app' &&
+                  call.args.appId === OPEN_WITH_APPS_FIXTURE[0].id &&
+                  fixture.calls.filter((entry) => entry.command === 'open_file_with_app').length ===
+                    pointerActionCallsBefore + 1
+              ),
+            'Pointer activation did not reach the first Open With action.',
+            1200
+          ).then(
+            () => true,
+            () => false
+          );
+          check(
+            testCase,
+            `${mode.label}: pointer can activate an Open With submenu action`,
+            pointerActionReached,
+            `invocations=${fixture.calls.filter((call) => call.command === 'open_file_with_app').length - pointerActionCallsBefore}; first=${fixture.calls.find((call) => call.command === 'open_file_with_app')?.args.appId || 'none'}`,
+            'first fixture app action invoked once'
+          );
+
+          row = await findStableRow(
+            itemPath,
+            'The context menu fixture row is not connected before Escape dismissal.'
+          );
+          row.focus({ preventScroll: true });
+          await requestPointer(12, 12);
+          await openAt(12, 12);
+          const escapeHadMenuFocus = menu.contains(document.activeElement);
+          dispatchKey('Escape');
+          await waitFor(
+            () => menu.style.display === 'none',
+            `${mode.label}: Escape did not close the context menu.`
+          );
+          check(
+            testCase,
+            `${mode.label}: Escape closes the context menu and restores row focus`,
+            escapeHadMenuFocus && document.activeElement === row,
+            `menu=${menu.style.display}; active=${document.activeElement === row ? itemPath : document.activeElement?.id || document.activeElement?.textContent}`,
+            'menu closed with focus restored to the invoking file row'
+          );
+
+          await requestPointer(790, 490);
+          const openWithCallsBeforeKeyboard = fixture.calls.filter(
+            (call) => call.command === 'get_open_with_apps'
+          ).length;
+          await openAt(12, 12);
+          for (let index = 0; index < 48 && document.activeElement !== parent; index += 1) {
+            dispatchKey('ArrowDown');
+          }
+          check(
+            testCase,
+            `${mode.label}: keyboard navigation reaches the Open With submenu parent`,
+            document.activeElement === parent,
+            document.activeElement?.id || document.activeElement?.textContent,
+            'open-with-submenu has keyboard focus'
+          );
+          dispatchKey('ArrowRight');
+          await waitFor(
+            () =>
+              panel.querySelectorAll('.context-menu-item').length ===
+                OPEN_WITH_APPS_FIXTURE.length &&
+              fixture.calls.filter((call) => call.command === 'get_open_with_apps').length >
+                openWithCallsBeforeKeyboard,
+            'Keyboard activation did not load Open With fixture actions.',
+            4000
+          );
+          dispatchKey('ArrowLeft');
+          await waitFor(
+            () => getComputedStyle(panel).display === 'none',
+            `${mode.label}: ArrowLeft did not close the Open With submenu.`,
+            1200
+          );
+          check(
+            testCase,
+            `${mode.label}: ArrowLeft closes the submenu and restores trigger focus`,
+            getComputedStyle(panel).display === 'none' && document.activeElement === parent,
+            `panel=${getComputedStyle(panel).display}; active=${document.activeElement?.id || document.activeElement?.textContent}`,
+            'submenu closed and open-with-submenu has focus'
+          );
+          dispatchKey('ArrowRight');
+          await waitFor(
+            () =>
+              getComputedStyle(panel).display !== 'none' &&
+              panel.querySelectorAll('.context-menu-item').length === OPEN_WITH_APPS_FIXTURE.length,
+            `${mode.label}: ArrowRight did not reopen the populated Open With submenu.`,
+            1200
+          ).catch((error) => {
+            throw new Error(
+              `${error?.message || error}; expanded=${parent.getAttribute('aria-expanded')}; focus=${document.activeElement?.id || document.activeElement?.textContent}; panel=${panel.style.cssText}; computed=${getComputedStyle(panel).display}/${getComputedStyle(panel).left}/${getComputedStyle(panel).top}; owner=${panel.parentElement?.id || panel.parentElement?.tagName || 'missing'}; items=${panel.querySelectorAll('.context-menu-item').length}; requests=${fixture.calls.filter((call) => call.command === 'get_open_with_apps').length}`
+            );
+          });
+          for (let index = 1; index < OPEN_WITH_APPS_FIXTURE.length; index += 1) {
+            dispatchKey('ArrowDown');
+          }
+          const keyboardLastApp = panel.querySelector('.context-menu-item:last-child');
+          const keyboardLastRect = keyboardLastApp?.getBoundingClientRect();
+          const keyboardLastReachable = Boolean(
+            keyboardLastApp &&
+            document.activeElement === keyboardLastApp &&
+            keyboardLastApp.classList.contains('focused') &&
+            keyboardLastRect &&
+            withinViewport(keyboardLastRect)
+          );
+          check(
+            testCase,
+            `${mode.label}: keyboard can reach the final Open With action at the top-left menu edge`,
+            keyboardLastReachable,
+            `${keyboardLastApp?.textContent}; rect=${keyboardLastRect ? `${Math.round(keyboardLastRect.left)},${Math.round(keyboardLastRect.top)}..${Math.round(keyboardLastRect.right)},${Math.round(keyboardLastRect.bottom)}` : 'missing'}; active=${document.activeElement?.textContent}`,
+            'final action focused and visible inside the viewport'
+          );
+          const keyboardActionCallsBefore = fixture.calls.filter(
+            (call) => call.command === 'open_file_with_app'
+          ).length;
+          dispatchKey('Enter');
+          const keyboardActionReached = await waitFor(
+            () =>
+              fixture.calls.some(
+                (call) =>
+                  call.command === 'open_file_with_app' &&
+                  call.args.appId === OPEN_WITH_APPS_FIXTURE.at(-1).id &&
+                  fixture.calls.filter((entry) => entry.command === 'open_file_with_app').length ===
+                    keyboardActionCallsBefore + 1
+              ),
+            'Keyboard activation did not invoke the final Open With action.',
+            1200
+          ).then(
+            () => true,
+            () => false
+          );
+          check(
+            testCase,
+            `${mode.label}: keyboard activation invokes the selected Open With action`,
+            keyboardActionReached,
+            `invocations=${fixture.calls.filter((call) => call.command === 'open_file_with_app').length - keyboardActionCallsBefore}; last=${fixture.calls.find((call) => call.command === 'open_file_with_app' && call.args.appId === OPEN_WITH_APPS_FIXTURE.at(-1).id)?.args.appId || 'none'}`,
+            'final fixture app action invoked once'
+          );
+        }
+      },
+      async () => {
+        if (fixture.settingsStore.reduceTransparency !== originalReduceTransparency) {
+          await setSettingAndSave('reduce-transparency-toggle', originalReduceTransparency);
+        }
+        if (fixture.settingsStore.liquidGlassMode !== originalLiquidGlass) {
+          await setSettingAndSave('liquid-glass-toggle', originalLiquidGlass);
+        }
+        document.body.classList.toggle('performance-mode', originalPerformanceMode);
+        const menu = document.getElementById('context-menu');
+        if (menu?.style.display === 'block') dispatchKey('Escape');
       }
     );
 

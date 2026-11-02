@@ -31,6 +31,7 @@ const MAX_DIAGNOSTICS_LENGTH = 8000;
 const SCREENSHOT_BINDING = 'iyerisSmokeScreenshot';
 const VIEWPORT_BINDING = 'iyerisSmokeViewport';
 const PSEUDO_STATE_BINDING = 'iyerisSmokePseudoState';
+const POINTER_BINDING = 'iyerisSmokePointer';
 const SCREENSHOT_NAME_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const SCREENSHOT_FILE_RE = /^browser-smoke-[a-z0-9-]+\.png$/;
 const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
@@ -57,6 +58,7 @@ const artifact = {
   suites: [],
   suiteExecutions: [],
   screenshots: [],
+  runtimeExceptions: [],
   buildCss: null,
   diagnostics: '',
   error: null,
@@ -543,6 +545,46 @@ async function servicePseudoStateRequest(call, sessionId, state, pageState, payl
   }
 }
 
+async function servicePointerRequest(callPage, payload) {
+  let request;
+  let reply;
+  try {
+    request = JSON.parse(payload);
+    if (
+      !Number.isInteger(request.id) ||
+      !Number.isFinite(request.x) ||
+      !Number.isFinite(request.y) ||
+      !['move', 'click'].includes(request.action) ||
+      !['left', 'middle', 'right'].includes(request.button)
+    ) {
+      throw new Error('Invalid smoke pointer request.');
+    }
+    await callPage('Input.dispatchMouseEvent', {
+      type: 'mouseMoved',
+      x: request.x,
+      y: request.y,
+    });
+    if (request.action === 'click') {
+      for (const type of ['mousePressed', 'mouseReleased']) {
+        await callPage('Input.dispatchMouseEvent', {
+          type,
+          x: request.x,
+          y: request.y,
+          button: request.button,
+          clickCount: 1,
+        });
+      }
+    }
+    reply = { id: request.id, error: null };
+  } catch (error) {
+    reply = { id: request?.id, error: String(error?.message || error).slice(0, 500) };
+  }
+  await callPage('Runtime.evaluate', {
+    expression: `globalThis.__iyerisSmokePointerSettle(${JSON.stringify(reply)})`,
+    returnByValue: true,
+  });
+}
+
 async function bindSmokeTarget(call, onEvent, state, targetId, deadline) {
   const remainingMs = () => Math.max(1, deadline - Date.now());
   const { sessionId } = await call(
@@ -557,12 +599,33 @@ async function bindSmokeTarget(call, onEvent, state, targetId, deadline) {
   await callPage('Runtime.addBinding', { name: SCREENSHOT_BINDING });
   await callPage('Runtime.addBinding', { name: VIEWPORT_BINDING });
   await callPage('Runtime.addBinding', { name: PSEUDO_STATE_BINDING });
+  await callPage('Runtime.addBinding', { name: POINTER_BINDING });
 
   const pageState = { pseudoStateEnabled: false };
   let screenshotQueue = Promise.resolve();
   let viewportQueue = Promise.resolve();
   let pseudoStateQueue = Promise.resolve();
+  let pointerQueue = Promise.resolve();
   onEvent((message) => {
+    if (message.method === 'Runtime.exceptionThrown' && message.sessionId === sessionId) {
+      const details = message.params?.exceptionDetails || {};
+      const exception = details.exception;
+      state.runtimeExceptions.push({
+        targetId,
+        text: details.text || '',
+        exception: exception?.description || exception?.value || null,
+        url: details.url || null,
+        lineNumber: details.lineNumber ?? null,
+        columnNumber: details.columnNumber ?? null,
+        stackTrace: (details.stackTrace?.callFrames || []).slice(0, 12).map((frame) => ({
+          functionName: frame.functionName || '',
+          url: frame.url || '',
+          lineNumber: frame.lineNumber ?? null,
+          columnNumber: frame.columnNumber ?? null,
+        })),
+      });
+      return;
+    }
     if (message.method !== 'Runtime.bindingCalled' || message.sessionId !== sessionId) return;
     if (message.params?.name === SCREENSHOT_BINDING) {
       screenshotQueue = screenshotQueue
@@ -621,6 +684,14 @@ async function bindSmokeTarget(call, onEvent, state, targetId, deadline) {
         .catch((error) => {
           state.pseudoStateFailure = state.pseudoStateFailure || error;
         });
+      return;
+    }
+    if (message.params?.name === POINTER_BINDING) {
+      pointerQueue = pointerQueue
+        .then(() => servicePointerRequest(callPage, message.params.payload))
+        .catch((error) => {
+          state.pointerFailure = state.pointerFailure || error;
+        });
     }
   });
 
@@ -628,7 +699,7 @@ async function bindSmokeTarget(call, onEvent, state, targetId, deadline) {
     sessionId,
     callPage,
     drain: async () => {
-      await Promise.all([screenshotQueue, viewportQueue, pseudoStateQueue]);
+      await Promise.all([screenshotQueue, viewportQueue, pseudoStateQueue, pointerQueue]);
     },
   };
 }
@@ -706,6 +777,7 @@ async function runSmokePage(call, onEvent, temporary, state, runnerName, deadlin
     if (state.screenshotFailure) failure = state.screenshotFailure;
     else if (state.viewportFailure) failure = state.viewportFailure;
     else if (state.pseudoStateFailure) failure = state.pseudoStateFailure;
+    else if (state.pointerFailure) failure = state.pointerFailure;
   }
   return { targetId: targetId || target?.targetId || null, suites, error: failure };
 }
@@ -805,6 +877,7 @@ async function main() {
     suites: [],
     suiteExecutions: [],
     screenshots: [],
+    runtimeExceptions: [],
   };
   let temporary;
   let failure;
@@ -900,6 +973,7 @@ async function main() {
   artifact.diagnostics = state.diagnostics.slice(-MAX_DIAGNOSTICS_LENGTH);
   artifact.screenshots = state.screenshots;
   artifact.suiteExecutions = state.suiteExecutions;
+  artifact.runtimeExceptions = state.runtimeExceptions;
   artifact.completedAt = new Date().toISOString();
   artifact.status = failure ? 'failed' : 'passed';
   artifact.passed = !failure;

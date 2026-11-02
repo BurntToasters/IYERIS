@@ -192,7 +192,8 @@
     --liquid-glass-toolbar-bg: rgba(22, 27, 34, 0.88);
   }
 
-  body.liquid-glass .glass-panel:not(.sidebar):not(.toolbar):not(.status-bar):not(.modal) {
+  body.liquid-glass
+    .glass-panel:not(.sidebar):not(.toolbar):not(.status-bar):not(.modal):not(.sort-menu) {
     background: var(--liquid-glass-panel-bg);
     -webkit-backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));
     backdrop-filter: blur(var(--liquid-glass-blur)) saturate(var(--liquid-glass-saturation));

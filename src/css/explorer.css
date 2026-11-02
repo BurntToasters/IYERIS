@@ -209,11 +209,17 @@ select:focus-visible {
 
 .context-submenu {
   display: none;
-  position: absolute;
-  left: calc(100% - 2px);
-  top: -4px;
+  position: fixed;
+  left: 0;
+  top: 0;
   padding: 4px;
   min-width: 150px;
+  max-width: calc(100vw - 20px);
+  max-height: calc(100vh - 20px);
+  width: max-content;
+  overflow-y: auto;
+  overflow-x: auto;
+  overscroll-behavior: contain;
   background: var(--dropdown-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--radius-small);
@@ -222,8 +228,7 @@ select:focus-visible {
 }
 
 .context-submenu.flip-left {
-  left: auto;
-  right: calc(100% - 2px);
+  left: 0;
 }
 
 .folder-icon-body {
