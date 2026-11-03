@@ -51,6 +51,7 @@ export function createSettingsUiController(deps: SettingsUiDeps) {
     'git-include-untracked-toggle': 'gitIncludeUntracked',
     'show-file-hover-card-toggle': 'showFileHoverCard',
     'show-file-checkboxes-toggle': 'showFileCheckboxes',
+    'show-utility-dashboard-toggle': 'showUtilityDashboard',
     'sort-by-select': 'sortBy',
     'sort-order-select': 'sortOrder',
     'enable-search-history-toggle': 'enableSearchHistory',

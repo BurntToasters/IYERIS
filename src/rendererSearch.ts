@@ -3,6 +3,7 @@ import { escapeHtml, ignoreError } from './shared.js';
 import { clearHtml, getById } from './rendererDom.js';
 import { twemojiImg } from './rendererUtils.js';
 import { isHomeViewPath } from './home.js';
+import { t } from './i18n.js';
 
 type SearchDeps = {
   getCurrentPath: () => string;
@@ -47,6 +48,9 @@ export function createSearchController(deps: SearchDeps) {
   let isGlobalSearch = false;
   let searchInContents = false;
   let isRegexMode = false;
+  let searchState: 'idle' | 'searching' | 'results' | 'empty' | 'partial' | 'error' = 'idle';
+  let searchResultCount = 0;
+  let searchErrorMessage = '';
 
   let searchBtn: HTMLButtonElement | null = null;
   let searchInput: HTMLInputElement | null = null;
@@ -127,17 +131,35 @@ export function createSearchController(deps: SearchDeps) {
     );
   }
 
+  function getActiveFilterCount(): number {
+    let count = 0;
+    if (currentSearchFilters.fileType) count++;
+    if (currentSearchFilters.minSize !== undefined) count++;
+    if (currentSearchFilters.maxSize !== undefined) count++;
+    if (currentSearchFilters.dateFrom) count++;
+    if (currentSearchFilters.dateTo) count++;
+    if (isRegexMode) count++;
+    if (searchInContents) count++;
+    return count;
+  }
+
   function applySearchScopeUi(global: boolean) {
     if (!searchScopeToggle) return;
+    const label = global ? t('search.scope.global') : t('search.scope.local');
+    const accessibleLabel = global ? t('search.scope.globalLabel') : t('search.scope.localLabel');
     searchScopeToggle.classList.toggle('global', global);
-    searchScopeToggle.title = global
-      ? 'Global Search (All Indexed Files)'
-      : 'Local Search (Current Folder)';
+    searchScopeToggle.title = accessibleLabel;
+    searchScopeToggle.setAttribute('aria-label', accessibleLabel);
     searchScopeToggle.innerHTML = twemojiImg(
       global ? 'globe' : 'folder',
       'twemoji',
       global ? '🌍' : '📁'
     );
+    searchScopeToggle.firstElementChild?.setAttribute('aria-hidden', 'true');
+    const scopeLabel = document.createElement('span');
+    scopeLabel.className = 'search-scope-text';
+    scopeLabel.textContent = label;
+    searchScopeToggle.appendChild(scopeLabel);
   }
 
   const ensureElements = () => {
@@ -201,7 +223,12 @@ export function createSearchController(deps: SearchDeps) {
       searchBarWrapper.style.display = 'block';
       searchInput.focus();
       isSearchMode = true;
+      searchState = 'idle';
+      applySearchScopeUi(isGlobalSearch);
+      updateContentSearchToggle();
       syncSaveBtnState();
+      updateFilterBadge();
+      deps.updateStatusBar();
       if (isHomeViewPath(deps.getCurrentPath()) && !isGlobalSearch) {
         toggleSearchScope();
       }
@@ -229,11 +256,22 @@ export function createSearchController(deps: SearchDeps) {
     isGlobalSearch = false;
     isRegexMode = false;
     searchInContents = false;
+    searchState = 'idle';
+    searchResultCount = 0;
+    searchErrorMessage = '';
     if (searchRegexToggle) {
       searchRegexToggle.classList.remove('active');
       searchRegexToggle.setAttribute('aria-pressed', 'false');
     }
-    searchScopeToggle.classList.remove('global');
+    if (searchInContentsToggle) searchInContentsToggle.checked = false;
+    if (searchFilterType) searchFilterType.value = 'all';
+    if (searchFilterMinSize) searchFilterMinSize.value = '';
+    if (searchFilterMaxSize) searchFilterMaxSize.value = '';
+    if (searchFilterSizeUnitMin) searchFilterSizeUnitMin.value = '1024';
+    if (searchFilterSizeUnitMax) searchFilterSizeUnitMax.value = '1048576';
+    if (searchFilterDateFrom) searchFilterDateFrom.value = '';
+    if (searchFilterDateTo) searchFilterDateTo.value = '';
+    applySearchScopeUi(false);
     syncSearchScopeAria();
     hideSearchHistoryDropdown();
     updateSearchPlaceholder();
@@ -244,6 +282,7 @@ export function createSearchController(deps: SearchDeps) {
     currentSearchFilters = {};
     updateFilterBadge();
     syncSaveBtnState();
+    deps.updateStatusBar();
 
     const currentPath = deps.getCurrentPath();
     if (shouldRestoreCurrentPath && currentPath) {
@@ -256,20 +295,24 @@ export function createSearchController(deps: SearchDeps) {
 
   function updateFilterBadge() {
     const badge = getById('filter-badge');
-    if (!badge) return;
+    const count = getActiveFilterCount();
 
-    let count = 0;
-    if (currentSearchFilters.fileType) count++;
-    if (currentSearchFilters.minSize !== undefined) count++;
-    if (currentSearchFilters.maxSize !== undefined) count++;
-    if (currentSearchFilters.dateFrom) count++;
-    if (currentSearchFilters.dateTo) count++;
-
-    if (count > 0) {
+    if (badge && count > 0) {
       badge.textContent = String(count);
       badge.style.display = 'flex';
-    } else {
+    } else if (badge) {
       badge.style.display = 'none';
+    }
+
+    if (searchFilterToggle) {
+      const isExpanded = searchFiltersPanel?.style.display === 'block';
+      searchFilterToggle.classList.toggle('active', isExpanded || count > 0);
+      const label = t('search.filters.label');
+      searchFilterToggle.setAttribute(
+        'aria-label',
+        count > 0 ? t('search.filters.active', { count }) : label
+      );
+      searchFilterToggle.title = count > 0 ? t('search.filters.active', { count }) : label;
     }
   }
 
@@ -296,6 +339,8 @@ export function createSearchController(deps: SearchDeps) {
 
     if (searchInput?.value.trim()) {
       performSearch();
+    } else {
+      deps.updateStatusBar();
     }
   }
 
@@ -316,6 +361,7 @@ export function createSearchController(deps: SearchDeps) {
       searchInContentsToggle.parentElement?.classList.remove('disabled');
       searchInContentsToggle.title = '';
     }
+    updateFilterBadge();
   }
 
   function updateSearchPlaceholder() {
@@ -334,6 +380,7 @@ export function createSearchController(deps: SearchDeps) {
     let operationIdForCleanup: string | null = null;
     let currentRequestId = 0;
     let matchedResultCount: number | null = null;
+    let searchFailed = false;
     try {
       ensureElements();
       if (!searchInput) return;
@@ -347,7 +394,11 @@ export function createSearchController(deps: SearchDeps) {
 
       const localSearchPath = getLocalSearchPath();
       if (!isGlobalSearch && isHomeViewPath(localSearchPath)) {
-        deps.showToast('Open a folder or use global search', 'Search', 'info');
+        const message = 'Open a folder or use global search';
+        searchState = 'error';
+        searchErrorMessage = message;
+        deps.showToast(message, 'Search', 'info');
+        deps.updateStatusBar();
         return;
       }
 
@@ -364,17 +415,25 @@ export function createSearchController(deps: SearchDeps) {
       if (isRegexMode) {
         currentSearchFilters.regex = true;
         if (query.length > 1000) {
-          deps.showToast('Regex pattern too long (max 1000 characters)', 'Search', 'warning');
+          const message = 'Regex pattern too long (max 1000 characters)';
+          searchState = 'error';
+          searchErrorMessage = message;
+          deps.showToast(message, 'Search', 'warning');
           searchInput?.classList.add('input-error');
           activeSearchOperationId = null;
+          deps.updateStatusBar();
           return;
         }
         try {
           new RegExp(query);
         } catch {
-          deps.showToast('Invalid regular expression pattern', 'Search', 'warning');
+          const message = 'Invalid regular expression pattern';
+          searchState = 'error';
+          searchErrorMessage = message;
+          deps.showToast(message, 'Search', 'warning');
           searchInput?.classList.add('input-error');
           activeSearchOperationId = null;
+          deps.updateStatusBar();
           return;
         }
         searchInput?.classList.remove('input-error');
@@ -385,6 +444,9 @@ export function createSearchController(deps: SearchDeps) {
 
       addToSearchHistory(query);
 
+      searchState = 'searching';
+      searchErrorMessage = '';
+      deps.updateStatusBar();
       deps.showLoading('Searching...');
       loadingShown = true;
 
@@ -414,6 +476,8 @@ export function createSearchController(deps: SearchDeps) {
 
           if (!result.success) {
             if (result.error !== 'Calculation cancelled') {
+              searchFailed = true;
+              searchErrorMessage = result.error || 'Search failed';
               if (result.error === 'Indexer is disabled') {
                 deps.showToast(
                   'File indexer is disabled. Enable it in settings to use global search.',
@@ -451,6 +515,8 @@ export function createSearchController(deps: SearchDeps) {
 
           if (!result.success) {
             if (result.error !== 'Calculation cancelled') {
+              searchFailed = true;
+              searchErrorMessage = result.error || 'Search failed';
               if (result.error === 'Indexer is disabled') {
                 deps.showToast(
                   'File indexer is disabled. Enable it in settings to use global search.',
@@ -509,6 +575,8 @@ export function createSearchController(deps: SearchDeps) {
 
         if (!result.success) {
           if (result.error !== 'Calculation cancelled') {
+            searchFailed = true;
+            searchErrorMessage = result.error || 'Search failed';
             deps.showToast(result.error || 'Search failed', 'Search Error', 'error');
           }
         } else {
@@ -521,21 +589,35 @@ export function createSearchController(deps: SearchDeps) {
       }
 
       if (currentRequestId !== searchRequestId) return;
-      deps.updateStatusBar();
       activeSearchOperationId = null;
 
       // Announce the matched result count, not the mounted DOM rows: batched and
       // virtualized renders mount fewer rows than the backend actually returned.
       const resultCount =
         matchedResultCount ?? (deps.getFileGrid()?.querySelectorAll('.file-item') ?? []).length;
+      searchResultCount = resultCount;
+      if (searchFailed) {
+        searchState = 'error';
+      } else {
+        const resultCap = searchInContents ? SEARCH_CONTENT_RESULTS_CAP : SEARCH_NAME_RESULTS_CAP;
+        searchState =
+          resultCount === 0 ? 'empty' : resultCount >= resultCap ? 'partial' : 'results';
+      }
+      deps.updateStatusBar();
       deps.announceToScreenReader?.(
         resultCount === 0
           ? 'No results found'
           : `${resultCount} result${resultCount !== 1 ? 's' : ''} found`
       );
-    } catch {
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
       deps.showToast('Search failed unexpectedly', 'Search Error', 'error');
       activeSearchOperationId = null;
+      if (!currentRequestId || currentRequestId === searchRequestId) {
+        searchState = 'error';
+        searchErrorMessage = message || 'Search failed unexpectedly';
+        deps.updateStatusBar();
+      }
     } finally {
       if (loadingShown && currentRequestId === searchRequestId) {
         deps.hideLoading();
@@ -820,6 +902,7 @@ export function createSearchController(deps: SearchDeps) {
     isGlobalSearch = saved.isGlobal;
     applySearchScopeUi(isGlobalSearch);
     syncSearchScopeAria();
+    updateContentSearchToggle();
     updateSearchPlaceholder();
 
     isRegexMode = saved.isRegex;
@@ -833,7 +916,11 @@ export function createSearchController(deps: SearchDeps) {
     } else {
       currentSearchFilters = {};
     }
+    searchState = 'idle';
+    searchResultCount = 0;
+    searchErrorMessage = '';
     updateFilterBadge();
+    deps.updateStatusBar();
 
     searchInput.value = saved.query;
     syncSaveBtnState();
@@ -866,14 +953,27 @@ export function createSearchController(deps: SearchDeps) {
 
     isGlobalSearch = isGlobal;
     applySearchScopeUi(isGlobalSearch);
+    updateContentSearchToggle();
+    updateFilterBadge();
     updateSearchPlaceholder();
+    deps.updateStatusBar();
     searchInput.focus();
   }
 
   function initListeners(): void {
     ensureElements();
+    const advancedControls = getById('search-advanced-controls');
+    const saveActionSlot = getById('search-save-action-slot');
+    if (advancedControls && searchRegexToggle && !advancedControls.contains(searchRegexToggle)) {
+      advancedControls.appendChild(searchRegexToggle);
+    }
+    if (saveActionSlot && searchSaveBtn && !saveActionSlot.contains(searchSaveBtn)) {
+      saveActionSlot.appendChild(searchSaveBtn);
+    }
     syncSearchScopeAria();
     syncSearchFilterAria();
+    applySearchScopeUi(isGlobalSearch);
+    updateFilterBadge();
     searchInput?.setAttribute('role', 'combobox');
     searchInput?.setAttribute('aria-autocomplete', 'list');
     searchInput?.setAttribute('aria-haspopup', 'listbox');
@@ -898,10 +998,15 @@ export function createSearchController(deps: SearchDeps) {
 
     searchRegexToggle?.addEventListener('click', () => {
       isRegexMode = !isRegexMode;
+      if (isRegexMode) currentSearchFilters.regex = true;
+      else delete currentSearchFilters.regex;
       searchRegexToggle?.classList.toggle('active', isRegexMode);
       searchRegexToggle?.setAttribute('aria-pressed', String(isRegexMode));
+      updateFilterBadge();
       if (isSearchMode && searchInput?.value) {
         debouncedSearch();
+      } else {
+        deps.updateStatusBar();
       }
     });
 
@@ -909,12 +1014,11 @@ export function createSearchController(deps: SearchDeps) {
       if (!searchFiltersPanel || !searchFilterToggle) return;
       if (searchFiltersPanel.style.display === 'none' || !searchFiltersPanel.style.display) {
         searchFiltersPanel.style.display = 'block';
-        searchFilterToggle.classList.add('active');
       } else {
         searchFiltersPanel.style.display = 'none';
-        searchFilterToggle.classList.remove('active');
       }
       syncSearchFilterAria();
+      updateFilterBadge();
     });
 
     searchFilterApply?.addEventListener('click', () => {
@@ -968,16 +1072,17 @@ export function createSearchController(deps: SearchDeps) {
         dateTo,
       };
 
-      if (hasActiveFilters()) {
-        searchFilterToggle.classList.add('active');
-      }
-      updateFilterBadge();
-
       searchFiltersPanel.style.display = 'none';
       syncSearchFilterAria();
+      updateFilterBadge();
 
       if (searchInput?.value.trim()) {
         performSearch();
+      } else {
+        searchState = 'idle';
+        searchResultCount = 0;
+        searchErrorMessage = '';
+        deps.updateStatusBar();
       }
     });
 
@@ -1002,21 +1107,36 @@ export function createSearchController(deps: SearchDeps) {
       searchFilterSizeUnitMax.value = '1048576';
       searchFilterDateFrom.value = '';
       searchFilterDateTo.value = '';
+      isRegexMode = false;
+      if (searchRegexToggle) {
+        searchRegexToggle.classList.remove('active');
+        searchRegexToggle.setAttribute('aria-pressed', 'false');
+      }
+      searchInContents = false;
+      if (searchInContentsToggle) searchInContentsToggle.checked = false;
       currentSearchFilters = {};
-      searchFilterToggle.classList.remove('active');
+      searchFiltersPanel!.style.display = 'none';
       updateFilterBadge();
       syncSearchFilterAria();
 
       if (searchInput?.value.trim()) {
         performSearch();
+      } else {
+        searchState = 'idle';
+        searchResultCount = 0;
+        searchErrorMessage = '';
+        deps.updateStatusBar();
       }
     });
 
     searchInContentsToggle?.addEventListener('change', () => {
       if (!searchInContentsToggle) return;
       searchInContents = searchInContentsToggle.checked;
+      updateFilterBadge();
       if (searchInput?.value.trim()) {
         performSearch();
+      } else {
+        deps.updateStatusBar();
       }
     });
 
@@ -1070,21 +1190,35 @@ export function createSearchController(deps: SearchDeps) {
     ensureElements();
     if (!isSearchMode) return { active: false, text: '' };
     const query = searchInput?.value || '';
-    let searchText = isGlobalSearch ? 'Global' : 'Search';
-    if (!isGlobalSearch) {
-      const scopeLabel = deps.getSearchScopeLabel?.();
-      if (scopeLabel && scopeLabel !== 'files') {
-        searchText += ` (${scopeLabel})`;
-      }
-    }
+    const localScope = deps.getSearchScopeLabel?.();
+    let searchText = isGlobalSearch
+      ? t('search.scope.global')
+      : `${t('search.scope.local')}${localScope && localScope !== 'files' ? ` · ${localScope}` : ''}`;
 
     if (query) {
       const truncated = query.length > 20 ? query.slice(0, 20) + '...' : query;
       searchText += `: "${truncated}"`;
     }
 
-    if (hasActiveFilters()) {
-      searchText += ' (filtered)';
+    const activeOptions: string[] = [];
+    if (hasActiveFilters()) activeOptions.push(t('search.status.filtered'));
+    if (isRegexMode) activeOptions.push(t('search.status.regex'));
+    if (searchInContents) activeOptions.push(t('search.status.contents'));
+    if (activeOptions.length > 0) {
+      searchText += ` · ${activeOptions.join(', ')}`;
+    }
+
+    if (searchState === 'searching') {
+      searchText += ` · ${t('search.status.searching')}`;
+    } else if (searchState === 'empty') {
+      searchText += ` · ${t('search.status.empty')}`;
+    } else if (searchState === 'error') {
+      const detail = searchErrorMessage.trim().slice(0, 48);
+      searchText += ` · ${detail ? t('search.status.errorDetail', { message: detail }) : t('search.status.error')}`;
+    } else if (searchState === 'partial') {
+      searchText += ` · ${t('search.status.partial', { count: searchResultCount })}`;
+    } else if (searchState === 'results') {
+      searchText += ` · ${t('search.status.results', { count: searchResultCount })}`;
     }
 
     return { active: true, text: searchText };

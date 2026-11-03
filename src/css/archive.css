@@ -7,7 +7,7 @@
 }
 
 .archive-list {
-  max-height: 400px;
+  max-height: min(400px, 55vh);
   overflow-y: auto;
 }
 
@@ -15,7 +15,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 8px;
+  padding: 5px 8px;
   border-radius: var(--radius-small);
   font-size: 12px;
   transition: background 0.15s ease;
@@ -53,48 +53,46 @@
 
 .archive-operations-panel {
   position: fixed;
-  bottom: 20px;
-  right: 20px;
-  width: 350px;
-  max-height: 400px;
-  background: var(--chrome-surface-raised);
-  backdrop-filter: blur(20px) saturate(150%);
+  bottom: 16px;
+  right: 16px;
+  width: min(350px, calc(100vw - 32px));
+  max-height: min(400px, calc(100dvh - 32px));
+  background: var(--dropdown-bg);
   -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
   border: 1px solid var(--native-divider);
   border-radius: var(--radius-medium);
-  box-shadow: var(--native-elevation-2);
+  box-shadow: var(--native-elevation-1);
   z-index: var(--z-modal);
   overflow: hidden;
-  animation: slideInFromRight 0.3s cubic-bezier(0.33, 1, 0.68, 1);
+  animation: archivePanelFadeIn var(--animation-duration) var(--animation-easing);
 }
 
-@keyframes slideInFromRight {
+@keyframes archivePanelFadeIn {
   from {
     opacity: 0;
-    transform: translateX(20px);
   }
   to {
     opacity: 1;
-    transform: translateX(0);
   }
 }
 
 .archive-operations-header {
-  padding: 14px 16px;
+  padding: 10px 12px;
   border-bottom: 1px solid var(--native-divider);
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 550;
   color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 8px;
-  background: color-mix(in srgb, var(--chrome-surface) 88%, transparent);
+  background: var(--surface-1);
 }
 
 .archive-operations-list {
-  max-height: 340px;
+  max-height: min(340px, calc(100dvh - 120px));
   overflow-y: auto;
-  padding: 12px;
+  padding: 8px 12px;
 }
 
 .archive-operations-list::-webkit-scrollbar {
@@ -115,28 +113,18 @@
 }
 
 .archive-operation-item {
-  background: color-mix(in srgb, var(--surface-1) 90%, transparent);
-  border: 1px solid var(--native-divider);
-  border-radius: var(--radius-small);
-  padding: 12px;
-  margin-bottom: 8px;
-  animation: archive-operation-fade-in 0.2s cubic-bezier(0.33, 1, 0.68, 1);
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--native-divider);
+  border-radius: 0;
+  padding: 9px 0;
+  margin-bottom: 0;
   box-shadow: none;
-}
-
-@keyframes archive-operation-fade-in {
-  from {
-    opacity: 0;
-    transform: translateY(-5px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .archive-operation-item:last-child {
   margin-bottom: 0;
+  border-bottom: 0;
 }
 
 .archive-operation-header {
@@ -197,7 +185,7 @@
 
 .archive-operation-file {
   font-size: 12px;
-  color: color-mix(in srgb, var(--text-primary) 60%, transparent);
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -206,7 +194,7 @@
 
 .archive-operation-stats {
   font-size: 11px;
-  color: color-mix(in srgb, var(--text-primary) 50%, transparent);
+  color: var(--text-tertiary);
   margin-bottom: 8px;
 }
 
@@ -222,4 +210,8 @@
   background: var(--accent-color);
   border-radius: 2px;
   transition: width 0.3s ease;
+}
+
+body.reduce-motion .archive-operations-panel {
+  animation: none;
 }

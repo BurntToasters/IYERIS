@@ -2,10 +2,10 @@
 .utility-drawer {
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--chrome-surface) 92%, transparent);
+  background: var(--surface-1);
   border-top: 1px solid var(--native-divider);
   overflow: hidden;
-  transition: height 0.25s var(--animation-easing);
+  transition: height var(--animation-duration) var(--animation-easing);
   z-index: 10;
   flex-shrink: 0;
   box-sizing: border-box;
@@ -27,7 +27,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 12px;
-  background: color-mix(in srgb, var(--surface-2) 40%, transparent);
+  background: var(--surface-2);
   border-bottom: 1px solid var(--native-divider);
   cursor: pointer;
   user-select: none;
@@ -85,21 +85,21 @@
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--surface-1) 30%, transparent);
-  border: 1px solid var(--native-divider);
-  border-radius: var(--radius-small);
-  padding: var(--spacing-lg);
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
   overflow: hidden;
   box-sizing: border-box;
 }
 
 .utility-section h4 {
-  margin: 0 0 8px 0;
+  margin: 0 0 6px;
   font-size: var(--font-size-section-title);
-  font-weight: 700;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0;
   border-bottom: 1px solid var(--native-divider);
   padding-bottom: 4px;
 }
@@ -339,8 +339,8 @@
   gap: var(--spacing-xxl);
   padding: var(--spacing-xl);
   box-sizing: border-box;
-  scroll-behavior: smooth;
-  /* Premium scrollbar styling */
+  scroll-behavior: auto;
+  /* Keep the horizontal rail quiet until it is used. */
   scrollbar-width: thin;
   scrollbar-color: var(--native-divider) transparent;
 }
@@ -368,22 +368,18 @@
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  background: color-mix(in srgb, var(--surface-1) 40%, transparent);
+  background: var(--surface-1);
   border: 1px solid var(--native-divider);
   border-radius: var(--radius-medium);
   padding: var(--spacing-lg);
   box-sizing: border-box;
   position: relative;
-  transition:
-    transform 0.2s,
-    box-shadow 0.2s,
-    border-color 0.2s;
+  transition: border-color var(--animation-duration) var(--animation-easing);
   overflow: hidden;
 }
 
 .utility-widget-card:hover {
-  border-color: color-mix(in srgb, var(--accent-color) 30%, var(--native-divider));
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  border-color: var(--panel-border-strong);
 }
 
 .utility-widget-header {
@@ -412,7 +408,7 @@
 
 .utility-widget-card.quick-info-card.edit-active {
   border: 1px dashed var(--accent-color) !important;
-  background: color-mix(in srgb, var(--surface-1) 40%, transparent) !important;
+  background: var(--surface-1) !important;
   padding: var(--spacing-lg) !important;
   border-radius: var(--radius-medium);
 }
@@ -428,14 +424,20 @@
   flex: 1 1 260px;
   min-width: 240px;
   height: 100% !important;
+  padding: 0 10px;
+  border-right: 1px solid var(--native-divider);
+}
+
+.quick-info-content > .utility-section:last-child {
+  border-right: 0;
 }
 
 .widget-title {
   font-size: var(--font-size-section-title);
-  font-weight: 700;
-  color: var(--text-primary);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .utility-widget-content {
@@ -450,21 +452,6 @@
 .utility-drawer.edit-mode .utility-widget-card {
   border-style: dashed;
   border-color: var(--accent-color);
-  animation: widget-shake 0.3s ease-in-out infinite alternate;
-}
-
-/* Pause shake on hover for easier clicking */
-.utility-drawer.edit-mode .utility-widget-card:hover {
-  animation-play-state: paused;
-}
-
-@keyframes widget-shake {
-  0% {
-    transform: rotate(-0.3deg);
-  }
-  100% {
-    transform: rotate(0.3deg);
-  }
 }
 
 .widget-controls {
@@ -477,8 +464,8 @@
   border: 1px solid var(--native-divider);
   border-radius: var(--radius-small);
   color: var(--text-secondary);
-  width: 22px;
-  height: 22px;
+  width: 24px;
+  height: 24px;
   font-size: 10px;
   cursor: pointer;
   display: flex;
@@ -531,14 +518,14 @@
 
 .utility-customize-btn.active {
   background: var(--accent-color);
-  color: white;
+  color: var(--text-on-accent);
   border-color: var(--accent-color);
 }
 
 /* Inactive Widgets/Add Panel */
 .add-widgets-card {
   border-style: dashed !important;
-  background: color-mix(in srgb, var(--surface-1) 10%, transparent) !important;
+  background: transparent !important;
 }
 
 /* Recent Operations widget style */
@@ -624,7 +611,7 @@
 
 .storage-progress-bar {
   height: 8px;
-  background: var(--surface-3);
+  background: var(--surface-2);
   border-radius: 4px;
   overflow: hidden;
 }

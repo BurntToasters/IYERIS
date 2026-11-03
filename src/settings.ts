@@ -70,6 +70,7 @@ export function createDefaultSettings(): Settings {
     gitIncludeUntracked: true,
     showFileHoverCard: true,
     showFileCheckboxes: false,
+    showUtilityDashboard: false,
 
     reduceMotion: false,
     highContrast: false,
@@ -378,6 +379,7 @@ export function sanitizeSettings(
     'gitIncludeUntracked',
     'showFileHoverCard',
     'showFileCheckboxes',
+    'showUtilityDashboard',
     'reduceMotion',
     'highContrast',
     'largeText',

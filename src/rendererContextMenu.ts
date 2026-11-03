@@ -56,7 +56,14 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
   let elContextMenu: HTMLElement | null = null;
   let elEmptySpaceContextMenu: HTMLElement | null = null;
-  let openWithAbortController: AbortController | null = null;
+  let menuInteractionAbortController: AbortController | null = null;
+  let contextSubmenuSequence = 0;
+  const contextSubmenusByParent = new WeakMap<HTMLElement, HTMLElement>();
+  const contextSubmenuPlaceholders = new WeakMap<HTMLElement, Comment>();
+  const contextSubmenuParents = new WeakMap<HTMLElement, HTMLElement>();
+  let openWithRequestToken = 0;
+  let openWithAppsLoaded = false;
+  let openWithFocusOnLoad = false;
   let pasteInProgress = false;
   let elAddToBookmarks: HTMLElement | null = null;
   let elChangeFolderIcon: HTMLElement | null = null;
@@ -122,18 +129,276 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   }
 
   function positionMenuInViewport(menu: HTMLElement, x: number, y: number) {
-    const rect = menu.getBoundingClientRect();
+    const margin = 10;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
-    let left = x;
-    let top = y;
-    if (y + rect.height > vh - 10) top = y - rect.height;
-    if (left + rect.width > vw - 10) left = vw - rect.width - 10;
-    if (top < 10) top = 10;
-    if (left < 10) left = 10;
-    if (top + rect.height > vh - 10) top = vh - rect.height - 10;
-    menu.style.left = left + 'px';
-    menu.style.top = top + 'px';
+    const maxWidth = Math.max(0, vw - margin * 2);
+    const maxHeight = Math.max(0, vh - margin * 2);
+    menu.style.maxWidth = `${maxWidth}px`;
+    menu.style.maxHeight = `${maxHeight}px`;
+
+    const rect = menu.getBoundingClientRect();
+    const width = Math.min(rect.width, maxWidth);
+    const height = Math.min(rect.height, maxHeight);
+    let left = x + width > vw - margin ? x - width : x;
+    let top = y + height > vh - margin ? y - height : y;
+    left = Math.max(margin, Math.min(left, vw - width - margin));
+    top = Math.max(margin, Math.min(top, vh - height - margin));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+  }
+
+  function invalidateOpenWithRequest(resetPanel = true) {
+    openWithRequestToken += 1;
+    openWithAppsLoaded = false;
+    openWithFocusOnLoad = false;
+    const panel = elOpenWithAppsPanel;
+    if (resetPanel && panel) {
+      panel.innerHTML = '<div class="open-with-loading">Loading apps...</div>';
+    }
+  }
+
+  function getContextSubmenu(parent: HTMLElement): HTMLElement | null {
+    return (
+      parent.querySelector<HTMLElement>('.context-submenu') ??
+      contextSubmenusByParent.get(parent) ??
+      null
+    );
+  }
+
+  function portalContextSubmenu(parent: HTMLElement, submenu: HTMLElement) {
+    if (submenu.parentElement === parent) {
+      const placeholder = document.createComment('context-menu-submenu');
+      parent.insertBefore(placeholder, submenu);
+      contextSubmenuPlaceholders.set(submenu, placeholder);
+    }
+
+    if (!submenu.id) {
+      contextSubmenuSequence += 1;
+      submenu.id = `context-menu-submenu-${contextSubmenuSequence}`;
+    }
+    contextSubmenusByParent.set(parent, submenu);
+    contextSubmenuParents.set(submenu, parent);
+    submenu.dataset.contextMenuOwner = parent.closest<HTMLElement>('.context-menu')?.id || '';
+    parent.setAttribute('aria-controls', submenu.id);
+    if (submenu.parentElement !== document.body) document.body.appendChild(submenu);
+  }
+
+  function restoreContextSubmenu(parent: HTMLElement, submenu: HTMLElement) {
+    const placeholder = contextSubmenuPlaceholders.get(submenu);
+    if (placeholder?.parentNode === parent) {
+      parent.insertBefore(submenu, placeholder);
+      placeholder.remove();
+    }
+    submenu.removeAttribute('data-context-menu-owner');
+  }
+
+  function isContextMenuRelatedNode(menu: HTMLElement, target: Node | null): boolean {
+    if (!target) return false;
+    if (menu.contains(target)) return true;
+    if (!(target instanceof Element)) return false;
+    const submenu = target.closest<HTMLElement>('.context-submenu');
+    return submenu?.dataset.contextMenuOwner === menu.id;
+  }
+
+  function getContextSubmenuParentForTarget(
+    menu: HTMLElement,
+    target: Element
+  ): HTMLElement | null {
+    const menuItem = target.closest<HTMLElement>('.context-menu-item.has-submenu');
+    if (menuItem && menu.contains(menuItem)) return menuItem;
+
+    const submenu = target.closest<HTMLElement>('.context-submenu');
+    if (submenu?.dataset.contextMenuOwner !== menu.id) return null;
+    const parent = contextSubmenuParents.get(submenu);
+    return parent && menu.contains(parent) ? parent : null;
+  }
+
+  function getActiveContextSubmenu(menu: HTMLElement): HTMLElement | null {
+    const parent = Array.from(
+      menu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu')
+    ).find((item) => item.getAttribute('aria-expanded') === 'true');
+    return parent ? getContextSubmenu(parent) : null;
+  }
+
+  function positionContextSubmenu(parent: HTMLElement, submenu: HTMLElement) {
+    const margin = 10;
+    const viewportWidth = window.innerWidth;
+    const viewportHeight = window.innerHeight;
+    submenu.style.maxWidth = `${Math.max(0, viewportWidth - margin * 2)}px`;
+    submenu.style.maxHeight = `${Math.max(0, viewportHeight - margin * 2)}px`;
+
+    const parentRect = parent.getBoundingClientRect();
+    const submenuRect = submenu.getBoundingClientRect();
+    const rightSpace = viewportWidth - margin - parentRect.right;
+    const leftSpace = parentRect.left - margin;
+    const placeLeft = submenuRect.width > rightSpace && leftSpace > rightSpace;
+    const preferredLeft = placeLeft
+      ? parentRect.left - submenuRect.width + 2
+      : parentRect.right - 2;
+    const left = Math.max(
+      margin,
+      Math.min(preferredLeft, viewportWidth - submenuRect.width - margin)
+    );
+    const top = Math.max(
+      margin,
+      Math.min(parentRect.top - 4, viewportHeight - submenuRect.height - margin)
+    );
+
+    submenu.classList.toggle('flip-left', placeLeft);
+    submenu.style.left = `${left}px`;
+    submenu.style.top = `${top}px`;
+  }
+
+  function closeContextSubmenu(parent: HTMLElement, restoreFocus = false) {
+    const submenu = getContextSubmenu(parent);
+    if (!submenu) return;
+
+    const wasOpen =
+      submenu.style.display === 'block' || parent.getAttribute('aria-expanded') === 'true';
+    const restoreParentFocus = restoreFocus || submenu.contains(document.activeElement);
+    submenu.querySelectorAll('.context-menu-item.focused').forEach((item) => {
+      item.classList.remove('focused');
+    });
+    submenu.style.display = '';
+    submenu.style.removeProperty('left');
+    submenu.style.removeProperty('top');
+    submenu.style.removeProperty('max-width');
+    submenu.style.removeProperty('max-height');
+    submenu.classList.remove('flip-left');
+    parent.setAttribute('aria-expanded', 'false');
+    restoreContextSubmenu(parent, submenu);
+
+    if (parent === elOpenWithSubmenu && wasOpen) {
+      invalidateOpenWithRequest();
+    }
+
+    if (restoreParentFocus) {
+      if (elContextMenu) {
+        const items = getVisibleMenuItems(elContextMenu);
+        contextMenuFocusedIndex = items.indexOf(parent);
+      }
+      parent.classList.add('focused');
+      parent.focus({ preventScroll: true });
+    }
+  }
+
+  function closeContextSubmenus(menu: HTMLElement, restoreFocus = false) {
+    menu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu').forEach((parent) => {
+      const submenu = getContextSubmenu(parent);
+      const parentIsActive = parent.getAttribute('aria-expanded') === 'true';
+      const focusIsInSubmenu = !!submenu?.contains(document.activeElement);
+      closeContextSubmenu(parent, restoreFocus && (parentIsActive || focusIsInSubmenu));
+    });
+  }
+
+  function focusFirstSubmenuItem(submenu: HTMLElement): boolean {
+    const firstItem = Array.from(submenu.querySelectorAll<HTMLElement>('.context-menu-item')).find(
+      (item) =>
+        item.style.display !== 'none' &&
+        !item.classList.contains('is-disabled') &&
+        item.getAttribute('aria-disabled') !== 'true' &&
+        item.getClientRects().length > 0
+    );
+    if (!firstItem) return false;
+    submenu.querySelectorAll('.context-menu-item.focused').forEach((item) => {
+      item.classList.remove('focused');
+    });
+    firstItem.classList.add('focused');
+    firstItem.scrollIntoView({ block: 'nearest' });
+    firstItem.focus({ preventScroll: true });
+    return true;
+  }
+
+  function openContextSubmenu(parent: HTMLElement, focusFirstItem = false) {
+    const menu = parent.closest<HTMLElement>('.context-menu');
+    const submenu = getContextSubmenu(parent);
+    if (!menu || !submenu) return;
+
+    const isAlreadyOpen = submenu.style.display === 'block';
+    menu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu').forEach((otherParent) => {
+      if (otherParent !== parent) closeContextSubmenu(otherParent);
+    });
+
+    if (!isAlreadyOpen) {
+      portalContextSubmenu(parent, submenu);
+      submenu.style.display = 'block';
+      parent.setAttribute('aria-expanded', 'true');
+      positionContextSubmenu(parent, submenu);
+    }
+
+    if (parent === elOpenWithSubmenu) {
+      if (focusFirstItem) openWithFocusOnLoad = true;
+      loadOpenWithApps();
+    }
+
+    if (focusFirstItem && !focusFirstSubmenuItem(submenu)) {
+      parent.classList.add('focused');
+      parent.focus({ preventScroll: true });
+    }
+  }
+
+  function bindContextMenuInteractions(menu: HTMLElement) {
+    menuInteractionAbortController?.abort();
+    const controller = new AbortController();
+    menuInteractionAbortController = controller;
+    const { signal } = controller;
+
+    const reposition = () => {
+      if (menu.style.display !== 'block') return;
+      const left = Number.parseFloat(menu.style.left) || 10;
+      const top = Number.parseFloat(menu.style.top) || 10;
+      positionMenuInViewport(menu, left, top);
+      const activeParent = Array.from(
+        menu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu')
+      ).find((parent) => parent.getAttribute('aria-expanded') === 'true');
+      const submenu = activeParent ? getContextSubmenu(activeParent) : null;
+      if (activeParent && submenu?.style.display === 'block') {
+        positionContextSubmenu(activeParent, submenu);
+      }
+    };
+
+    document.addEventListener(
+      'pointerover',
+      (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) return;
+        const parent = getContextSubmenuParentForTarget(menu, target);
+        if (parent) {
+          openContextSubmenu(parent);
+        } else if (menu.contains(target)) {
+          const activeParent = Array.from(
+            menu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu')
+          ).find((candidate) => candidate.getAttribute('aria-expanded') === 'true');
+          if (activeParent) closeContextSubmenu(activeParent);
+        }
+      },
+      { signal }
+    );
+    document.addEventListener(
+      'pointerout',
+      (event) => {
+        if (!isContextMenuRelatedNode(menu, event.target instanceof Node ? event.target : null)) {
+          return;
+        }
+        if (
+          isContextMenuRelatedNode(
+            menu,
+            event.relatedTarget instanceof Node ? event.relatedTarget : null
+          )
+        ) {
+          return;
+        }
+        closeContextSubmenus(menu);
+      },
+      { signal }
+    );
+    menu.addEventListener('scroll', () => closeContextSubmenus(menu, true), {
+      passive: true,
+      signal,
+    });
+    window.addEventListener('resize', reposition, { signal });
+    window.addEventListener('scroll', reposition, { capture: true, signal });
   }
 
   function clearContextMenuFocus(menu: HTMLElement) {
@@ -149,7 +414,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       if (el.closest('.context-submenu')) return false;
       if (el.classList.contains('is-disabled') || el.getAttribute('aria-disabled') === 'true')
         return false;
-      return el.style.display !== 'none' && el.offsetParent !== null;
+      return el.style.display !== 'none' && el.getClientRects().length > 0;
     }) as HTMLElement[];
   }
 
@@ -323,21 +588,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
     const item = items[focusIndex]!;
     if (item.classList.contains('has-submenu')) {
-      const submenu = item.querySelector('.context-submenu') as HTMLElement;
-      if (submenu) {
-        menu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu').forEach((parent) => {
-          if (parent !== item) parent.setAttribute('aria-expanded', 'false');
-        });
-        submenu.style.display = 'block';
-        item.setAttribute('aria-expanded', 'true');
-        const submenuItems = submenu.querySelectorAll(
-          '.context-menu-item'
-        ) as NodeListOf<HTMLElement>;
-        if (submenuItems.length > 0) {
-          submenuItems[0]!.classList.add('focused');
-          submenuItems[0]!.focus({ preventScroll: true });
-        }
-      }
+      openContextSubmenu(item, true);
       return false;
     }
 
@@ -351,7 +602,8 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
     if (!contextMenu) return;
     hideEmptySpaceContextMenu();
-    if (!contextMenu.contains(document.activeElement)) {
+    closeContextSubmenus(contextMenu);
+    if (!isContextMenuRelatedNode(contextMenu, document.activeElement)) {
       contextMenuReturnFocus =
         document.activeElement instanceof HTMLElement ? document.activeElement : null;
     }
@@ -390,24 +642,13 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     renderRecentDestinationItems(item.path);
 
     if (elOpenWithSubmenu && !item.isDirectory) {
-      setupOpenWithSubmenu(elOpenWithSubmenu, item);
+      setupOpenWithSubmenu();
     }
 
     contextMenu.style.display = 'block';
     normalizeSeparators(contextMenu);
     positionMenuInViewport(contextMenu, x, y);
-
-    const submenus = contextMenu.querySelectorAll<HTMLElement>('.context-submenu');
-    const menuRight =
-      parseFloat(contextMenu.style.left) + contextMenu.getBoundingClientRect().width;
-    const shouldFlip = menuRight + 160 > window.innerWidth - 10;
-    contextMenu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu').forEach((item) => {
-      item.setAttribute('aria-expanded', 'false');
-    });
-    submenus.forEach((submenu) => {
-      submenu.style.display = '';
-      submenu.classList.toggle('flip-left', shouldFlip);
-    });
+    bindContextMenuInteractions(contextMenu);
 
     contextMenuFocusedIndex = navigateContextMenu(contextMenu, 'down', contextMenuFocusedIndex);
   }
@@ -415,16 +656,12 @@ export function createContextMenuController(deps: ContextMenuDeps) {
   function hideContextMenu() {
     ensureElements();
     if (elContextMenu) {
-      const restoreFocus = elContextMenu.contains(document.activeElement);
+      const restoreFocus = isContextMenuRelatedNode(elContextMenu, document.activeElement);
+      menuInteractionAbortController?.abort();
+      menuInteractionAbortController = null;
+      invalidateOpenWithRequest();
+      closeContextSubmenus(elContextMenu);
       elContextMenu.style.display = 'none';
-      elContextMenu.querySelectorAll<HTMLElement>('.context-submenu').forEach((submenu) => {
-        submenu.style.display = '';
-      });
-      elContextMenu
-        .querySelectorAll<HTMLElement>('.context-menu-item.has-submenu')
-        .forEach((item) => {
-          item.setAttribute('aria-expanded', 'false');
-        });
       contextMenuData = null;
       clearContextMenuFocus(elContextMenu);
       contextMenuFocusedIndex = -1;
@@ -707,16 +944,14 @@ export function createContextMenuController(deps: ContextMenuDeps) {
 
       // If a submenu is open, navigate within it for ArrowDown/Up/Enter
       if (hasSubmenu) {
-        const activeSubmenu = menu.querySelector<HTMLElement>(
-          '.context-submenu[style*="display: block"]'
-        );
+        const activeSubmenu = getActiveContextSubmenu(menu);
         if (activeSubmenu) {
           const submenuItems = Array.from(
             activeSubmenu.querySelectorAll<HTMLElement>('.context-menu-item')
           ).filter(
             (el) =>
               el.style.display !== 'none' &&
-              el.offsetParent !== null &&
+              el.getClientRects().length > 0 &&
               !el.classList.contains('is-disabled') &&
               el.getAttribute('aria-disabled') !== 'true'
           );
@@ -782,19 +1017,14 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       }
       if (hasSubmenu && e.key === 'ArrowLeft') {
         e.preventDefault();
-        const activeSubmenu = menu.querySelector<HTMLElement>(
-          '.context-submenu[style*="display: block"]'
-        );
+        const activeSubmenu = getActiveContextSubmenu(menu);
         if (activeSubmenu) {
-          activeSubmenu.style.display = '';
           activeSubmenu.querySelectorAll('.context-menu-item.focused').forEach((item) => {
             item.classList.remove('focused');
           });
-          const parentItem = activeSubmenu.closest<HTMLElement>('.context-menu-item.has-submenu');
+          const parentItem = contextSubmenuParents.get(activeSubmenu);
           if (parentItem) {
-            parentItem.setAttribute('aria-expanded', 'false');
-            parentItem.classList.add('focused');
-            parentItem.focus({ preventScroll: true });
+            closeContextSubmenu(parentItem, true);
           }
         }
         return true;
@@ -828,29 +1058,45 @@ export function createContextMenuController(deps: ContextMenuDeps) {
     return false;
   }
 
-  function setupOpenWithSubmenu(submenuContainer: HTMLElement, item: FileItem) {
+  function setupOpenWithSubmenu() {
+    invalidateOpenWithRequest(false);
+    if (elOpenWithAppsPanel) {
+      elOpenWithAppsPanel.innerHTML = '<div class="open-with-loading">Loading apps...</div>';
+    }
+  }
+
+  function loadOpenWithApps() {
     ensureElements();
     const panel = elOpenWithAppsPanel;
-    if (!panel) return;
-
-    if (openWithAbortController) {
-      openWithAbortController.abort();
-      openWithAbortController = null;
+    const submenuContainer = elOpenWithSubmenu;
+    const item = contextMenuData;
+    if (
+      !panel ||
+      !submenuContainer ||
+      !item ||
+      item.isDirectory ||
+      openWithAppsLoaded ||
+      submenuContainer.getAttribute('aria-expanded') !== 'true'
+    ) {
+      return;
     }
-    openWithAbortController = new AbortController();
-    const { signal } = openWithAbortController;
 
-    panel.innerHTML = '<div class="open-with-loading">Loading apps...</div>';
+    openWithAppsLoaded = true;
+    const requestToken = openWithRequestToken;
+    const isCurrentRequest = () =>
+      requestToken === openWithRequestToken &&
+      contextMenuData?.path === item.path &&
+      elContextMenu?.style.display === 'block' &&
+      submenuContainer.getAttribute('aria-expanded') === 'true' &&
+      panel.style.display === 'block';
 
-    let loaded = false;
-    const loadApps = async () => {
-      if (loaded) return;
-      loaded = true;
-
+    const showApps = async () => {
       try {
         const result = await window.tauriAPI.getOpenWithApps(item.path);
+        if (!isCurrentRequest()) return;
         if (!result.success || !result.apps || result.apps.length === 0) {
           panel.innerHTML = '<div class="open-with-loading">No apps found</div>';
+          openWithFocusOnLoad = false;
           return;
         }
 
@@ -876,14 +1122,20 @@ export function createContextMenuController(deps: ContextMenuDeps) {
           });
           panel.appendChild(btn);
         }
+
+        positionContextSubmenu(submenuContainer, panel);
+        if (openWithFocusOnLoad && document.activeElement === submenuContainer) {
+          openWithFocusOnLoad = false;
+          focusFirstSubmenuItem(panel);
+        }
       } catch {
+        if (!isCurrentRequest()) return;
         panel.innerHTML = '<div class="open-with-loading">Failed to load apps</div>';
+        openWithFocusOnLoad = false;
       }
     };
 
-    const handler = () => void loadApps();
-    submenuContainer.addEventListener('mouseenter', handler, { once: true, signal });
-    submenuContainer.addEventListener('focus', handler, { once: true, signal });
+    void showApps();
   }
 
   return {

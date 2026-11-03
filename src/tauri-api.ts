@@ -21,6 +21,7 @@ import {
   RawFileItemSchema,
   RawDriveInfoSchema,
   RawItemPropertiesSchema,
+  RawCodeSignatureSchema,
   RawSearchResultSchema,
   RawArchiveEntrySchema,
   RawFolderSizeSchema,
@@ -827,18 +828,42 @@ const tauriAPI: TauriAPI = {
           isDirectory: v.isDirectory,
           isFile: !v.isDirectory,
           isSymlink: v.isSymlink ?? false,
-          isHidden: v.isHidden ?? false,
+          symlinkTarget: v.symlinkTarget ?? undefined,
+          isShortcut: v.isShortcut ?? undefined,
+          shortcutTarget: v.shortcutTarget ?? undefined,
           created: new Date(v.created),
           modified: new Date(v.modified),
           accessed: new Date(v.accessed),
-          mode: v.permissions,
+          mode: v.permissions ?? undefined,
           isReadOnly: v.readonly,
           isHiddenAttr: v.isHiddenAttr ?? undefined,
           isSystemAttr: v.isSystemAttr ?? undefined,
           owner: v.owner ?? undefined,
           group: v.group ?? undefined,
+          extension: v.extension,
+          sizeOnDisk: v.sizeOnDisk ?? undefined,
+          mimeType: v.mimeType ?? undefined,
+          opensWith: v.opensWith ?? undefined,
+          ownerName: v.ownerName ?? undefined,
+          groupName: v.groupName ?? undefined,
+          isArchiveAttr: v.isArchiveAttr ?? undefined,
+          isCompressedAttr: v.isCompressedAttr ?? undefined,
+          isEncryptedAttr: v.isEncryptedAttr ?? undefined,
+          isIndexedAttr: v.isIndexedAttr ?? undefined,
         },
       };
+    } catch (e) {
+      return { success: false, error: String(e) };
+    }
+  },
+  getCodeSignature: async (itemPath) => {
+    try {
+      const raw = await invoke<Record<string, unknown>>('get_code_signature', { itemPath });
+      const v = validateIpc(RawCodeSignatureSchema, raw, 'CodeSignatureInfo');
+      if (!v) {
+        return { success: false, error: 'Invalid code signature data from backend' };
+      }
+      return { success: true, signature: v };
     } catch (e) {
       return { success: false, error: String(e) };
     }

@@ -33,7 +33,7 @@
   flex-shrink: 0;
   border-right: 1px solid var(--native-divider);
   overflow-y: auto;
-  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
+  background: var(--surface-0);
   position: relative;
 }
 
@@ -87,22 +87,16 @@ body.platform-darwin .column-pane:not(:hover)::-webkit-scrollbar-thumb {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 6px 12px;
+  min-height: var(--list-item-min-height);
+  padding: var(--list-item-padding-v) var(--list-item-padding-h);
+  border: 1px solid transparent;
   cursor: pointer;
-  transition: var(--transition-standard);
-  font-size: 12px;
+  transition: background-color var(--animation-duration) var(--animation-easing);
+  font-size: var(--font-size-file-name);
 }
 
 .column-item:hover {
   background: var(--interactive-hover);
-}
-
-.column-item.selected {
-  background: rgba(var(--accent-rgb), 0.18);
-}
-
-.column-item.expanded {
-  background: rgba(var(--accent-rgb), 0.1);
 }
 
 .column-item.drag-over {
@@ -128,8 +122,8 @@ body.reduce-motion .column-item.spring-loading {
 }
 
 .column-item:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px rgba(var(--system-accent-rgb, var(--accent-rgb)), 0.4);
+  outline: 2px solid var(--system-accent-color, var(--accent-color));
+  outline-offset: -2px;
 }
 
 .column-pane.drag-over {
@@ -173,4 +167,47 @@ body.reduce-motion .column-item.spring-loading {
 
 .column-item.is-directory .column-item-arrow {
   opacity: 0.7;
+}
+
+.column-item.expanded {
+  background: var(--interactive-hover);
+  color: var(--text-primary);
+}
+
+.column-item.selected {
+  background: var(--system-accent-color, var(--accent-color));
+  color: var(--text-on-accent);
+}
+
+.column-item.selected .column-item-name,
+.column-item.selected .column-item-arrow {
+  color: var(--text-on-accent);
+}
+
+.column-item.selected .column-item-arrow {
+  opacity: 1;
+}
+
+.column-item.selected:hover {
+  background: var(--file-selection-hover-bg);
+}
+
+body.window-inactive .column-item.selected {
+  background: var(--file-selection-inactive-bg);
+  color: var(--text-primary);
+  box-shadow: none;
+}
+
+body.window-inactive .column-item.selected .column-item-name,
+body.window-inactive .column-item.selected .column-item-arrow {
+  color: var(--text-primary);
+}
+
+body.window-inactive .column-item.selected:hover {
+  background: var(--file-selection-inactive-bg);
+}
+
+body.reduce-motion .column-item.selected,
+body.reduce-motion .column-item.expanded {
+  transition: none;
 }

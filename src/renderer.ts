@@ -42,12 +42,14 @@ import { createDualPaneController } from './rendererDualPane.js';
 import { createStatusBarController } from './rendererStatusBar.js';
 import { createRecentFilesController } from './rendererRecentFiles.js';
 import { createSidebarController } from './rendererSidebar.js';
+import { createToolbarController } from './rendererToolbar.js';
 import { isOneOf } from './constants.js';
 import { renderSkeleton, clearSkeleton } from './rendererSkeleton.js';
 import { isForeground, markDirtyRefresh } from './rendererActivityState.js';
 
 const fileElementMap: Map<string, HTMLElement> = new Map();
 let utilityDrawerController: ReturnType<typeof createUtilityDrawerController> | null = null;
+let utilityDashboardActive = false;
 const driveLabelByPath = new Map<string, string>();
 let cachedDriveInfo: DriveInfo[] = [];
 
@@ -607,7 +609,10 @@ const statusBarController = createStatusBarController({
   getViewMode: () => viewMode,
   getSearchStatusText: () => getSearchStatusText(),
   syncDualPaneControls: () => syncDualPaneControls(),
-  updateUtilitySelection: (p) => utilityDrawerController?.updateSelection(p),
+  updateUtilitySelection: (p) => {
+    if (currentSettings.showUtilityDashboard !== true) return;
+    utilityDrawerController?.updateSelection(p);
+  },
   saveSettings: () => debouncedSaveSettings(),
   updateGitBranch: (p) => updateGitBranch(p),
   updateClipboardIndicator: () => clipboardController.updateClipboardIndicator(),
@@ -718,6 +723,24 @@ async function applySystemFontSize(): Promise<void> {
   }
 }
 
+// Utility Dashboard is opt-in. Turning it on shows the drawer and runs its
+// lazy init without a restart. Turning it off hides it.
+function syncUtilityDashboardVisibility(settings: Settings): void {
+  if (!utilityDrawerController) return;
+  if (settings.showUtilityDashboard !== true) {
+    utilityDrawerController.hide();
+    utilityDashboardActive = false;
+    return;
+  }
+  utilityDrawerController.init();
+  if (!utilityDashboardActive) {
+    utilityDashboardActive = true;
+    utilityDrawerController.updateSelection(
+      selectedItems.size === 1 ? (Array.from(selectedItems)[0] ?? null) : null
+    );
+  }
+}
+
 function applySettings(settings: Settings) {
   devLog('Settings', 'applySettings', { viewMode: settings.viewMode, theme: settings.theme });
   setLocale(
@@ -792,6 +815,7 @@ function applySettings(settings: Settings) {
   updateContentSearchToggle();
   updateSearchPlaceholder();
 
+  syncUtilityDashboardVisibility(settings);
   warnIfMultipleScalingActive(settings);
 }
 
@@ -1868,108 +1892,7 @@ async function updateUndoRedoState() {
 }
 
 function setupMoreActionsMenu() {
-  const btn = document.getElementById('more-actions-btn');
-  const menu = document.getElementById('more-actions-menu');
-  if (!btn || !menu) return;
-
-  const menuEl = menu;
-  const btnEl = btn;
-
-  function closeMenu() {
-    const restoreFocus = menuEl.contains(document.activeElement);
-    menuEl.style.display = 'none';
-    btnEl.setAttribute('aria-expanded', 'false');
-    menuEl.querySelectorAll('.focused').forEach((el) => el.classList.remove('focused'));
-    if (restoreFocus) btnEl.focus({ preventScroll: true });
-  }
-
-  btn.addEventListener('click', (e) => {
-    e.stopPropagation();
-    const isOpen = menu.style.display === 'block';
-    if (isOpen) {
-      closeMenu();
-    } else {
-      hideSortMenu();
-      hideContextMenu();
-      hideEmptySpaceContextMenu();
-
-      menu.style.display = 'block';
-
-      const rect = btn.getBoundingClientRect();
-      const menuRect = menu.getBoundingClientRect();
-      let left = rect.left;
-      let top = rect.bottom + 5;
-
-      if (left + menuRect.width > window.innerWidth) {
-        left = window.innerWidth - menuRect.width - 10;
-      }
-      if (top + menuRect.height > window.innerHeight) {
-        top = rect.top - menuRect.height - 5;
-      }
-      if (left < 10) left = 10;
-      if (top < 10) top = 10;
-
-      menu.style.left = left + 'px';
-      menu.style.top = top + 'px';
-      btn.setAttribute('aria-expanded', 'true');
-
-      void updateUndoRedoState();
-
-      const items = Array.from(menu.querySelectorAll<HTMLElement>('.context-menu-item'));
-      const firstEnabled = items.find((el) => !(el as HTMLButtonElement).disabled);
-      if (firstEnabled) {
-        firstEnabled.classList.add('focused');
-        firstEnabled.tabIndex = 0;
-        firstEnabled.focus({ preventScroll: true });
-      }
-    }
-  });
-
-  // Close when clicking outside
-  document.addEventListener('click', (e) => {
-    if (menu.style.display !== 'block') return;
-    if (!btn.contains(e.target as Node) && !menu.contains(e.target as Node)) {
-      closeMenu();
-    }
-  });
-
-  // Menu item actions
-  menu.addEventListener('click', (e) => {
-    const item = (e.target as HTMLElement).closest('.context-menu-item') as HTMLElement | null;
-    if (!item) return;
-    e.stopPropagation();
-    closeMenu();
-    if (item.id === 'more-undo-btn') void performUndo();
-    else if (item.id === 'more-redo-btn') void performRedo();
-  });
-
-  // Keyboard navigation
-  menu.addEventListener('keydown', (e) => {
-    const items = Array.from(menu.querySelectorAll<HTMLElement>('.context-menu-item'));
-    const focusedIndex = items.findIndex((el) => el.classList.contains('focused'));
-
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-      e.preventDefault();
-      const enabledItems = items.filter((el) => !el.hasAttribute('disabled'));
-      if (enabledItems.length === 0) return;
-      const enabledFocusedIndex = enabledItems.findIndex((el) => el.classList.contains('focused'));
-      const dir = e.key === 'ArrowDown' ? 1 : -1;
-      const next = (enabledFocusedIndex + dir + enabledItems.length) % enabledItems.length;
-      items.forEach((el) => {
-        el.classList.remove('focused');
-        el.tabIndex = -1;
-      });
-      enabledItems[next]!.classList.add('focused');
-      enabledItems[next]!.tabIndex = 0;
-      enabledItems[next]!.focus({ preventScroll: true });
-    } else if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      if (focusedIndex >= 0) items[focusedIndex]!.click();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      closeMenu();
-    }
-  });
+  toolbarController.setup();
 }
 
 async function performUndoRedo(isUndo: boolean) {
@@ -2011,6 +1934,15 @@ function performUndo() {
 function performRedo() {
   return performUndoRedo(false);
 }
+
+const toolbarController = createToolbarController({
+  updateUndoRedoState,
+  performUndo,
+  performRedo,
+  hideSortMenu,
+  hideContextMenu,
+  hideEmptySpaceContextMenu,
+});
 
 function navigateHistory(delta: -1 | 1): void {
   const nextIndex = historyIndex + delta;
@@ -2146,6 +2078,7 @@ function updateNavigationButtons() {
 async function setViewMode(nextMode: 'grid' | 'list' | 'column') {
   if (viewMode === nextMode) return;
   viewMode = nextMode;
+  updateViewModeControls();
   await applyViewMode();
 
   currentSettings.viewMode = viewMode;
@@ -2286,9 +2219,12 @@ function updateViewToggleButton() {
 function updateViewModeControls() {
   updateViewToggleButton();
   if (viewOptions) {
-    viewOptions.querySelectorAll('.view-option').forEach((btn) => {
-      const view = (btn as HTMLElement).dataset.view;
-      btn.classList.toggle('active', view === viewMode);
+    viewOptions.querySelectorAll<HTMLElement>('.view-option').forEach((btn) => {
+      const view = btn.dataset.view;
+      const isSelected = view === viewMode;
+      btn.classList.toggle('active', isSelected);
+      btn.setAttribute('aria-checked', String(isSelected));
+      btn.tabIndex = isSelected ? 0 : -1;
     });
   }
   if (listHeader) {
@@ -2300,11 +2236,37 @@ function updateViewModeControls() {
 
 function setupViewOptions(): void {
   if (!viewOptions) return;
-  viewOptions.querySelectorAll('.view-option').forEach((btn) => {
+  viewOptions.querySelectorAll<HTMLButtonElement>('.view-option').forEach((btn) => {
     btn.addEventListener('click', async () => {
-      const view = (btn as HTMLElement).dataset.view as 'grid' | 'list' | 'column' | undefined;
+      const view = btn.dataset.view as 'grid' | 'list' | 'column' | undefined;
       if (!view) return;
       await setViewMode(view);
+    });
+    btn.addEventListener('keydown', (event: KeyboardEvent) => {
+      const key = event.key;
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(key)) {
+        return;
+      }
+      event.preventDefault();
+      event.stopPropagation();
+      const options = Array.from(
+        viewOptions.querySelectorAll<HTMLButtonElement>('.view-option')
+      ).filter((option) => !option.disabled);
+      if (options.length === 0) return;
+      const activeIndex = options.indexOf(btn as HTMLButtonElement);
+      const nextIndex =
+        key === 'Home'
+          ? 0
+          : key === 'End'
+            ? options.length - 1
+            : (activeIndex + (key === 'ArrowLeft' || key === 'ArrowUp' ? -1 : 1) + options.length) %
+              options.length;
+      const next = options[nextIndex];
+      const nextView = next?.dataset.view as 'grid' | 'list' | 'column' | undefined;
+      if (next && nextView) {
+        next.focus({ preventScroll: true });
+        void setViewMode(nextView);
+      }
     });
   });
   updateViewModeControls();
@@ -2492,6 +2454,7 @@ document.addEventListener('mousedown', (e) => {
 })();
 
 window.addEventListener('beforeunload', () => {
+  toolbarController.dispose();
   stopIndexStatusPolling();
   cleanupSearch();
   cleanupHoverCard();

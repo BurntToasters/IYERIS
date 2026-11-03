@@ -1345,6 +1345,9 @@ export function wireControllers(deps: WiringDeps) {
     showToast,
     onModalOpen: activateModal,
     onModalClose: deactivateModal,
+    getFileIcon,
+    getThumbnailForPath: thumbnails.getThumbnailForPath,
+    getFileTypeFromName,
   });
 
   showPropertiesDialog = propertiesDialogController.showPropertiesDialog;

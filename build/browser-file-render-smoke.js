@@ -14,9 +14,30 @@ import { createBatchRenameController } from '../src/rendererBatchRename.ts';
 import { createThumbnailController } from '../src/rendererThumbnails.ts';
 import { createCompressExtractController } from '../src/rendererCompressExtract.ts';
 import { twemojiImg } from '../src/rendererUtils.ts';
+import { createHoverCardController } from '../src/rendererHoverCard.ts';
+import { createPropertiesDialogController } from '../src/rendererPropertiesDialog.ts';
+import { createUtilityDrawerController } from '../src/rendererUtilityDrawer.ts';
+import { createDefaultSettings } from '../src/settings.ts';
+import { runBrowserAppSmoke } from './browser-app-smoke.js';
+import { formatFileSize, getFileIcon, getFileTypeFromName } from '../src/rendererFileIcons.ts';
+import { HOVER_CARD_DELAY_MS } from '../src/rendererLocalConstants.ts';
 import '../src/css/main.css';
+// Raw markup for the overlays and hover card. The visual suite mounts the real elements
+// from index.html so the checks run against the shipped structure and classes.
+import indexHtml from '../src/index.html?raw';
 
-const { document, requestAnimationFrame, performance, window, DragEvent } = globalThis;
+const {
+  document,
+  requestAnimationFrame,
+  performance,
+  window,
+  DragEvent,
+  DOMParser,
+  Event,
+  KeyboardEvent,
+  MouseEvent,
+  getComputedStyle,
+} = globalThis;
 const frame = () =>
   new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 const assert = (condition, message) => {
@@ -1504,6 +1525,1289 @@ async function runOperationQueueLifetimeSuite(results) {
   });
 }
 
+// ── Visual uplift ───────────────────────────────────────────────────────────
+
+const SCREENSHOT_BINDING = 'iyerisSmokeScreenshot';
+const PSEUDO_STATE_BINDING = 'iyerisSmokePseudoState';
+const screenshotWaiters = new Map();
+let screenshotSequence = 0;
+const pseudoStateWaiters = new Map();
+let pseudoStateSequence = 0;
+// Node calls this with the reply to each requestScreenshot() call.
+globalThis.__iyerisSmokeScreenshotSettle = (reply) => {
+  const waiter = screenshotWaiters.get(reply?.id);
+  if (!waiter) return;
+  screenshotWaiters.delete(reply.id);
+  if (reply.error) waiter.reject(new Error(`Smoke screenshot failed: ${reply.error}`));
+  else waiter.resolve(reply);
+};
+// Resolves once Node has written coverage-headless/browser-smoke-<name>.png.
+const requestScreenshot = (name, regions = [], metadata = null) =>
+  new Promise((resolve, reject) => {
+    const id = ++screenshotSequence;
+    screenshotWaiters.set(id, { resolve, reject });
+    window[SCREENSHOT_BINDING](
+      JSON.stringify({ id, name, regions, viewportWidth: window.innerWidth, metadata })
+    );
+  });
+globalThis.iyerisSmokeRequestScreenshot = requestScreenshot;
+globalThis.__iyerisSmokePseudoStateSettle = (reply) => {
+  const waiter = pseudoStateWaiters.get(reply?.id);
+  if (!waiter) return;
+  pseudoStateWaiters.delete(reply.id);
+  clearTimeout(waiter.timeout);
+  if (reply.error) waiter.reject(new Error(`Smoke pseudo-state failed: ${reply.error}`));
+  else waiter.resolve(reply);
+};
+globalThis.iyerisSmokeForcePseudoState = (selector, forcedPseudoClasses) =>
+  new Promise((resolve, reject) => {
+    const id = ++pseudoStateSequence;
+    const timeout = setTimeout(() => {
+      pseudoStateWaiters.delete(id);
+      reject(new Error(`Smoke pseudo-state did not settle for ${selector}.`));
+    }, 5000);
+    pseudoStateWaiters.set(id, { resolve, reject, timeout });
+    if (typeof window[PSEUDO_STATE_BINDING] !== 'function') {
+      clearTimeout(timeout);
+      pseudoStateWaiters.delete(id);
+      reject(new Error('The CDP pseudo-state binding is unavailable.'));
+      return;
+    }
+    window[PSEUDO_STATE_BINDING](JSON.stringify({ id, selector, forcedPseudoClasses }));
+  });
+
+// Parses the computed colors Chromium reports: rgb(), rgba() and color(srgb ...).
+// Any other form throws, so an unexpected format fails the run instead of passing.
+const NUMERIC_TOKEN_RE = /^([+-]?(?:\d+\.?\d*|\.\d+)(?:e[+-]?\d+)?)(%?)$/i;
+const parseComputedColor = (value) => {
+  const text = String(value).trim().toLowerCase();
+  if (text === 'transparent') return { r: 0, g: 0, b: 0, a: 0 };
+  const match = /^(rgba?|color)\((.*)\)$/.exec(text);
+  if (!match) throw new Error(`Unsupported computed color: ${String(value)}`);
+  const isSrgb = match[1] === 'color';
+  let body = match[2].trim();
+  if (isSrgb) {
+    if (!body.startsWith('srgb ')) throw new Error(`Unsupported color space: ${String(value)}`);
+    body = body.slice('srgb'.length).trim();
+  }
+  const slashParts = body.split('/');
+  if (slashParts.length > 2) throw new Error(`Malformed computed color: ${String(value)}`);
+  const channels = slashParts[0].split(/[\s,]+/).filter(Boolean);
+  let alphaToken = slashParts.length === 2 ? slashParts[1].trim() : undefined;
+  if (alphaToken === undefined && channels.length === 4) alphaToken = channels.pop();
+  if (channels.length !== 3) throw new Error(`Malformed computed color: ${String(value)}`);
+  // color(srgb) channels are 0-1 and rgb() channels are 0-255. Percentages scale to either.
+  const toNumber = (token, fullScale) => {
+    const parts = NUMERIC_TOKEN_RE.exec(token);
+    if (!parts) throw new Error(`Malformed color component "${token}" in ${String(value)}`);
+    const number = Number(parts[1]);
+    return parts[2] ? (number / 100) * fullScale : number;
+  };
+  const [r, g, b] = channels.map((token) =>
+    isSrgb ? toNumber(token, 1) * 255 : toNumber(token, 255)
+  );
+  const a = alphaToken === undefined ? 1 : toNumber(alphaToken, 1);
+  if (![r, g, b, a].every(Number.isFinite) || a < 0 || a > 1) {
+    throw new Error(`Out-of-range computed color: ${String(value)}`);
+  }
+  return { r, g, b, a };
+};
+const alphaOf = (value) => parseComputedColor(value).a;
+
+// Turns off transitions and animations so computed styles and screenshots settle the same way every run.
+const VISUAL_FREEZE_CSS =
+  '*, *::before, *::after { transition: none !important; animation: none !important; caret-color: transparent !important; }';
+const VISUAL_GRID_NAMES = [
+  'Johann_Smith_Invoice_IT_Services.pdf',
+  'Quarterly-Report-2026.xlsx',
+  'meeting-notes.md',
+  'archive[old].zip',
+  'podcast-episode-12.mp3',
+  'design_v2_final.psd',
+  'README.txt',
+  'budget2026.csv',
+  'vacation_video.mp4',
+  'resume_updated.docx',
+  'screenshot-2026-10-01.png',
+  'holiday_photo_(beach).jpg',
+  'Project_Plan_draft.pptx',
+  'config.json',
+  'main.ts',
+  'LICENSE',
+];
+const VISUAL_LABEL_NAME = 'Johann_Smith_Invoice_IT_Services.pdf';
+const VISUAL_HOVER_NAME = 'holiday_photo_(beach).jpg';
+const VISUAL_PERM_BITS = [0o400, 0o200, 0o100, 0o040, 0o020, 0o010, 0o004, 0o002, 0o001];
+
+// Windows-style file: attribute booleans present, no Unix mode.
+const visualFileProps = () => ({
+  path: 'C:\\Users\\Burnt\\Documents\\Johann_Smith_Invoice_IT_Services.pdf',
+  name: 'Johann_Smith_Invoice_IT_Services.pdf',
+  size: 248512,
+  sizeOnDisk: 249856,
+  isDirectory: false,
+  isFile: true,
+  created: new Date('2026-01-14T09:12:04Z'),
+  modified: new Date('2026-10-02T17:45:31Z'),
+  accessed: new Date('2026-10-22T21:38:45Z'),
+  isReadOnly: false,
+  isHiddenAttr: false,
+  isSystemAttr: false,
+  isArchiveAttr: true,
+  isCompressedAttr: false,
+  isEncryptedAttr: false,
+  isIndexedAttr: true,
+  extension: 'pdf',
+  mimeType: 'application/pdf',
+  opensWith: 'Microsoft Edge',
+  owner: 'S-1-5-21-1001',
+  ownerName: 'DESKTOP-BURNT\\Burnt',
+  group: 'S-1-5-21-513',
+  groupName: 'DESKTOP-BURNT\\None',
+});
+
+// Unix-style folder: mode 0o754, no Windows attribute booleans.
+const visualFolderProps = () => ({
+  path: '/home/burnt/Projects',
+  name: 'Projects',
+  size: 4096,
+  isDirectory: true,
+  isFile: false,
+  created: new Date('2026-02-03T08:00:00Z'),
+  modified: new Date('2026-10-20T14:10:00Z'),
+  accessed: new Date('2026-10-22T21:00:00Z'),
+  mode: 0o754,
+  owner: '1000',
+  ownerName: 'burnt',
+  group: '1000',
+  groupName: 'staff',
+});
+
+// Signable item for the Digital Signatures tab. Signed, unsigned and untrusted fixtures share it.
+const visualSignableProps = (name, overrides = {}) => ({
+  path: `C:\\Downloads\\${name}`,
+  name,
+  size: 4831232,
+  sizeOnDisk: 4833280,
+  isDirectory: false,
+  isFile: true,
+  created: new Date('2026-03-11T10:00:00Z'),
+  modified: new Date('2026-03-11T10:02:00Z'),
+  accessed: new Date('2026-10-22T20:00:00Z'),
+  isReadOnly: false,
+  isHiddenAttr: false,
+  isSystemAttr: false,
+  extension: 'exe',
+  mimeType: 'application/x-msdownload',
+  owner: 'S-1-5-21-1001',
+  ownerName: 'DESKTOP-BURNT\\Burnt',
+  group: 'S-1-5-21-513',
+  groupName: 'DESKTOP-BURNT\\None',
+  ...overrides,
+});
+
+// macOS application bundle: a directory that still gets a signature lookup.
+const visualBundleProps = () => ({
+  path: '/Applications/IYERIS.app',
+  name: 'IYERIS.app',
+  size: 0,
+  isDirectory: true,
+  isFile: false,
+  created: new Date('2026-03-11T10:00:00Z'),
+  modified: new Date('2026-03-11T10:02:00Z'),
+  accessed: new Date('2026-10-22T20:00:00Z'),
+  mode: 0o755,
+  owner: '501',
+  ownerName: 'burnt',
+  group: '20',
+  groupName: 'staff',
+});
+
+// Two signers from a dual-signed file. Row 2 differs in issuer and serial, so the details change.
+const VISUAL_SIGNERS = [
+  {
+    name: 'IYERIS Publisher LLC',
+    issuer: 'DigiCert Trusted G4 Code Signing RSA4096 SHA384 2021 CA1',
+    digestAlgorithm: 'sha1',
+    timestamp: Date.parse('2026-03-11T10:01:00Z'),
+    serialNumber: '0A1B2C3D4E5F60718293A4B5C6D7E8F9',
+    thumbprint: '3F9A0B1C2D3E4F5061728394A5B6C7D8E9F0A1B2',
+    validFrom: Date.parse('2025-11-02T00:00:00Z'),
+    validTo: Date.parse('2026-11-30T23:59:59Z'),
+  },
+  {
+    name: 'IYERIS Publisher LLC',
+    issuer: 'Sectigo Public Code Signing CA R36',
+    digestAlgorithm: 'sha256',
+    timestamp: Date.parse('2026-03-11T10:01:30Z'),
+    serialNumber: '7E6D5C4B3A2918070605040302010F0E',
+    thumbprint: '9C8B7A6958473625140312F0E1D2C3B4A5968778',
+    validFrom: Date.parse('2025-06-15T00:00:00Z'),
+    validTo: Date.parse('2027-06-14T23:59:59Z'),
+  },
+];
+
+const waitUntil = async (predicate, message, timeoutMs = 4000) => {
+  const deadline = performance.now() + timeoutMs;
+  while (!predicate()) {
+    if (performance.now() > deadline) throw new Error(message);
+    await new Promise((resolve) => setTimeout(resolve, 16));
+  }
+};
+
+// Walks from the element under (x, y) up to the dialog. Any element with opacity below 1 or a
+// mask in that chain can let content behind the dialog show through.
+function opacityChainFailures(modalEl, x, y) {
+  const failures = [];
+  let element = document.elementFromPoint(x, y);
+  if (!element || !modalEl.contains(element)) {
+    return [
+      `point ${Math.round(x)},${Math.round(y)} hit ${element?.tagName ?? 'nothing'} outside the dialog`,
+    ];
+  }
+  while (element) {
+    const style = getComputedStyle(element);
+    const label = `${element.tagName}${element.id ? `#${element.id}` : ''}.${String(element.className).trim().split(/\s+/).join('.')}`;
+    if (Number(style.opacity) < 1) failures.push(`${label} opacity ${style.opacity}`);
+    if (style.maskImage !== 'none' || style.webkitMaskImage !== 'none') {
+      failures.push(`${label} mask ${style.maskImage}`);
+    }
+    if (element === modalEl) break;
+    element = element.parentElement;
+  }
+  return failures;
+}
+
+async function runVisualUpliftSuite(results) {
+  const checks = [];
+  const screenshots = [];
+  const record = { mode: 'visual-uplift', checks, screenshots, passed: false };
+  results.push(record);
+  const check = (name, actual, expected, passed) => {
+    checks.push({ name, actual: String(actual), expected, passed: passed === true });
+  };
+  const shoot = async (name, regions = []) => {
+    await frame();
+    const reply = await requestScreenshot(name, regions);
+    screenshots.push(name);
+    return reply.regions ?? [];
+  };
+  const keyDown = (element, key) =>
+    element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+
+  let hover = null;
+  let failure = null;
+  try {
+    await document.fonts?.ready;
+    const parsedIndex = new DOMParser().parseFromString(indexHtml, 'text/html');
+    const fromIndex = (id) => {
+      const node = parsedIndex.getElementById(id);
+      if (!node) throw new Error(`visual-uplift: index.html has no #${id}.`);
+      return document.importNode(node, true);
+    };
+    const freeze = document.createElement('style');
+    freeze.textContent = VISUAL_FREEZE_CSS;
+    const fileView = document.createElement('div');
+    fileView.id = 'file-view';
+    fileView.className = 'file-view';
+    fileView.style.cssText = 'position:absolute;left:24px;top:24px;width:820px;height:520px;';
+    const grid = document.createElement('div');
+    grid.id = 'file-grid';
+    grid.className = 'file-grid';
+    fileView.append(grid);
+    const emptyState = document.createElement('div');
+    emptyState.id = 'empty-state';
+    document.body.className = '';
+    document.body.replaceChildren(
+      freeze,
+      fileView,
+      emptyState,
+      fromIndex('file-hover-card'),
+      fromIndex('properties-modal'),
+      fromIndex('compress-options-modal'),
+      fromIndex('settings-modal'),
+      fromIndex('utility-drawer')
+    );
+
+    const settings = createDefaultSettings();
+    const renderedElements = new Map();
+    const fileRender = createFileRenderController({
+      getFileGrid: () => grid,
+      getEmptyState: () => emptyState,
+      getCurrentSettings: () => settings,
+      getFileElementMap: () => renderedElements,
+      showToast: noop,
+      clearSelection: noop,
+      updateStatusBar: noop,
+      markSelectionDirty: noop,
+      setHiddenFilesCount: noop,
+      getHiddenFilesCount: () => 0,
+      setAllFiles: noop,
+      setDisableEntryAnimation: noop,
+      setDisableThumbnailRendering: noop,
+      ensureActiveItem: noop,
+      applyGitIndicatorsToPaths: noop,
+      updateCutVisuals: noop,
+      clearCutPaths: noop,
+      clearGitCache: noop,
+      observeThumbnailItem: noop,
+      resetThumbnailObserver: noop,
+      getFolderIcon: () => '',
+      nameCollator: new Intl.Collator('en'),
+      dateFormatter: new Intl.DateTimeFormat('en-US'),
+    });
+    const gridItems = VISUAL_GRID_NAMES.map((name, index) =>
+      fixtureItem({
+        name,
+        path: `/visual/${name}`,
+        size: 2048 * (index + 1),
+        modified: new Date('2026-10-01T12:00:00Z'),
+      })
+    );
+    const gridItemsByPath = new Map(gridItems.map((item) => [item.path, item]));
+    fileRender.renderFiles(gridItems);
+    await waitUntil(
+      () => grid.querySelectorAll('.file-item').length === gridItems.length,
+      'visual-uplift: the grid did not render every fixture item'
+    );
+    await document.fonts?.ready;
+
+    // Grid label: wrap opportunities are added, and the text is unchanged.
+    const labelElement = grid.querySelector(
+      `.file-item[data-path="/visual/${VISUAL_LABEL_NAME}"] .file-name`
+    );
+    const labelHtml = labelElement?.innerHTML ?? '';
+    check(
+      'grid label has <wbr> break opportunities',
+      labelHtml,
+      'contains <wbr>',
+      labelHtml.includes('<wbr>')
+    );
+    const labelText = labelElement?.textContent ?? '';
+    check(
+      'grid label text matches the file name',
+      labelText,
+      VISUAL_LABEL_NAME,
+      labelText === VISUAL_LABEL_NAME
+    );
+
+    // Hover card over the icon grid.
+    hover = createHoverCardController({
+      getFileItemData: (element) => gridItemsByPath.get(element.dataset.path ?? '') ?? null,
+      formatFileSize,
+      getFileTypeFromName,
+      getFileIcon,
+      getThumbnailForPath: () => undefined,
+      isRubberBandActive: () => false,
+    });
+    hover.setup();
+    const hoverTarget = Array.from(grid.querySelectorAll('.file-item')).find(
+      (element) => element.dataset.path === `/visual/${VISUAL_HOVER_NAME}`
+    );
+    if (!hoverTarget) throw new Error('visual-uplift: the hover target was not rendered');
+    hoverTarget.dispatchEvent(new MouseEvent('mouseover', { bubbles: true }));
+    const hoverCard = document.getElementById('file-hover-card');
+    await waitUntil(
+      () => hoverCard.classList.contains('visible'),
+      `visual-uplift: hover card never showed after ${HOVER_CARD_DELAY_MS}ms`
+    );
+    const hoverStyle = getComputedStyle(hoverCard);
+    const hoverAlpha = alphaOf(hoverStyle.backgroundColor);
+    check(
+      'hover card background is fully opaque (alpha at least 0.99)',
+      hoverStyle.backgroundColor,
+      '>= 0.99',
+      hoverAlpha >= 0.99
+    );
+    check(
+      'hover card has a box-shadow',
+      hoverStyle.boxShadow,
+      'not none',
+      hoverStyle.boxShadow !== 'none'
+    );
+    await shoot('hover-card');
+    hover.hideHoverCard();
+
+    // Properties dialog: tabs, dim-only backdrop, Apply flow and the permission grid.
+    const propertyCalls = { setAttributes: [], setPermissions: [], getItemProperties: [] };
+    const propertyStore = new Map();
+    const fileProps = visualFileProps();
+    const folderProps = visualFolderProps();
+    const signedProps = visualSignableProps('Setup-Signed.exe');
+    const unsignedProps = visualSignableProps('portable-tool.exe');
+    const untrustedProps = visualSignableProps('legacy-driver.exe');
+    const bundleProps = visualBundleProps();
+    for (const props of [fileProps, folderProps, signedProps, unsignedProps, untrustedProps]) {
+      propertyStore.set(props.path, props);
+    }
+    // Signature lookups: signedProps can be held so a late result can arrive after a switch.
+    const signatureStore = new Map([
+      [
+        signedProps.path,
+        { supported: true, signed: true, status: 'valid', signers: VISUAL_SIGNERS },
+      ],
+      [
+        bundleProps.path,
+        {
+          supported: true,
+          signed: true,
+          status: 'valid',
+          identifier: 'org.iyeris.app',
+          teamId: 'ABCDE12345',
+          hardenedRuntime: true,
+          gatekeeperAccepted: true,
+          signers: [VISUAL_SIGNERS[0]],
+        },
+      ],
+      [unsignedProps.path, { supported: true, signed: false, status: 'unsigned', signers: [] }],
+      [
+        untrustedProps.path,
+        {
+          supported: true,
+          signed: true,
+          status: 'untrusted',
+          statusMessage: 'A certificate in the chain is not trusted by the system.',
+          signers: [VISUAL_SIGNERS[0]],
+        },
+      ],
+    ]);
+    const signatureCalls = [];
+    let heldSignaturePath = null;
+    let releaseHeldSignature = null;
+    let heldSignatureDelivered = false;
+    window.tauriAPI.getPlatform = async () => 'windows';
+    window.tauriAPI.onChecksumProgress = () => noop;
+    window.tauriAPI.getDiskSpace = async () => ({
+      success: true,
+      total: 500 * 1024 ** 3,
+      free: 200 * 1024 ** 3,
+    });
+    window.tauriAPI.writeToSystemClipboard = async () => ({ success: true });
+    window.tauriAPI.setAttributes = async (filePath, payload) => {
+      propertyCalls.setAttributes.push({ path: filePath, payload: { ...payload } });
+      const stored = propertyStore.get(filePath);
+      if (stored && payload.readOnly !== undefined) stored.isReadOnly = payload.readOnly;
+      if (stored && payload.hidden !== undefined) stored.isHiddenAttr = payload.hidden;
+      return { success: true };
+    };
+    window.tauriAPI.setPermissions = async (filePath, mode) => {
+      propertyCalls.setPermissions.push({ path: filePath, mode });
+      const stored = propertyStore.get(filePath);
+      if (stored) stored.mode = mode;
+      return { success: true };
+    };
+    window.tauriAPI.getItemProperties = async (filePath) => {
+      propertyCalls.getItemProperties.push(filePath);
+      return { success: true, properties: { ...propertyStore.get(filePath) } };
+    };
+    window.tauriAPI.getCodeSignature = async (filePath) => {
+      signatureCalls.push(filePath);
+      if (filePath === heldSignaturePath) {
+        await new Promise((resolve) => {
+          releaseHeldSignature = resolve;
+        });
+        heldSignatureDelivered = true;
+      }
+      const signature = signatureStore.get(filePath);
+      return signature
+        ? { success: true, signature }
+        : { success: false, error: 'No signature information' };
+    };
+
+    const propertiesDialog = createPropertiesDialogController({
+      showToast: noop,
+      onModalOpen: noop,
+      onModalClose: noop,
+      getFileIcon,
+      getThumbnailForPath: () => undefined,
+      getFileTypeFromName,
+    });
+    const propertiesModal = document.getElementById('properties-modal');
+    const propertiesTab = (id) => document.getElementById(`properties-tab-${id}`);
+    const tabs = Array.from(propertiesModal.querySelectorAll('[role="tab"]'));
+    const selectedTabIds = () =>
+      tabs
+        .filter((tab) => tab.getAttribute('aria-selected') === 'true')
+        .map((tab) => tab.dataset.tab)
+        .join(',');
+    check('properties dialog has four tabs', tabs.length, 4, tabs.length === 4);
+
+    propertiesDialog.showPropertiesDialog(fileProps);
+    check(
+      'properties opens on General',
+      selectedTabIds(),
+      'general',
+      selectedTabIds() === 'general'
+    );
+    propertiesTab('details').click();
+    check(
+      'clicking Details selects it',
+      selectedTabIds(),
+      'details',
+      selectedTabIds() === 'details'
+    );
+    keyDown(propertiesTab('details'), 'ArrowRight');
+    check(
+      'ArrowRight moves focus with the selection',
+      document.activeElement?.id ?? '',
+      'properties-tab-security',
+      document.activeElement === propertiesTab('security')
+    );
+    check(
+      'ArrowRight moves selection to Security',
+      selectedTabIds(),
+      'security',
+      selectedTabIds() === 'security'
+    );
+    propertiesTab('general').click();
+    check(
+      'clicking a tab moves focus to it',
+      document.activeElement?.id ?? '',
+      'properties-tab-general',
+      document.activeElement === propertiesTab('general')
+    );
+
+    const backdrop = getComputedStyle(propertiesModal);
+    check(
+      'properties backdrop has no blur',
+      backdrop.backdropFilter,
+      'none',
+      backdrop.backdropFilter === 'none' || backdrop.backdropFilter === ''
+    );
+    const backdropAlpha = alphaOf(backdrop.backgroundColor);
+    check(
+      'properties backdrop only dims (alpha <= 0.4)',
+      backdrop.backgroundColor,
+      '<= 0.4',
+      backdropAlpha <= 0.4
+    );
+    const dialogPanelStyle = getComputedStyle(propertiesModal.querySelector('.modal'));
+    check(
+      'properties dialog panel has no nested blur',
+      dialogPanelStyle.backdropFilter,
+      'none',
+      dialogPanelStyle.backdropFilter === 'none' || dialogPanelStyle.backdropFilter === ''
+    );
+    // The shared default overlay stays dim-only; Liquid Glass may opt into translucency.
+    const sharedOverlayBlur = getComputedStyle(
+      document.getElementById('settings-modal')
+    ).backdropFilter;
+    check(
+      'default shared modal overlay does not blur',
+      sharedOverlayBlur,
+      'no blur unless Liquid Glass is active',
+      document.body.classList.contains('liquid-glass') ||
+        sharedOverlayBlur === 'none' ||
+        sharedOverlayBlur === ''
+    );
+
+    const applyButton = document.getElementById('properties-apply');
+    check('Apply starts disabled', applyButton.disabled, true, applyButton.disabled === true);
+    propertiesModal.querySelector('input[data-attr="readOnly"]').click();
+    check(
+      'toggling Read-only enables Apply',
+      applyButton.disabled,
+      false,
+      applyButton.disabled === false
+    );
+    applyButton.click();
+    await waitUntil(
+      () => propertyCalls.getItemProperties.length === 1 && applyButton.disabled,
+      'visual-uplift: Apply never finished refreshing the file properties'
+    );
+    const attributeCall = propertyCalls.setAttributes[0];
+    const attributeKeys = Object.keys(attributeCall?.payload ?? {})
+      .sort()
+      .join(',');
+    check(
+      'Apply sends {readOnly, hidden} to setAttributes',
+      attributeKeys,
+      'hidden,readOnly',
+      attributeKeys === 'hidden,readOnly' &&
+        attributeCall.payload.readOnly === true &&
+        attributeCall.payload.hidden === false
+    );
+    check(
+      'Read-only stays checked after the refresh',
+      propertiesModal.querySelector('input[data-attr="readOnly"]')?.checked ?? false,
+      true,
+      propertiesModal.querySelector('input[data-attr="readOnly"]')?.checked === true
+    );
+    // Opacity and pixel probes. The band sits under the tab strip, where grid icons are behind the
+    // dialog. The solid strip sits above the footer, where nothing is behind the dialog.
+    const panelEl = propertiesModal.querySelector('.modal');
+    const panelRect = panelEl.getBoundingClientRect();
+    const tabsRect = propertiesModal.querySelector('.properties-tabs').getBoundingClientRect();
+    const footerRect = propertiesModal.querySelector('.modal-footer').getBoundingClientRect();
+    // Stop before the dialog's own file icon row so this strict uniformity check samples only the background band.
+    const bandArea = {
+      left: panelRect.left,
+      right: panelRect.right,
+      top: tabsRect.bottom + 4,
+      bottom: tabsRect.bottom + 24,
+    };
+    const behindBand = Array.from(grid.querySelectorAll('.file-item'))
+      .map((element) => element.getBoundingClientRect())
+      .map((rect) => {
+        const left = Math.max(rect.left, bandArea.left);
+        const top = Math.max(rect.top, bandArea.top);
+        return {
+          x: left,
+          y: top,
+          width: Math.min(rect.right, bandArea.right) - left,
+          height: Math.min(rect.bottom, bandArea.bottom) - top,
+        };
+      })
+      .filter((rect) => rect.width >= 24 && rect.height >= 12)
+      .sort((a, b) => b.width * b.height - a.width * a.height)[0];
+    check(
+      'a grid item sits behind the panel band',
+      behindBand ? 'yes' : 'none',
+      'yes',
+      Boolean(behindBand)
+    );
+    if (!behindBand) throw new Error('visual-uplift: no grid item sits behind the panel band');
+    const solidRegion = {
+      name: 'solid',
+      x: panelRect.left + 24,
+      y: footerRect.top - 36,
+      width: 200,
+      height: 22,
+    };
+    const probeFailures = [
+      ...opacityChainFailures(
+        panelEl,
+        behindBand.x + behindBand.width / 2,
+        behindBand.y + behindBand.height / 2
+      ),
+      ...opacityChainFailures(panelEl, panelRect.left + 60, panelRect.top + 20),
+      ...opacityChainFailures(panelEl, solidRegion.x + 100, solidRegion.y + 11),
+      ...opacityChainFailures(panelEl, panelRect.left + panelRect.width / 2, footerRect.top - 60),
+    ];
+    check(
+      'properties panel chain has no translucent element or mask',
+      probeFailures.join('; ') || 'none',
+      'none',
+      probeFailures.length === 0
+    );
+    const panelAlpha = alphaOf(getComputedStyle(panelEl).backgroundColor);
+    check(
+      'properties panel background is fully opaque',
+      getComputedStyle(panelEl).backgroundColor,
+      'alpha 1',
+      panelAlpha === 1
+    );
+    const dateLines = ['Created:', 'Modified:', 'Accessed:'].map((label) => {
+      const row = Array.from(
+        propertiesModal.querySelectorAll('#properties-panel-general .property-row')
+      ).find((element) => element.querySelector('.property-label')?.textContent.trim() === label);
+      const valueNode = row?.querySelector('.property-value');
+      if (!valueNode) return `${label} missing`;
+      const range = document.createRange();
+      range.selectNodeContents(valueNode);
+      return `${label} ${range.getClientRects().length}`;
+    });
+    check(
+      'long date values stay on one line',
+      dateLines.join(', '),
+      'each 1 line',
+      dateLines.every((entry) => entry.endsWith(' 1'))
+    );
+    document.activeElement?.blur();
+    const [bandStats, solidStats] = await shoot('properties-file-general', [
+      { name: 'band', ...behindBand },
+      solidRegion,
+    ]);
+    check(
+      'panel band over grid icons has no ghosting (luminance stdDev)',
+      `stdDev ${bandStats.stdDev}`,
+      'stdDev <= 0.1',
+      bandStats.stdDev <= 0.1
+    );
+    check(
+      'panel band matches the solid panel strip (mean luminance)',
+      `band ${bandStats.mean}, solid ${solidStats.mean}`,
+      'difference <= 0.5',
+      Math.abs(bandStats.mean - solidStats.mean) <= 0.5
+    );
+    propertiesTab('details').click();
+    document.activeElement?.blur();
+    await shoot('properties-file-details');
+    propertiesTab('security').click();
+    const securityText =
+      propertiesModal.querySelector('#properties-panel-security')?.textContent ?? '';
+    check(
+      'file Security tab shows the Windows note',
+      securityText.includes('Access control lists are managed by Windows.'),
+      'note present',
+      securityText.includes('Access control lists are managed by Windows.')
+    );
+    document.activeElement?.blur();
+    await shoot('properties-file-security');
+    document.getElementById('properties-cancel').click();
+    check(
+      'Cancel closes the properties dialog',
+      propertiesModal.style.display,
+      'none',
+      propertiesModal.style.display === 'none'
+    );
+
+    // Digital Signatures tab: reveal for signed items, skip when unsigned, warn when untrusted,
+    // drop a stale lookup, and keep the cached signature through Apply.
+    const signaturesTab = propertiesTab('signatures');
+    const signaturePanel = () => propertiesModal.querySelector('#properties-panel-signatures');
+    const signerRows = () =>
+      Array.from(propertiesModal.querySelectorAll('[data-role="signer-row"]'));
+    const signerDetails = () =>
+      propertiesModal.querySelector('[data-role="signer-details"]')?.textContent ?? '';
+    const selectedRow = () =>
+      signerRows().findIndex((row) => row.getAttribute('aria-selected') === 'true');
+    const signatureCallsFor = (path) => signatureCalls.filter((called) => called === path).length;
+
+    check(
+      'tab order is General, Digital Signatures, Details, Security',
+      tabs.map((tab) => tab.dataset.tab).join(','),
+      'general,signatures,details,security',
+      tabs.map((tab) => tab.dataset.tab).join(',') === 'general,signatures,details,security'
+    );
+    propertiesDialog.showPropertiesDialog(signedProps);
+    await waitUntil(
+      () => !signaturesTab.hidden,
+      'visual-uplift: the signed file never revealed the Digital Signatures tab'
+    );
+    check(
+      'signed file reveals the Digital Signatures tab',
+      signaturesTab.hidden,
+      false,
+      signaturesTab.hidden === false
+    );
+    check(
+      'signed file still opens on General',
+      selectedTabIds(),
+      'general',
+      selectedTabIds() === 'general'
+    );
+    keyDown(propertiesTab('general'), 'ArrowRight');
+    check(
+      'ArrowRight from General lands on Digital Signatures',
+      `${selectedTabIds()} focus ${document.activeElement?.id ?? ''}`,
+      'signatures focus properties-tab-signatures',
+      selectedTabIds() === 'signatures' && document.activeElement === signaturesTab
+    );
+    check('signer table has two rows', signerRows().length, 2, signerRows().length === 2);
+    const headerHeights = Array.from(
+      propertiesModal.querySelectorAll('#properties-panel-signatures th')
+    ).map((th) => Math.round(th.getBoundingClientRect().height));
+    check(
+      'signer table headers stay on one line',
+      headerHeights.join(','),
+      'each <= 28px',
+      headerHeights.length === 3 && headerHeights.every((height) => height <= 28)
+    );
+    check('first signer row is selected by default', selectedRow(), 0, selectedRow() === 0);
+    check(
+      'details show the first signer issuer',
+      signerDetails().includes('DigiCert'),
+      true,
+      signerDetails().includes('DigiCert')
+    );
+    signerRows()[1].click();
+    check('clicking row 2 selects it', selectedRow(), 1, selectedRow() === 1);
+    check(
+      'row 2 updates the details block',
+      signerDetails().includes('Sectigo') && !signerDetails().includes('DigiCert'),
+      'Sectigo details only',
+      signerDetails().includes('Sectigo') && !signerDetails().includes('DigiCert')
+    );
+    keyDown(signerRows()[1], 'ArrowUp');
+    check('ArrowUp moves the signer selection to row 1', selectedRow(), 0, selectedRow() === 0);
+    keyDown(signerRows()[0], 'ArrowDown');
+    check('ArrowDown moves the signer selection to row 2', selectedRow(), 1, selectedRow() === 1);
+    const okStatus = signaturePanel().querySelector('.signature-status');
+    check(
+      'valid signature shows the OK status',
+      okStatus?.textContent?.trim() ?? '',
+      'This digital signature is OK.',
+      okStatus?.dataset.tone === 'ok' &&
+        okStatus.textContent.includes('This digital signature is OK.')
+    );
+    // Focus stays on the selected row, so the screenshot shows the single row focus ring.
+    await shoot('properties-signatures');
+
+    const refreshesBeforeApply = propertyCalls.getItemProperties.length;
+    propertiesModal.querySelector('input[data-attr="readOnly"]').click();
+    applyButton.click();
+    await waitUntil(
+      () => propertyCalls.getItemProperties.length > refreshesBeforeApply && applyButton.disabled,
+      'visual-uplift: Apply never refreshed the signed file'
+    );
+    check(
+      'Apply keeps the Digital Signatures tab revealed',
+      signaturesTab.hidden,
+      false,
+      signaturesTab.hidden === false
+    );
+    check('Apply keeps both signer rows', signerRows().length, 2, signerRows().length === 2);
+    check('Apply keeps the selected signer', selectedRow(), 1, selectedRow() === 1);
+    check(
+      'Apply does not ask for the signature again',
+      signatureCallsFor(signedProps.path),
+      1,
+      signatureCallsFor(signedProps.path) === 1
+    );
+    document.getElementById('properties-cancel').click();
+
+    propertiesDialog.showPropertiesDialog(unsignedProps);
+    await frame();
+    check(
+      'unsigned file keeps the Digital Signatures tab hidden',
+      signaturesTab.hidden,
+      true,
+      signaturesTab.hidden === true
+    );
+    keyDown(propertiesTab('general'), 'ArrowRight');
+    check(
+      'ArrowRight skips the hidden Digital Signatures tab',
+      selectedTabIds(),
+      'details',
+      selectedTabIds() === 'details'
+    );
+    document.getElementById('properties-cancel').click();
+
+    propertiesDialog.showPropertiesDialog(untrustedProps);
+    await waitUntil(
+      () => !signaturesTab.hidden,
+      'visual-uplift: the untrusted file never revealed the Digital Signatures tab'
+    );
+    signaturesTab.click();
+    const untrustedStatus = signaturePanel().querySelector('.signature-status');
+    check(
+      'untrusted file shows a warning status',
+      untrustedStatus?.dataset.tone ?? '',
+      'warn',
+      untrustedStatus?.dataset.tone === 'warn'
+    );
+    check(
+      'untrusted status reads as a warning',
+      untrustedStatus?.querySelector('.signature-status-text')?.textContent ?? '',
+      'This digital signature is not trusted.',
+      untrustedStatus?.querySelector('.signature-status-text')?.textContent ===
+        'This digital signature is not trusted.'
+    );
+    check(
+      'untrusted status includes the backend message',
+      signaturePanel().querySelector('.signature-status-message')?.textContent ?? '',
+      'A certificate in the chain is not trusted by the system.',
+      signaturePanel().querySelector('.signature-status-message')?.textContent ===
+        'A certificate in the chain is not trusted by the system.'
+    );
+    document.getElementById('properties-cancel').click();
+
+    // A lookup for the signed file is held open. The dialog switches to the unsigned file before it
+    // returns, so the late signed result must not reveal the tab.
+    heldSignaturePath = signedProps.path;
+    propertiesDialog.showPropertiesDialog(signedProps);
+    await frame();
+    check(
+      'a pending lookup keeps the tab hidden',
+      signaturesTab.hidden,
+      true,
+      signaturesTab.hidden === true
+    );
+    propertiesDialog.showPropertiesDialog(unsignedProps);
+    await frame();
+    if (!releaseHeldSignature) {
+      throw new Error('visual-uplift: the held signature lookup never started');
+    }
+    releaseHeldSignature();
+    heldSignaturePath = null;
+    await frame();
+    check(
+      'the stale signed result was delivered after the switch',
+      heldSignatureDelivered,
+      true,
+      heldSignatureDelivered === true
+    );
+    check(
+      'a stale signed result does not reveal the tab',
+      signaturesTab.hidden,
+      true,
+      signaturesTab.hidden === true
+    );
+    check(
+      'a stale signed result leaves the signature panel empty',
+      signaturePanel().childElementCount,
+      0,
+      signaturePanel().childElementCount === 0
+    );
+    check(
+      'the dialog stays on General after the stale result',
+      selectedTabIds(),
+      'general',
+      selectedTabIds() === 'general'
+    );
+    document.getElementById('properties-cancel').click();
+
+    propertiesDialog.showPropertiesDialog(bundleProps);
+    await waitUntil(
+      () => !signaturesTab.hidden,
+      'visual-uplift: the signed macOS bundle never revealed the Digital Signatures tab'
+    );
+    signaturesTab.click();
+    const bundleText = signaturePanel().textContent;
+    const bundleExtrasShown =
+      bundleText.includes('ABCDE12345') &&
+      bundleText.includes('Hardened Runtime') &&
+      bundleText.includes('Accepted');
+    check(
+      'signed macOS bundle shows Team ID, Hardened Runtime and Gatekeeper',
+      bundleExtrasShown ? 'shown' : 'missing',
+      'shown',
+      bundleExtrasShown
+    );
+    document.getElementById('properties-cancel').click();
+
+    propertiesDialog.showPropertiesDialog(folderProps);
+    await frame();
+    check(
+      'a plain folder skips the signature lookup',
+      signatureCallsFor(folderProps.path),
+      0,
+      signatureCallsFor(folderProps.path) === 0
+    );
+    document.getElementById('properties-cancel').click();
+
+    propertiesDialog.showPropertiesDialog(folderProps);
+    propertiesTab('security').click();
+    const permBox = (bit) => propertiesModal.querySelector(`input[data-perm-bit="${bit}"]`);
+    const octalInput = () => propertiesModal.querySelector('[data-role="perm-octal"]');
+    const rwxText = () =>
+      propertiesModal.querySelector('[data-role="perm-rwx"]')?.textContent ?? '';
+    const gridState = () =>
+      VISUAL_PERM_BITS.map((bit) => (permBox(bit)?.checked ? '1' : '0')).join('');
+    check(
+      'folder octal input shows 754',
+      octalInput()?.value ?? '',
+      '754',
+      octalInput()?.value === '754'
+    );
+    check('permission grid mirrors 754', gridState(), '111101100', gridState() === '111101100');
+    check(
+      'folder Apply starts disabled',
+      applyButton.disabled,
+      true,
+      applyButton.disabled === true
+    );
+    permBox(0o002).click();
+    check(
+      'grid edit updates the octal input',
+      octalInput()?.value ?? '',
+      '756',
+      octalInput()?.value === '756'
+    );
+    check('grid edit updates the rwx text', rwxText(), 'rwxr-xrw-', rwxText() === 'rwxr-xrw-');
+    octalInput().value = '644';
+    octalInput().dispatchEvent(new Event('input', { bubbles: true }));
+    check('octal input updates the grid', gridState(), '110100100', gridState() === '110100100');
+    check('octal input updates the rwx text', rwxText(), 'rw-r--r--', rwxText() === 'rw-r--r--');
+    check(
+      'Apply enables after permission edits',
+      applyButton.disabled,
+      false,
+      applyButton.disabled === false
+    );
+    applyButton.click();
+    await waitUntil(
+      () => propertyCalls.setPermissions.length === 1 && applyButton.disabled,
+      'visual-uplift: permission Apply never finished'
+    );
+    const modeSent = (propertyCalls.setPermissions[0]?.mode ?? -1).toString(8);
+    check('Apply sends the octal mode to setPermissions', modeSent, '644', modeSent === '644');
+    document.activeElement?.blur();
+    await shoot('properties-folder-security');
+    document.getElementById('properties-cancel').click();
+
+    // Compress modal footer, opened through the real controller.
+    const compressModal = document.getElementById('compress-options-modal');
+    const compressController = createCompressExtractController({
+      getCurrentPath: () => '/visual',
+      getSelectedItems: () => new Set([`/visual/${VISUAL_LABEL_NAME}`]),
+      getAllFiles: () => gridItems,
+      showToast: noop,
+      showConfirm: async () => true,
+      navigateTo: async () => {},
+      activateModal: noop,
+      deactivateModal: noop,
+      addToRecentFiles: noop,
+      generateOperationId: () => 'visual-op',
+      addOperation: noop,
+      getOperation: () => undefined,
+      updateOperation: noop,
+      completeOperation: noop,
+      removeOperation: noop,
+      isWindowsPlatform: () => false,
+    });
+    compressController.showCompressOptionsModal();
+    const footer = compressModal.querySelector('.modal-footer');
+    if (!footer) throw new Error('visual-uplift: the compress modal has no .modal-footer');
+    const footerBox = footer.getBoundingClientRect();
+    const footerButtons = Array.from(footer.querySelectorAll('button')).filter(
+      (button) => button.getClientRects().length > 0
+    );
+    check(
+      'modal footer lays out as a row',
+      getComputedStyle(footer).flexDirection,
+      'row',
+      getComputedStyle(footer).flexDirection === 'row'
+    );
+    check(
+      'modal footer buttons are narrower than the footer',
+      footerButtons.length,
+      `>0 buttons, each narrower than ${Math.round(footerBox.width)}px`,
+      footerButtons.length > 0 &&
+        footerButtons.every((button) => button.getBoundingClientRect().width < footerBox.width)
+    );
+    const lastButtonRight =
+      footerButtons[footerButtons.length - 1]?.getBoundingClientRect().right ?? 0;
+    check(
+      'modal footer buttons sit on the right half',
+      lastButtonRight,
+      `> ${Math.round(footerBox.left + footerBox.width / 2)}`,
+      lastButtonRight > footerBox.left + footerBox.width / 2
+    );
+    const compressPanelEl = compressModal.querySelector('.modal');
+    const compressRect = compressPanelEl.getBoundingClientRect();
+    const compressFailures = [
+      ...opacityChainFailures(compressPanelEl, compressRect.left + 60, compressRect.top + 20),
+      ...opacityChainFailures(
+        compressPanelEl,
+        compressRect.left + compressRect.width / 2,
+        compressRect.top + compressRect.height / 2
+      ),
+      ...opacityChainFailures(compressPanelEl, compressRect.right - 40, compressRect.bottom - 40),
+    ];
+    check(
+      'compress panel chain has no translucent element or mask',
+      compressFailures.join('; ') || 'none',
+      'none',
+      compressFailures.length === 0
+    );
+    check(
+      'compress panel background is fully opaque',
+      getComputedStyle(compressPanelEl).backgroundColor,
+      'alpha 1',
+      alphaOf(getComputedStyle(compressPanelEl).backgroundColor) === 1
+    );
+    await shoot('compress-options');
+
+    // Utility Dashboard: hidden with the default setting, shown once it is enabled.
+    const drawer = document.getElementById('utility-drawer');
+    const utilitySettings = createDefaultSettings();
+    check(
+      'Utility Dashboard setting defaults to off',
+      utilitySettings.showUtilityDashboard,
+      false,
+      utilitySettings.showUtilityDashboard === false
+    );
+    const utility = createUtilityDrawerController({
+      getCurrentSettings: () => utilitySettings,
+      saveSettingsWithTimestamp: async () => undefined,
+      showToast: noop,
+      getCurrentPath: () => '/visual',
+      navigateTo: noop,
+    });
+    utility.init();
+    const hiddenDisplay = getComputedStyle(drawer).display;
+    check(
+      'utility drawer stays hidden with default settings',
+      hiddenDisplay,
+      'none',
+      hiddenDisplay === 'none'
+    );
+    utilitySettings.showUtilityDashboard = true;
+    utility.init();
+    const shownDisplay = getComputedStyle(drawer).display;
+    check(
+      'utility drawer shows after the setting is enabled',
+      shownDisplay,
+      'not none',
+      shownDisplay !== 'none'
+    );
+
+    // Uplift failure modes: list rows, column selection, context menu, home tiles and the
+    // grid filename pill. Fixtures are appended offscreen so computed styles still come from
+    // the shipped stylesheets without disturbing the screenshots above.
+    const upliftFixture = document.createElement('div');
+    upliftFixture.style.cssText = 'position:fixed;left:-10000px;top:0;width:900px;';
+    document.body.append(upliftFixture);
+
+    grid.classList.add('list-view');
+    await frame();
+    const firstListRow = grid.querySelector('.file-item');
+    if (!firstListRow) throw new Error('visual-uplift: the list view rendered no .file-item');
+    const listRowBorder = getComputedStyle(firstListRow).borderBottomWidth;
+    check('list-view rows have no bottom border', listRowBorder, '0px', listRowBorder === '0px');
+    const listSize = firstListRow.querySelector('.file-size');
+    if (!listSize) throw new Error('visual-uplift: the list row has no .file-size');
+    const listSizeNumeric = getComputedStyle(listSize).fontVariantNumeric;
+    check(
+      'list view numerals are tabular',
+      listSizeNumeric,
+      'contains tabular-nums',
+      listSizeNumeric.includes('tabular-nums')
+    );
+
+    const columnPane = document.createElement('div');
+    columnPane.className = 'column-pane';
+    const columnSelected = document.createElement('div');
+    columnSelected.className = 'column-item selected';
+    columnSelected.textContent = 'Selected';
+    const columnExpanded = document.createElement('div');
+    columnExpanded.className = 'column-item expanded';
+    columnExpanded.textContent = 'Expanded';
+    columnPane.append(columnSelected, columnExpanded);
+    upliftFixture.append(columnPane);
+    const selectedColumnBackground = getComputedStyle(columnSelected).backgroundColor;
+    const expandedColumnBackground = getComputedStyle(columnExpanded).backgroundColor;
+    check(
+      'column view selected and expanded backgrounds differ',
+      `${selectedColumnBackground} vs ${expandedColumnBackground}`,
+      'different',
+      selectedColumnBackground !== expandedColumnBackground
+    );
+    const accentProbe = document.createElement('div');
+    accentProbe.style.backgroundColor = 'var(--system-accent-color)';
+    upliftFixture.append(accentProbe);
+    const accent = parseComputedColor(getComputedStyle(accentProbe).backgroundColor);
+    const selectedColumn = parseComputedColor(selectedColumnBackground);
+    const accentDelta = Math.max(
+      Math.abs(selectedColumn.r - accent.r),
+      Math.abs(selectedColumn.g - accent.g),
+      Math.abs(selectedColumn.b - accent.b)
+    );
+    check(
+      'column view selected uses accent',
+      selectedColumnBackground,
+      'accent rgba at alpha 1',
+      selectedColumn.a === 1 && accentDelta <= 1
+    );
+
+    const contextMenu = fromIndex('context-menu');
+    contextMenu.style.cssText = 'position:fixed;left:-10000px;top:0;display:block;';
+    upliftFixture.append(contextMenu);
+    const groupLabel = contextMenu.querySelector('.context-menu-group-label');
+    if (!groupLabel) {
+      throw new Error('visual-uplift: the context menu has no .context-menu-group-label');
+    }
+    const groupLabelDisplay = getComputedStyle(groupLabel).display;
+    check(
+      'context menu has no group labels',
+      groupLabelDisplay,
+      'none',
+      groupLabelDisplay === 'none'
+    );
+    const menuItem = contextMenu.querySelector('.context-menu-item');
+    if (!menuItem) throw new Error('visual-uplift: the context menu has no .context-menu-item');
+    const menuItemBefore = getComputedStyle(menuItem, '::before');
+    const beforeContent = menuItemBefore.content;
+    const beforeSize = `${menuItemBefore.width} x ${menuItemBefore.height}`;
+    const noBeforeBar =
+      beforeContent === 'none' ||
+      beforeContent === 'normal' ||
+      (menuItemBefore.width === '0px' && menuItemBefore.height === '0px');
+    check(
+      'context menu items have no left accent bar',
+      `content ${beforeContent}, ${beforeSize}`,
+      'content none or 0px x 0px',
+      noBeforeBar
+    );
+
+    const homeItem = document.createElement('button');
+    homeItem.type = 'button';
+    homeItem.className = 'home-item';
+    homeItem.id = 'iyeris-home-hover-fixture';
+    homeItem.textContent = 'Home';
+    upliftFixture.append(homeItem);
+    const homeRestingShadow = getComputedStyle(homeItem).boxShadow;
+    const forcePseudoState = globalThis.iyerisSmokeForcePseudoState;
+    if (typeof forcePseudoState !== 'function') {
+      throw new Error('visual-uplift: the CDP pseudo-state helper is unavailable');
+    }
+    const homeSelector = `#${homeItem.id}`;
+    await forcePseudoState(homeSelector, ['hover']);
+    await frame();
+    const homeHoverStyle = getComputedStyle(homeItem);
+    const homeHoverShadow = homeHoverStyle.boxShadow;
+    const homeHoverTransform = homeHoverStyle.transform;
+    const noHomeTransform =
+      homeHoverTransform === 'none' || homeHoverTransform === 'matrix(1, 0, 0, 1, 0, 0)';
+    check(
+      'home items do not gain hover elevation',
+      `resting ${homeRestingShadow}; hover ${homeHoverShadow}`,
+      'hover shadow matches resting shadow',
+      homeHoverShadow === homeRestingShadow
+    );
+    check(
+      'home items do not transform on hover',
+      homeHoverTransform,
+      'none or matrix(1, 0, 0, 1, 0, 0)',
+      noHomeTransform
+    );
+    await forcePseudoState(homeSelector, []);
+
+    grid.classList.remove('list-view');
+    const pillRow = grid.querySelector('.file-item');
+    if (!pillRow) throw new Error('visual-uplift: the grid view rendered no .file-item');
+    pillRow.classList.add('selected');
+    await frame();
+    const pillName = pillRow.querySelector('.file-name');
+    if (!pillName) throw new Error('visual-uplift: the selected row has no .file-name');
+    const pillStyle = getComputedStyle(pillName);
+    const pillBackground = pillStyle.backgroundColor;
+    const pillRadius = parseFloat(pillStyle.borderRadius) || 0;
+    check(
+      'grid selection paints filename pill',
+      `background ${pillBackground}, radius ${pillStyle.borderRadius}`,
+      'background alpha > 0 and radius >= 8px',
+      alphaOf(pillBackground) > 0 && pillRadius >= 8
+    );
+    pillRow.classList.remove('selected');
+    upliftFixture.remove();
+
+    // Theme surfaces: the modal panel must stay near-opaque in these themes.
+    for (const themeClass of ['theme-nord', 'theme-dracula', 'liquid-glass']) {
+      document.body.className = themeClass;
+      compressController.showCompressOptionsModal();
+      await frame();
+      const surface = compressModal.querySelector('.modal.glass-panel');
+      if (!surface) throw new Error(`visual-uplift: ${themeClass} has no .modal.glass-panel`);
+      const surfaceBackground = getComputedStyle(surface).backgroundColor;
+      check(
+        `${themeClass} modal surface alpha is at least 0.94`,
+        surfaceBackground,
+        '>= 0.94',
+        alphaOf(surfaceBackground) >= 0.94
+      );
+      await shoot(`${themeClass}-modal`);
+      compressModal.style.display = 'none';
+    }
+  } catch (error) {
+    failure = error;
+  } finally {
+    hover?.cleanup();
+    document.body.className = '';
+    record.passed = failure === null && checks.length > 0 && checks.every((c) => c.passed);
+  }
+  if (failure) throw failure;
+  const failed = checks.filter((c) => !c.passed);
+  assert(
+    failed.length === 0,
+    `visual-uplift: ${failed.length} check(s) failed: ${failed
+      .map((c) => `${c.name} (actual ${c.actual}, expected ${c.expected})`)
+      .join('; ')}`
+  );
+}
+
 // The bundle can execute while the parser is still running (inside <head> or
 // before the implicit body exists), so every suite must wait for the body.
 const documentReady = () =>
@@ -1532,5 +2836,29 @@ globalThis.runFileRenderSmoke = async () => {
   await runThumbnailFingerprintSuite(results);
   await runArchiveWhitespacePasswordSuite(results);
   await runOperationQueueLifetimeSuite(results);
+  const suiteFailures = [];
+  try {
+    await runVisualUpliftSuite(results);
+  } catch (error) {
+    suiteFailures.push(`visual-uplift: ${error?.message || error}`);
+  }
+  if (suiteFailures.length > 0) {
+    throw new Error(`Browser smoke suite failures: ${suiteFailures.join('; ')}`);
+  }
   return results;
+};
+
+globalThis.runFullAppSmokeOnly = async () => {
+  await documentReady();
+  const results = [];
+  globalThis.fullAppSmokeResults = results;
+  try {
+    await runBrowserAppSmoke(results);
+    return { suites: results };
+  } catch (error) {
+    return {
+      error: String(error?.stack || error),
+      suites: results,
+    };
+  }
 };
