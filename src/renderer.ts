@@ -578,7 +578,6 @@ const dualPane = createDualPaneController({
   updateStatusBar: () => updateStatusBar(),
   debouncedSaveSettings: (delay) => debouncedSaveSettings(delay),
   showToast,
-  refresh: (reason) => refresh(reason),
   navigateTo: (p) => {
     void navigateTo(p);
   },

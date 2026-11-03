@@ -207,7 +207,6 @@ async function runDualPaneSuite(results) {
     updateStatusBar: noop,
     debouncedSaveSettings: noop,
     showToast: noop,
-    refresh: noop,
     navigateTo: noop,
     observeThumbnailItem: noop,
     showContextMenu: noop,
