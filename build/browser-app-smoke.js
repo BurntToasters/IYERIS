@@ -1860,11 +1860,13 @@ export async function runBrowserAppSmoke(results) {
               isVisible(document.getElementById('status-selected')),
             `Secondary selection ${itemPath} did not settle in the active right pane.`
           );
-          await waitFor(
-            () => document.getElementById('copy-to-other-pane-btn')?.disabled === false,
-            `The copy command did not enable after the secondary selection ${itemPath}.`,
-            2000
-          ).catch(() => {});
+          await waitForStable(
+            () =>
+              ['copy-to-other-pane-btn', 'move-to-other-pane-btn'].every(
+                (id) => document.getElementById(id)?.disabled === false
+              ),
+            `The pane commands did not enable after the secondary selection ${itemPath}.`
+          );
           return row;
         };
         const invokePaneCommand = async (buttonId, command, itemPath, fixtureId) => {
@@ -1878,8 +1880,8 @@ export async function runBrowserAppSmoke(results) {
           if (!(button instanceof HTMLElement) || !isVisible(button)) {
             throw new Error(`Dual-pane command #${buttonId} is not reachable.`);
           }
-          if (button instanceof HTMLInputElement || button instanceof HTMLSelectElement) {
-            throw new Error(`Dual-pane command #${buttonId} is not a button.`);
+          if (button.tagName !== 'BUTTON' || button.hasAttribute('disabled')) {
+            throw new Error(`Dual-pane command #${buttonId} is not an enabled button.`);
           }
           const before = fixture.calls.length;
           button.click();
@@ -1926,7 +1928,6 @@ export async function runBrowserAppSmoke(results) {
             : 'missing',
           false
         );
-        if (copyButton?.disabled) copyButton.disabled = false;
         const moveSourceRowBeforeCopy = Array.from(
           secondaryList.querySelectorAll('.dual-pane-item')
         ).find((item) => item.getAttribute('data-path') === SECONDARY_MOVE_PATH);
@@ -1981,6 +1982,19 @@ export async function runBrowserAppSmoke(results) {
         );
 
         await selectSecondaryPath(SECONDARY_MOVE_PATH);
+        // Allow the copy's 200ms refresh debounce to run, as it would while a
+        // user pauses before moving the next item.
+        await new Promise((resolve) => setTimeout(resolve, 350));
+        check(
+          testCase,
+          'secondary move selection survives copy refresh completion',
+          secondaryList.querySelector('.dual-pane-item.selected')?.getAttribute('data-path') ===
+            SECONDARY_MOVE_PATH &&
+            isVisible(document.getElementById('status-selected')) &&
+            document.getElementById('move-to-other-pane-btn')?.disabled === false,
+          `selected=${secondaryList.querySelector('.dual-pane-item.selected')?.getAttribute('data-path')}; statusVisible=${isVisible(document.getElementById('status-selected'))}; moveDisabled=${document.getElementById('move-to-other-pane-btn')?.disabled}`,
+          `selected=${SECONDARY_MOVE_PATH}; statusVisible=true; moveDisabled=false`
+        );
         await screenshot(testCase, 'app-dual-pane-active-move-source');
         await invokePaneCommand(
           'move-to-other-pane-btn',

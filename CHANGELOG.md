@@ -38,6 +38,7 @@
 - **Build:** Blur and transparency settings were silently stripped from release builds. The CSS minifier dropped unprefixed `backdrop-filter` declarations that followed the `-webkit-` prefixed ones. Fixed by declaration order, and the browser smoke test now fails the build if it happens again.
 - **PDF previews:** Fixed PDF.js loading in dev and production, PDF text rendering, and viewer cleanup.
 - **Home:** Drive cards now show readable names and usage details across window sizes.
+- **Dual Pane:** Copying or moving files between panes no longer clears a new selection made immediately afterward or disables the next copy/move command.
 - **Context menus:** Prevented horizontal overflow and kept submenus anchored and usable with Liquid Glass and keyboard navigation.
 
 ## Click below for the full `v3` Changelog
