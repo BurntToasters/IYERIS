@@ -36,65 +36,14 @@
 - **Utility Dashboard:** Now opt-in and off by default, including for existing users. Turn it on in Settings → View → Show Utility Dashboard.
 - **CSS:** Removed dead and duplicate rules, replaced undefined color tokens, and aligned the tooltip arrow border with the other panel borders.
 - **Build:** Blur and transparency settings were silently stripped from release builds. The CSS minifier dropped unprefixed `backdrop-filter` declarations that followed the `-webkit-` prefixed ones. Fixed by declaration order, and the browser smoke test now fails the build if it happens again.
+- **PDF previews:** Fixed PDF.js loading in dev and production, PDF text rendering, and viewer cleanup.
+- **Home:** Drive cards now show readable names and usage details across window sizes.
+- **Context menus:** Prevented horizontal overflow and kept submenus anchored and usable with Liquid Glass and keyboard navigation.
 
-## Changes in `v3.0.5:`
+## Click below for the full `v3` Changelog
 
-- **Safety:** Fixed silent data loss in move-overwrite undo. The retained original is now restored from its hidden backup, and rollback uses the correct destination/backup mapping.
-- **Safety:** Rename undo now records and verifies entry identity before moving anything, and case-only renames undo correctly on case-insensitive filesystems.
-- **Reliability:** Undo and recovery fingerprints now use metadata, names, size, mtime, permissions, and identity instead of re-reading every byte. Large copies and moves no longer pay a second full read or block on a multi-minute hash.
-- **Reliability:** Copy workspace recovery journaling is buffered and de-duplicated, so large batches no longer fsync the full journal once per item or fail at the old 10,000-path staging limit.
-- **Elevated operations:** Copy/move output now uses the destination parent owner instead of root ownership. Overwrites stage a per-item rollback backup and restore it on failure. Elevated operations are explicitly non-cancellable across the UI and backend.
-- **Security:** Upgraded the direct ZIP dependency to the patched 9.0.5 release and removed the updater's unused legacy ZIP feature, eliminating the vulnerable transitive ZIP version. `cargo audit` is clean apart from the existing allowed unmaintained GTK/zbus warnings.
-- **Search:** Default index roots are now OS-resolved user folders plus explicit additions. Windows drive letters and Linux `/usr`/`/opt` are no longer scanned implicitly.
-- **Archives:** Compression and extraction no longer hold the global mutation lock for the whole operation. Only destination preparation, publication, and failed-destination cleanup are serialized. Failed extraction cleanup never recursively deletes a directory that another operation may have written into.
-- **Compatibility:** App-state directories now allow trusted OS redirection such as symlinked homes and Windows AppData junctions while still rejecting a symlinked final state directory.
-- **Settings:** Optional keys can be deleted through patch saves, staging files are restricted to `0600` before payload writes, and the CSP allows the PDF data-URL fallback.
-- **Shell integration:** Opening paths with shell-looking characters or newlines now works because argv is not a shell; NUL and non-whitespace control characters remain rejected.
-- **Testing:** The frontend coverage gate now measures `renderer.ts` and `tauri-api.ts` instead of excluding them and enforces statements/branches/functions/lines thresholds. The full `test:all` gate passes, including 702 frontend tests across 42 files and 213 Rust tests, browser E2E, clippy, rustfmt, npm audit, and cargo audit.
-
-- **Performance:** Replaced all-module Lucide loading with a typed, tree-shakeable icon registry and lazy-loaded Markdown preview dependencies.
-- **Performance:** Added fingerprint-aware, in-flight-deduplicated preview caching with 64-entry and 128 MiB limits.
-- **Performance:** Removed mutex acquisition from native directory, folder-size, and search scan loops; moved thumbnail cache filesystem work to blocking workers.
-- **Accessibility:** Completed vertical settings-tab keyboard/ARIA behavior, repaired search and directory history listboxes, named generated PDF controls, and filled missing control/dialog names.
-- **Quality:** Added static DOM invariants, cache/cancellation/fixture/version tests, entry-JavaScript, CSS, and total initial-load bundle gates, and read-only cross-file version validation.
-- **Safety:** Native rename no longer replaces an existing sibling; batch rename uses uniquely reserved staging paths and keeps un-recovered staged files; archive extraction follows benign macOS symlink ancestors such as `/var` and `/tmp`.
-- **Reliability:** Multi-file move undo and redo keep failed operations in retryable history and report rollback failures. Trash success notices no longer offer Undo for an unrelated operation.
-- **Tooling:** Repaired and safety-marked the measured 15,300-item performance fixture, linted maintained build scripts, made AppStream updates idempotent, de-duplicated CI audits, and removed stale release tooling and RustSec suppressions.
-- **Search:** Global indexed search now honors file-type, size, date, regex, and hidden-file filters; Windows `FILE_ATTRIBUTE_HIDDEN` is respected across search, indexer, and duplicate scans.
-- **Search:** Global indexed search waits for index readiness, refreshes persisted data on the first search of each session, and refreshes again on searches when the index is at least five minutes old. No scan runs at startup.
-- **Search:** Index roots now include OS-resolved user folders and explicit additional locations. Overlapping roots and file paths are deduplicated, and persisted index status reports entry/depth caps and traversal failures as partial results.
-- **Thumbnails:** Memory and disk cache lookups include file fingerprints and rendering variants, so edits, replacements, quality changes, and media-type changes do not reuse stale thumbnail pixels.
-- **Archives:** ZIP and 7z password strings are preserved exactly during compression and extraction, including passwords made only of whitespace.
-- **Performance & Views:** Delegated column-view drag listeners to the pane container, added column-view sort/extension parity, and added cancellable, batched secondary-pane rendering with shared RAW/media thumbnail types in Dual Pane mode.
-- **Virtualization:** Fixed virtualized grid/list scroll-jump drift where offscreen `content-visibility: auto` placeholder sizing conflicted with the spacer-based window calculation, and row height is no longer reused across grid/list view switches.
-- **Security & Testing:** Updated npm and Cargo lockfiles for `dompurify`, `undici`, `brace-expansion`, `source-map-js`, and `rustls 0.23.46` advisories. The renderer-browser smoke now checks thumbnail cache freshness and sharing, exact whitespace archive passwords, and operation-card lifetime.
-- **Testing:** `test:all` gates the retained headless checks and 13 renderer-browser E2E suites. The repeatable artifact records commit and working-tree state, timestamps, runtime and actual CDP browser versions, per-suite output, and failures; CI uploads the browser evidence. The browser smoke stubs native Tauri IPC and does not cover native desktop commands.
-
-Beta promotion requires the full platform matrix and a minimum 72-hour soak. Release-blocking fixes restart the soak with a new beta.
-
-## Changes in `v3.0.4:`
-
-- **PKG Safety - Rust:** Added my own temporary method to control what cargo deps update based on a min release age of 3 days.
-  - Cargo plans to add this in the future and when its officially supported my own implementation will be removed.
-- **UI:** Fixed an issue where opening the status bar right-click menu over and over left orphaned document listeners and pending timers behind.
-  - The status bar now tears down its own menu, timer, and listeners on teardown, and closes an already-open menu before opening a new one.
-- **Testing:** Grew the headless frontend suite to 124 files and 3,113 tests.
-  - Added dedicated suites for renderer bootstrap, controller wiring, directory loading, element lookup, thumbnail lifecycle, and utility drawer failure paths.
-  - Added a suite that runs real XSS payloads through the actual `escapeHtml` implementation, rather than the identity stub the isolated suites swap in.
-  - Started measuring `rendererBootstrap`, `rendererDirectoryLoader`, and `rendererElements` in coverage instead of skipping them.
-- **Testing:** Fixed a flaky file-render test that passed on its own but timed out during a full coverage run because the worker pool starved it of CPU.
-- **Codebase:** Reworked the release quality gate so that its pass proof is only written after every step has actually passed, including the release-asset checks.
-  - The gate runner now receives its step plan, step runner, and proof handling as injected dependencies, which makes the ordering itself testable.
-  - Added a release session gate so release builds refuse to run without a recorded pass against a clean tree.
-- **Codebase:** Added `npm run lint:scripts` and a `cargo fmt --check` gate so the build and release scripts get linted and the Rust side stays formatted.
-- **Codebase:** Release scripts now use gh cli instead of a raw api key and interactions.
-- **Typescript:** Turned on `strict` typechecking for the test project and fixed everything it flagged.
-
-## Changes in `v3.0.3:`
-
-- **Light mode:** Major fixes in readability have been done to the UI for light mode.
-  - Previous issues like Invisible buttons, hard-to-ready areas, and inconsistent applications were happening to the lightmode ui. This has now been addressed with this release :)
-- **PKG:** Updated packages.
+<details>
+  <summary>FULL V3 CHANGELOG</summary>
 
 ## Changes in `v3.0.0:`
 
@@ -134,13 +83,6 @@ Hello everyone! From IYERIS V1 -> V2 we saw a dramatic back and front end change
   - Significantly expanded backend headless and frontend testing coverage, including tests for the operation queue, thumbnails, typeahead, context menus, event listeners, compression/extraction, and renderer flows.
   - Updated Tauri API and CLI packages to `v2.11.0`.
   - Upgraded packages and overall codebase dependencies.
-
-## Click below for the full `v3` Changelog
-
-<details>
-  <summary>FULL V3 CHANGELOG</summary>
-
-Nothing yet!
 
 </details>
 
