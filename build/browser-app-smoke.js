@@ -1927,6 +1927,12 @@ export async function runBrowserAppSmoke(results) {
           false
         );
         if (copyButton?.disabled) copyButton.disabled = false;
+        const moveSourceRowBeforeCopy = Array.from(
+          secondaryList.querySelectorAll('.dual-pane-item')
+        ).find((item) => item.getAttribute('data-path') === SECONDARY_MOVE_PATH);
+        if (!(moveSourceRowBeforeCopy instanceof HTMLElement)) {
+          throw new Error('The secondary pane has no connected move source before copying.');
+        }
         const secondaryLoadsBeforeCopy = fixture.directoryLoads.length;
         await invokePaneCommand(
           'copy-to-other-pane-btn',
@@ -1938,23 +1944,33 @@ export async function runBrowserAppSmoke(results) {
           () =>
             fixture.directoryLoads.slice(secondaryLoadsBeforeCopy).includes(PROJECTS_PATH) &&
             fixture.directoryLoads.slice(secondaryLoadsBeforeCopy).includes(WORKSPACE_PATH) &&
-            Boolean(
-              Array.from(secondaryList.querySelectorAll('.dual-pane-item')).find(
-                (item) => item.isConnected && item.getAttribute('data-path') === SECONDARY_MOVE_PATH
-              )
+            Array.from(secondaryList.querySelectorAll('.dual-pane-item')).some(
+              (item) =>
+                item.isConnected &&
+                item !== moveSourceRowBeforeCopy &&
+                item.getAttribute('data-path') === SECONDARY_MOVE_PATH
             ) &&
             fixture.directoryData
               .get(WORKSPACE_PATH)
               .some((item) => item.path === `${WORKSPACE_PATH}/Design.md`),
-          'The copy refresh did not settle the secondary pane, the primary pane, and deterministic primary data.'
+          'The copy refresh did not finish before the move: expected updated primary data and a newly rendered secondary move source.'
+        );
+        const moveSourceRowAfterCopy = Array.from(
+          secondaryList.querySelectorAll('.dual-pane-item')
+        ).find(
+          (item) =>
+            item.isConnected &&
+            item !== moveSourceRowBeforeCopy &&
+            item.getAttribute('data-path') === SECONDARY_MOVE_PATH
         );
         check(
           testCase,
           'successful copy refreshes both panes through the fixture contract',
           fixture.directoryLoads.slice(secondaryLoadsBeforeCopy).includes(PROJECTS_PATH) &&
-            fixture.directoryLoads.slice(secondaryLoadsBeforeCopy).includes(WORKSPACE_PATH),
-          fixture.directoryLoads.slice(secondaryLoadsBeforeCopy).join(', '),
-          `${PROJECTS_PATH} and ${WORKSPACE_PATH}`
+            fixture.directoryLoads.slice(secondaryLoadsBeforeCopy).includes(WORKSPACE_PATH) &&
+            moveSourceRowAfterCopy instanceof HTMLElement,
+          `${fixture.directoryLoads.slice(secondaryLoadsBeforeCopy).join(', ')}; fresh move row=${moveSourceRowAfterCopy instanceof HTMLElement}`,
+          `${PROJECTS_PATH} and ${WORKSPACE_PATH}; fresh move row=true`
         );
         check(
           testCase,
