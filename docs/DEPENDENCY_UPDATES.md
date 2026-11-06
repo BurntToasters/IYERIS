@@ -2,7 +2,7 @@
 
 `npm run u` is a lockfile-only dependency proposal. It does not install npm packages, run npm lifecycle scripts, compile Rust, execute Cargo build scripts or procedural macros, format source files, or run tests.
 
-The command requires Node.js `^24.22.1 || >=26.13.0`, npm 12.2.1 or newer, and an already-installed Rust stable toolchain. It performs these steps:
+The command requires Node.js `^24.22.1 || >=26.13.0`, npm 12.2.1 or newer, and the exact Rust toolchain pinned in `rust-toolchain.toml` (`node scripts/rust-toolchain.mjs` prints it). It performs these steps:
 
 1. Resolve npm updates with `--package-lock-only`, `--ignore-scripts`, and a three-day minimum release age in a disposable npm cache.
 2. Reject high-severity npm audit findings without populating the project `node_modules` directory.
@@ -11,6 +11,8 @@ The command requires Node.js `^24.22.1 || >=26.13.0`, npm 12.2.1 or newer, and a
 5. Atomically install only the validated lockfile and remove temporary caches.
 
 Both updaters serialize their own runs. npm rollback and final Cargo lock installation compare expected bytes, preserving a concurrent process's lockfile edit instead of overwriting it.
+
+The Rust version is single-sourced from `rust-toolchain.toml`. The `rust:*` npm scripts, `setup:deb`, CI, and the Flatpak manifest all derive the channel from it; to bump Rust, edit only `rust-toolchain.toml`. Do not add a second pin.
 
 Review both lockfile diffs before committing. Push the update branch and let GitHub-hosted CI perform code-executing validation. CI installs npm packages with lifecycle scripts disabled, verifies registry signatures, and only then runs dependency code. CI is intentionally the first environment that installs or executes newly selected dependency code.
 
