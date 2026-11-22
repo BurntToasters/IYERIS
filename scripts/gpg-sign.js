@@ -739,7 +739,9 @@ function ghRequest(method, endpoint, body) {
   return Promise.resolve(githubApi(method, endpoint, body));
 }
 
-async function getOrCreateRelease() {
+// Only ensure-draft-release.cjs (Windows) creates drafts. Creating one here too
+// is how a re-run split 3.1.0 into two drafts, so this step only looks up.
+async function getExistingRelease() {
   try {
     const release = await ghRequest(
       'GET',
@@ -750,21 +752,26 @@ async function getOrCreateRelease() {
   } catch (error) {
     if (error?.statusCode !== 404) throw error;
   }
-  const releases = await ghRequest('GET', `/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=30`);
-  const draft = releases.find((r) => r.draft && r.tag_name === TAG);
-  if (draft) {
-    assertReleaseCommit(draft);
-    return draft;
+  const releases = await ghRequest(
+    'GET',
+    `/repos/${REPO_OWNER}/${REPO_NAME}/releases?per_page=100`
+  );
+  if (!Array.isArray(releases)) throw new Error('GitHub returned an invalid releases payload.');
+  const drafts = releases.filter((r) => r.draft && r.tag_name === TAG);
+  if (drafts.length > 1) {
+    throw new Error(
+      `Found ${drafts.length} draft releases tagged ${TAG} (ids ${drafts.map((r) => r.id).join(', ')}). ` +
+        'Delete the extras on GitHub so exactly one remains, then rerun.'
+    );
   }
-  const release = await ghRequest('POST', `/repos/${REPO_OWNER}/${REPO_NAME}/releases`, {
-    tag_name: TAG,
-    target_commitish: RELEASE_COMMIT,
-    name: `IYERIS ${VERSION}`,
-    draft: true,
-    prerelease: IS_PRERELEASE,
-  });
-  assertReleaseCommit(release);
-  return release;
+  if (drafts.length === 0) {
+    throw new Error(
+      `No draft release tagged ${TAG}. Run "npm run release:draft" on Windows first; ` +
+        'it creates the draft or re-tags one GitHub left as "untagged-*".'
+    );
+  }
+  assertReleaseCommit(drafts[0]);
+  return drafts[0];
 }
 
 function assertReleaseCommit(release) {
@@ -882,7 +889,7 @@ async function main() {
   }
 
   console.log('[5/5] Uploading to GitHub...');
-  const release = await getOrCreateRelease();
+  const release = await getExistingRelease();
   if (!release?.draft && !ALLOW_ASSET_REPLACE) {
     throw new Error(
       `Release ${TAG} already exists as published. Refusing to mutate it without ALLOW_ASSET_REPLACE=true.`
