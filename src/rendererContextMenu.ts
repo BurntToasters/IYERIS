@@ -47,6 +47,29 @@ type ContextMenuDeps = {
   setRecentTransferDestinations: (destinations: string[]) => void;
 };
 
+const SUBMENU_AIM_DELAY_MS = 300;
+
+type MenuPoint = { x: number; y: number };
+
+function isPointInTriangle(point: MenuPoint, a: MenuPoint, b: MenuPoint, c: MenuPoint): boolean {
+  const side = (p1: MenuPoint, p2: MenuPoint, p3: MenuPoint) =>
+    (p1.x - p3.x) * (p2.y - p3.y) - (p2.x - p3.x) * (p1.y - p3.y);
+  const d1 = side(point, a, b);
+  const d2 = side(point, b, c);
+  const d3 = side(point, c, a);
+  const hasNegative = d1 < 0 || d2 < 0 || d3 < 0;
+  const hasPositive = d1 > 0 || d2 > 0 || d3 > 0;
+  return !(hasNegative && hasPositive);
+}
+
+// True when the pointer moved from `from` to `to` toward the submenu edge that faces the main menu.
+function isPointerAimingAtSubmenu(submenu: HTMLElement, from: MenuPoint, to: MenuPoint): boolean {
+  if (from.x === to.x && from.y === to.y) return false;
+  const rect = submenu.getBoundingClientRect();
+  const edgeX = submenu.classList.contains('flip-left') ? rect.right : rect.left;
+  return isPointInTriangle(to, from, { x: edgeX, y: rect.top }, { x: edgeX, y: rect.bottom });
+}
+
 export function createContextMenuController(deps: ContextMenuDeps) {
   let contextMenuData: FileItem | null = null;
   let contextMenuFocusedIndex = -1;
@@ -358,6 +381,36 @@ export function createContextMenuController(deps: ContextMenuDeps) {
       }
     };
 
+    let lastPointer: MenuPoint | null = null;
+    let lastPointerTarget: Element | null = null;
+    let aimTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearAimTimer = () => {
+      if (aimTimer !== null) clearTimeout(aimTimer);
+      aimTimer = null;
+    };
+    signal.addEventListener('abort', clearAimTimer, { once: true });
+    const findActiveParent = () =>
+      Array.from(menu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu')).find(
+        (candidate) => candidate.getAttribute('aria-expanded') === 'true'
+      );
+    const applyPointerTarget = (target: Element) => {
+      const parent = getContextSubmenuParentForTarget(menu, target);
+      if (parent) {
+        openContextSubmenu(parent);
+        return;
+      }
+      const activeParent = findActiveParent();
+      if (activeParent) closeContextSubmenu(activeParent);
+    };
+
+    document.addEventListener(
+      'pointermove',
+      (event) => {
+        lastPointer = { x: event.clientX, y: event.clientY };
+        lastPointerTarget = event.target instanceof Element ? event.target : null;
+      },
+      { passive: true, signal }
+    );
     document.addEventListener(
       'pointerover',
       (event) => {
@@ -365,13 +418,28 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         if (!(target instanceof Element)) return;
         const parent = getContextSubmenuParentForTarget(menu, target);
         if (parent) {
+          clearAimTimer();
           openContextSubmenu(parent);
-        } else if (menu.contains(target)) {
-          const activeParent = Array.from(
-            menu.querySelectorAll<HTMLElement>('.context-menu-item.has-submenu')
-          ).find((candidate) => candidate.getAttribute('aria-expanded') === 'true');
-          if (activeParent) closeContextSubmenu(activeParent);
+          return;
         }
+        if (!menu.contains(target)) return;
+        const activeParent = findActiveParent();
+        if (!activeParent) return;
+        // Browsers dispatch pointerover before the pointermove for the same motion, so
+        // lastPointer is the previous position.
+        const submenu = getContextSubmenu(activeParent);
+        const to = { x: event.clientX, y: event.clientY };
+        if (submenu && lastPointer && isPointerAimingAtSubmenu(submenu, lastPointer, to)) {
+          if (aimTimer === null) {
+            aimTimer = setTimeout(() => {
+              aimTimer = null;
+              if (lastPointerTarget) applyPointerTarget(lastPointerTarget);
+            }, SUBMENU_AIM_DELAY_MS);
+          }
+          return;
+        }
+        clearAimTimer();
+        closeContextSubmenu(activeParent);
       },
       { signal }
     );
@@ -389,6 +457,7 @@ export function createContextMenuController(deps: ContextMenuDeps) {
         ) {
           return;
         }
+        clearAimTimer();
         closeContextSubmenus(menu);
       },
       { signal }

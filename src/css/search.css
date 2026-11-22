@@ -778,8 +778,8 @@ body.theme-light .toggle-slider-small {
   margin: 0 4px 6px;
   font-size: var(--font-size-base);
   color: var(--text-secondary);
-  background: var(--surface-secondary);
+  background: var(--surface-2);
   border: 1px solid var(--separator);
-  border-radius: var(--border-radius-md);
+  border-radius: var(--radius-medium);
   text-align: center;
 }

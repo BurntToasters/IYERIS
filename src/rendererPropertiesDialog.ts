@@ -68,10 +68,23 @@ const PERM_ROWS: ReadonlyArray<{ who: string; bits: readonly number[] }> = [
 
 const SEPARATOR = '<div class="property-separator"></div>';
 
+type FocusKey = { attr: string | null; value: string };
+
+// Re-rendering rebuilds every control, so focus is matched on one of these attributes.
+const FOCUS_KEY_ATTRS = ['data-action', 'data-attr', 'data-perm-bit', 'data-role'] as const;
+
+// Calculate and Cancel take turns in the same slot, so focus moves to whichever replaces the other.
+const FOCUS_ALIASES: Readonly<Record<string, string>> = {
+  'calc-folder-size': 'cancel-folder-size',
+  'cancel-folder-size': 'calc-folder-size',
+  'calc-checksum': 'cancel-checksum',
+  'cancel-checksum': 'calc-checksum',
+};
+
 function formatSize(bytes: number): string {
   if (bytes === 0) return '0 bytes';
-  const units = ['bytes', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const units = ['bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB'];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const size = (bytes / Math.pow(1024, i)).toFixed(2);
   return `${bytes.toLocaleString()} bytes (${size} ${units[i]})`;
 }
@@ -259,6 +272,8 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
     const attrs = { readOnly: false, hidden: false };
     const attrBase = { readOnly: false, hidden: false };
     let modeBase: number | null = null;
+    // Setuid, setgid and sticky bits. The grid hides them, but Apply writes them back unchanged.
+    let modeSpecial = 0;
     let modeBits = 0;
     let modeText = '';
 
@@ -288,6 +303,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
 
     const syncMode = (source: ItemProperties) => {
       modeBase = source.mode === undefined ? null : source.mode & 0o777;
+      modeSpecial = source.mode === undefined ? 0 : source.mode & 0o7000;
       modeBits = modeBase ?? 0;
       modeText = modeBase === null ? '' : modeBase.toString(8);
     };
@@ -579,7 +595,34 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       if (panel) panel.innerHTML = html;
     };
 
+    // Returns null when focus is outside the panels, so a render never moves focus that was not in them.
+    const focusedControlKey = (): FocusKey | null => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement) || !content.contains(active)) return null;
+      const attr = FOCUS_KEY_ATTRS.find((name) => active.hasAttribute(name)) ?? null;
+      return { attr, value: attr ? (active.getAttribute(attr) ?? '') : '' };
+    };
+
+    const findControl = (attr: string, value: string): HTMLElement | null =>
+      Array.from(content.querySelectorAll<HTMLElement>(`[${attr}]`)).find(
+        (el) => el.getAttribute(attr) === value
+      ) ?? null;
+
+    const restoreFocus = (key: FocusKey) => {
+      let target: HTMLElement | null = null;
+      if (key.attr) {
+        target = findControl(key.attr, key.value);
+        const alias = key.attr === 'data-action' ? FOCUS_ALIASES[key.value] : undefined;
+        if (!target && alias) target = findControl(key.attr, alias);
+      }
+      if (!target) {
+        target = tabEls.find((tab) => tab.getAttribute('aria-selected') === 'true') ?? null;
+      }
+      target?.focus({ preventScroll: true });
+    };
+
     const renderPanels = () => {
+      const focusKey = focusedControlKey();
       setPanel('general', buildGeneral());
       setPanel('signatures', buildSignatures());
       setPanel('details', buildDetails());
@@ -587,6 +630,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
       fillIcon();
       paintProgress();
       syncFooter();
+      if (focusKey) restoreFocus(focusKey);
     };
 
     const selectTab = (tabId: string, focus: boolean) => {
@@ -800,7 +844,7 @@ export function createPropertiesDialogController(deps: PropertiesDialogDeps) {
             deps.showToast('Invalid permissions (use octal, e.g. 755)', 'Error', 'error');
             return false;
           }
-          const result = await window.tauriAPI.setPermissions(props.path, octal);
+          const result = await window.tauriAPI.setPermissions(props.path, octal | modeSpecial);
           if (!result.success) {
             deps.showToast(result.error || 'Failed to update permissions', 'Error', 'error');
             return false;

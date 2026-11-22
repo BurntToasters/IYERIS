@@ -59,6 +59,24 @@ body.platform-linux .status-bar {
   letter-spacing: -0.01em;
 }
 
+.status-left > span,
+.status-right > span {
+  white-space: nowrap;
+}
+
+.status-left > #status-items,
+.status-left > #status-selected,
+.status-right > #status-disk-space {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-bar .twemoji,
+.status-disk-meter {
+  flex: 0 0 auto;
+}
+
 .status-left span:hover,
 .status-right span:hover {
   color: var(--text-primary);

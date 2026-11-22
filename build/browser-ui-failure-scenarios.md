@@ -60,3 +60,50 @@ Written before the full-app harness changes. This is the failure inventory for a
 - Zoom cases cross the real Tauri API wrapper and deterministic `set_zoom_level` mock. The mock applies CSS `documentElement.style.zoom` to approximate WebView scaling; this does not certify native zoom behavior on macOS, Windows, or Linux.
 - The browser fixture runs the shared renderer with a Linux platform response. It gives shared-DOM evidence, not separate native-window evidence for each operating system.
 - `node scripts/smoke-browser.js` remains the repeatable entry point and must persist both passing and failing run artifacts plus every captured PNG.
+
+## Keyboard trap in the narrow More menu and settings evidence timing
+
+- With More open at 800 CSS px, the moved view radiogroup (`#view-options`) may keep its own Arrow/Home/End handler, so ArrowDown or ArrowUp on a view option cycles Grid/List/Column and changes the view instead of moving focus to the next More item.
+- Menu items after the radiogroup may be unreachable by keyboard because the radiogroup stops propagation of ArrowDown/ArrowUp/Home/End before the More menu handler runs.
+- Pressing ArrowDown once per More item from a view option may never reach the first menu item again (no wrap), or may leave focus on the view option and never leave the menu.
+- Home or End on a view option inside More may change the view instead of jumping to the first or last More item.
+- ArrowLeft and ArrowRight on a view option inside More must keep switching the view; a fix must not remove them.
+- Pressing menu navigation keys over the radiogroup may change the active view mode (`aria-checked`/`.active`) as a side effect; the active mode must be unchanged after the navigation presses.
+- Outside More, the toolbar view radiogroup must keep its existing Arrow/Home/End behavior (focus moves and the view switches) with propagation stopped as before.
+- The settings screenshot may be taken while the `.modal` open animation (`modalSlideIn`) is still running, so the captured panel looks translucent and the surface evidence is not representative. The capture must wait for running animations under the modal subtree to finish.
+- The animation wait may hang on a non-finishing animation or resolve before animations started by the open transition are registered; the wait must be bounded and fail with a named message instead of hanging.
+- The settings computed-background-alpha assertion must stay unchanged and still run after the wait.
+
+## Properties dialog: special permission bits, focus after re-render, size units
+
+- Apply on a directory with setuid (04000), setgid (02000) or sticky (01000) bits must keep those bits. Editing one grid bit on a `2755` directory must send `2757`, not `0757` or `0755`.
+- Apply on a file with no special bits must send only the nine low bits, so the existing `644` assertion keeps passing.
+- Typing an octal value into the Octal field on a `2755` item must keep `0o2000` in the value sent (for example `644` sends `2644`).
+- The Apply button must stay disabled when the low bits are unchanged, even though the loaded mode has special bits. Special bits must not make the dialog look dirty.
+- After Apply, the refresh must keep the special bits in the stored mode. The grid and Octal field must still show only the low nine bits.
+- Starting Calculate Size replaces the button with Cancel. Keyboard focus that was on Calculate Size must move to the Cancel control inside `#properties-content`, not to `<body>`.
+- Finishing or cancelling a folder-size run replaces Cancel with Calculate Size. Focus that was on Cancel must move to Calculate Size.
+- The same calc/cancel pairing applies to Calculate Checksums and Cancel checksum.
+- If the focused control is not in the re-rendered DOM and has no match, focus must go to the selected tab button. Focus must not be moved if it was outside `#properties-content` before the render.
+- Focus restoration must use `preventScroll: true`, so the dialog does not jump when panels are rebuilt.
+- `formatSize` at exactly 1 PB (`1024^5` bytes) must print `PB`, not `undefined`. At 1 EB (`1024^6`) it must print `EB`. Larger values must clamp to the EB unit instead of reading past the unit list.
+
+## Smoke icon fidelity and status-bar line wrapping at 800x500
+
+- The file-render smoke bundle without `css/twemoji.css` sizes status and toolbar icons differently from `src/index.html`, so its screenshots do not show shipped icon sizes. The heart (Support) icon in `#heart-button` must measure the `--icon-size-status` token.
+- The twemoji import must come after `main.css` so its unlayered `.status-bar .twemoji` rule wins over the layered `.status-support-btn .twemoji` override. If the order is reversed, the icon keeps its 12px override and the token check fails under a density that changes the token.
+- At 800x500 with large text, `#status-items`, `#status-selected`, `#status-disk-space`, `#status-version`, and the Support label may each wrap to two line boxes. Each visible status-bar text item must have exactly one line box.
+- A wrapped status-bar item can grow the bar past its 28px height and clip its second line. `.status-bar` must not scroll vertically (`scrollHeight <= clientHeight`).
+- Hidden items (`#status-pane` at 760px and below, `#status-view-mode` at 540px and below) must be skipped by the line checks, not counted as failures.
+- `nowrap` must not push the disk usage meter, the separator, or the Support button out of the bar. Only the text items may shrink, and they must clip with an ellipsis instead of overflowing.
+- Flex children without `min-width: 0` keep their intrinsic width, so the left group can overflow the right group. The left and right groups must keep `min-width: 0`, and text items must shrink within them.
+- The large-text `font-size: 14px` rule for `.status-bar` in `settings.css` must still apply. A new status-bar rule must not replace it with a fixed size.
+
+## Context submenu pointer aim (3.1.0)
+
+Written before the safe-triangle change in `src/rendererContextMenu.ts`.
+
+- Diagonal travel from a submenu trigger toward its first item crosses a sibling main-menu item above the trigger. The sibling `pointerover` closes the submenu immediately, so a clamped Open With action can never be reached. The stepped pointer travel check must fail on this case before the fix.
+- Delayed close never fires: a pointer moving toward the submenu starts the aim timer, but the timer is not armed or never runs, so a later straight move onto a sibling leaves a stale submenu open. The smoke must assert that a straight move onto a sibling closes the submenu within about 500 ms.
+- Timer fires after the menu closed: a pending aim timer runs after `hideContextMenu` or after the listeners are aborted by a rebind, and closes or opens a submenu on a hidden or rebuilt menu. Closing and rebinding must clear the timer.
+- Switching to another submenu parent becomes sluggish when not aiming: the delay applies to a pointer that is not moving toward the open submenu, so moving from one parent to another waits before switching. Non-aiming sibling hover must keep its immediate close, and parent hover must keep its immediate switch.

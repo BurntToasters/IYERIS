@@ -22,6 +22,7 @@ import { runBrowserAppSmoke } from './browser-app-smoke.js';
 import { formatFileSize, getFileIcon, getFileTypeFromName } from '../src/rendererFileIcons.ts';
 import { HOVER_CARD_DELAY_MS } from '../src/rendererLocalConstants.ts';
 import '../src/css/main.css';
+import '../src/css/twemoji.css';
 // Raw markup for the overlays and hover card. The visual suite mounts the real elements
 // from index.html so the checks run against the shipped structure and classes.
 import indexHtml from '../src/index.html?raw';
@@ -1667,7 +1668,7 @@ const visualFileProps = () => ({
 
 // Unix-style folder: mode 0o754, no Windows attribute booleans.
 const visualFolderProps = () => ({
-  path: '/home/burnt/Projects',
+  path: '/fixture/Projects',
   name: 'Projects',
   size: 4096,
   isDirectory: true,
@@ -2524,6 +2525,109 @@ async function runVisualUpliftSuite(results) {
     check('Apply sends the octal mode to setPermissions', modeSent, '644', modeSent === '644');
     document.activeElement?.blur();
     await shoot('properties-folder-security');
+    document.getElementById('properties-cancel').click();
+
+    // Setgid survives a one-bit grid edit: Apply writes only the low bits, so the special bits must be added back.
+    const setgidProps = {
+      ...visualFolderProps(),
+      path: '/fixture/Shared',
+      name: 'Shared',
+      mode: 0o2755,
+    };
+    propertyStore.set(setgidProps.path, setgidProps);
+    propertiesDialog.showPropertiesDialog(setgidProps);
+    propertiesTab('security').click();
+    check(
+      'setgid octal input shows the low bits 755',
+      octalInput()?.value ?? '',
+      '755',
+      octalInput()?.value === '755'
+    );
+    permBox(0o002).click();
+    check(
+      'setgid grid edit shows the low bits 757',
+      octalInput()?.value ?? '',
+      '757',
+      octalInput()?.value === '757'
+    );
+    const setgidCallsBefore = propertyCalls.setPermissions.length;
+    applyButton.click();
+    await waitUntil(
+      () => propertyCalls.setPermissions.length === setgidCallsBefore + 1 && applyButton.disabled,
+      'visual-uplift: setgid permission Apply never finished'
+    );
+    const setgidSent = propertyCalls.setPermissions[setgidCallsBefore]?.mode ?? -1;
+    check(
+      'Apply keeps setgid when one grid bit is edited',
+      setgidSent.toString(8),
+      '2757',
+      setgidSent === 0o2757
+    );
+    document.getElementById('properties-cancel').click();
+
+    // Calculate Size swaps its button for Cancel and back. Focus must follow the matching control.
+    const folderSizeCalls = [];
+    let releaseFolderSize = null;
+    window.tauriAPI.onFolderSizeProgress = () => noop;
+    window.tauriAPI.cancelFolderSizeCalculation = async () => ({ success: true });
+    window.tauriAPI.calculateFolderSize = (folderPath) => {
+      folderSizeCalls.push(folderPath);
+      return new Promise((resolve) => {
+        releaseFolderSize = () =>
+          resolve({ success: true, result: { totalSize: 4096, fileCount: 3, folderCount: 1 } });
+      });
+    };
+    const calcFolderButton = () =>
+      propertiesModal.querySelector('[data-action="calc-folder-size"]');
+    const cancelFolderButton = () =>
+      propertiesModal.querySelector('[data-action="cancel-folder-size"]');
+    const focusInDialog = () => propertiesModal.contains(document.activeElement);
+    propertiesDialog.showPropertiesDialog(folderProps);
+    calcFolderButton().focus();
+    calcFolderButton().click();
+    await waitUntil(
+      () => folderSizeCalls.length === 1 && cancelFolderButton() !== null,
+      'visual-uplift: folder size run never rendered Cancel'
+    );
+    await frame();
+    check(
+      'Calculate Size start keeps focus in the properties dialog',
+      focusInDialog(),
+      true,
+      focusInDialog()
+    );
+    check(
+      'Calculate Size start moves focus to Cancel',
+      document.activeElement === cancelFolderButton(),
+      true,
+      document.activeElement === cancelFolderButton()
+    );
+    releaseFolderSize();
+    await waitUntil(
+      () => cancelFolderButton() === null && calcFolderButton() !== null,
+      'visual-uplift: folder size run never finished'
+    );
+    await frame();
+    check(
+      'folder size finish moves focus back to Calculate Size',
+      document.activeElement === calcFolderButton(),
+      true,
+      document.activeElement === calcFolderButton()
+    );
+    document.getElementById('properties-cancel').click();
+
+    // formatSize must name the PB unit at exactly 1 PB instead of printing undefined.
+    propertiesDialog.showPropertiesDialog({ ...visualFileProps(), size: 2 ** 50 });
+    const sizeRowValue =
+      Array.from(propertiesModal.querySelectorAll('#properties-panel-general .property-row'))
+        .find((row) => row.querySelector('.property-label')?.textContent?.trim() === 'Size:')
+        ?.querySelector('.property-value')?.textContent ?? '';
+    check(
+      'a 1 PB size prints the PB unit',
+      sizeRowValue,
+      '... bytes (1.00 PB)',
+      sizeRowValue.endsWith('(1.00 PB)')
+    );
     document.getElementById('properties-cancel').click();
 
     // Compress modal footer, opened through the real controller.

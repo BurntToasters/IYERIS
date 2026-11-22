@@ -51,7 +51,7 @@ export const en = {
   'search.filters.label': 'Search filters',
   'search.filters.active': '{count} active search filter|{count} active search filters',
   'search.status.searching': 'Searching…',
-  'search.status.results': '{count} results',
+  'search.status.results': '{count} result|{count} results',
   'search.status.partial': 'Showing first {count} results',
   'search.status.empty': 'No results',
   'search.status.error': 'Search failed',

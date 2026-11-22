@@ -2246,6 +2246,10 @@ function setupViewOptions(): void {
       if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(key)) {
         return;
       }
+      // Inside the More menu, vertical and Home/End keys belong to the menu's handler.
+      if (btn.closest('#more-actions-menu') && key !== 'ArrowLeft' && key !== 'ArrowRight') {
+        return;
+      }
       event.preventDefault();
       event.stopPropagation();
       const options = Array.from(

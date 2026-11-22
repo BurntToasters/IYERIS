@@ -715,6 +715,22 @@ async function waitForStable(predicate, message, timeoutMs = 6000, stableFrames 
   throw new Error(message);
 }
 
+async function waitForAnimationsToSettle(element, message, timeoutMs = 6000) {
+  if (!(element instanceof HTMLElement)) throw new Error(message);
+  const settled = Promise.all(
+    element.getAnimations({ subtree: true }).map((animation) => animation.finished.catch(() => {}))
+  );
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(message)), timeoutMs);
+  });
+  try {
+    await Promise.race([settled, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 function isVisible(element) {
   if (!(element instanceof HTMLElement) || !element.isConnected) return false;
   const style = getComputedStyle(element);
@@ -726,6 +742,26 @@ function isVisible(element) {
 
 function textOf(element) {
   return element?.textContent?.replace(/\s+/g, ' ').trim() || '';
+}
+
+// Counts rendered text lines by grouping the client rects of each text node by top edge.
+function textLineCount(element) {
+  const walker = document.createTreeWalker(element, window.NodeFilter.SHOW_TEXT);
+  const tops = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (!node.textContent?.trim()) continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    for (const rect of range.getClientRects()) {
+      if (rect.height > 0) tops.push(rect.top);
+    }
+  }
+  tops.sort((a, b) => a - b);
+  let lines = tops.length > 0 ? 1 : 0;
+  for (let index = 1; index < tops.length; index += 1) {
+    if (tops[index] - tops[index - 1] > 4) lines += 1;
+  }
+  return lines;
 }
 
 function computedColorAlpha(value) {
@@ -1259,6 +1295,10 @@ export async function runBrowserAppSmoke(results) {
         () => isVisible(settingsPanel),
         'The settings surface did not open for evidence.'
       );
+      await waitForAnimationsToSettle(
+        document.getElementById('settings-modal'),
+        'The settings modal open animation did not settle for evidence.'
+      );
       const surfaceColor = getComputedStyle(settingsPanel).backgroundColor;
       const surfaceAlpha = computedColorAlpha(surfaceColor);
       await screenshot(testCase, screenshotName);
@@ -1463,6 +1503,89 @@ export async function runBrowserAppSmoke(results) {
                 ? `${viewControl.id || viewControl.getAttribute('aria-label')}:${isVisible(viewControl)}`
                 : 'missing',
               'visible in the toolbar or open More menu'
+            );
+            dispatchKey('Escape');
+            await doubleFrame();
+            await currentViewport(560, 500);
+            await waitFor(
+              () =>
+                document.getElementById('view-options')?.parentElement?.id ===
+                'more-overflow-items',
+              'The view radiogroup did not move into More at the narrow width.'
+            );
+            more?.click();
+            await doubleFrame();
+            const moreViewGroup = document.getElementById('view-options');
+            const moreViewRadio = document.querySelector('#view-options [data-view="grid"]');
+            const moreMenuItems = Array.from(
+              panel?.querySelectorAll('.context-menu-item, [role="menuitem"], [role="radio"]') ?? []
+            ).filter(
+              (item) =>
+                !item.closest('#selection-overflow-menu') &&
+                item.getAttribute('role') !== 'radiogroup' &&
+                isVisible(item) &&
+                !item.hasAttribute('disabled') &&
+                item.getAttribute('aria-disabled') !== 'true'
+            );
+            const describeItem = (element) =>
+              element instanceof HTMLElement
+                ? element.id ||
+                  element.dataset.view ||
+                  textOf(element).slice(0, 24) ||
+                  element.tagName
+                : 'none';
+            const activeViewMode = () =>
+              document.querySelector('#view-options .view-option[aria-checked="true"]')?.dataset
+                .view ?? 'none';
+            const radioIndex = moreMenuItems.indexOf(moreViewRadio);
+            check(
+              testCase,
+              'view-options sit inside the open narrow More menu',
+              Boolean(panel && moreViewGroup && panel.contains(moreViewGroup)) && radioIndex > 0,
+              `${moreViewGroup ? panel?.contains(moreViewGroup) : 'missing'}; radioIndex=${radioIndex}`,
+              'inside More, after the first menu item'
+            );
+            if (!(moreViewRadio instanceof HTMLElement) || radioIndex <= 0) {
+              throw new Error('The view radiogroup is not a More menu item for keyboard checks.');
+            }
+            const viewBeforeNavigation = activeViewMode();
+            moreViewRadio.focus({ preventScroll: true });
+            await doubleFrame();
+            const navigationFocus = [];
+            for (let press = 0; press < moreMenuItems.length; press += 1) {
+              dispatchKey('ArrowDown');
+              await doubleFrame();
+              navigationFocus.push(document.activeElement);
+            }
+            const viewAfterNavigation = activeViewMode();
+            check(
+              testCase,
+              'ArrowDown from a view option reaches a More item after the radiogroup',
+              navigationFocus.some(
+                (element) =>
+                  element instanceof HTMLElement &&
+                  !moreViewGroup.contains(element) &&
+                  Boolean(
+                    moreViewGroup.compareDocumentPosition(element) &
+                    window.Node.DOCUMENT_POSITION_FOLLOWING
+                  )
+              ),
+              navigationFocus.map(describeItem).join(' > '),
+              'an item after view-options receives focus'
+            );
+            check(
+              testCase,
+              'ArrowDown wraps from the last More item back to the first',
+              navigationFocus.includes(moreMenuItems[0]),
+              navigationFocus.map(describeItem).join(' > '),
+              `first item ${describeItem(moreMenuItems[0])} reached again`
+            );
+            check(
+              testCase,
+              'More arrow navigation leaves the active view mode unchanged',
+              viewBeforeNavigation !== 'none' && viewAfterNavigation === viewBeforeNavigation,
+              `${viewBeforeNavigation} -> ${viewAfterNavigation}`,
+              `${viewBeforeNavigation} -> ${viewBeforeNavigation}`
             );
             dispatchKey('Escape');
             await doubleFrame();
@@ -2742,6 +2865,76 @@ export async function runBrowserAppSmoke(results) {
               geometry.overlapFailures.join(', ') || 'no overlapping controls',
               'no overlapping control bounds'
             );
+            const statusBar = document.querySelector('.status-bar');
+            const statusBarRect = statusBar?.getBoundingClientRect();
+            const statusItems = Array.from(
+              document.querySelectorAll(
+                '.status-left > span, .status-right > span, .status-right > button'
+              )
+            ).filter(
+              (element) =>
+                !element.classList.contains('status-separator') &&
+                isVisible(element) &&
+                textOf(element) !== ''
+            );
+            const lineCounts = statusItems.map((element) => ({
+              name: element.id || element.className,
+              lines: textLineCount(element),
+            }));
+            const wrappedItems = lineCounts.filter((item) => item.lines !== 1);
+            check(
+              testCase,
+              '800px large-text status-bar text items each occupy one line',
+              statusItems.length > 0 && wrappedItems.length === 0,
+              wrappedItems.map((item) => `${item.name}=${item.lines}`).join(', ') ||
+                `${lineCounts.length} items on one line`,
+              'every visible status-bar text item on one line'
+            );
+            check(
+              testCase,
+              '800px large-text status bar does not overflow its fixed height',
+              Boolean(statusBar && statusBar.scrollHeight <= statusBar.clientHeight + 1),
+              `scroll=${statusBar?.scrollHeight}/${statusBar?.clientHeight}`,
+              '<= client height'
+            );
+            const outsideBar = statusItems.filter((element) => {
+              const rect = element.getBoundingClientRect();
+              return (
+                !statusBarRect ||
+                rect.left < statusBarRect.left - 1 ||
+                rect.right > statusBarRect.right + 1
+              );
+            });
+            check(
+              testCase,
+              '800px large-text status-bar items stay inside the bar width',
+              outsideBar.length === 0,
+              outsideBar.map((element) => element.id || element.className).join(', ') || 'inside',
+              'no status-bar item outside the bar'
+            );
+            const diskMeter = document.querySelector('.status-disk-meter');
+            check(
+              testCase,
+              '800px large-text status-bar disk meter keeps its 54px width',
+              !isVisible(diskMeter) || Math.round(diskMeter.getBoundingClientRect().width) === 54,
+              isVisible(diskMeter)
+                ? Math.round(diskMeter.getBoundingClientRect().width)
+                : 'not rendered',
+              '54 or not rendered'
+            );
+            const statusIcon = document.querySelector('.status-bar #heart-button .twemoji');
+            const statusIconToken = parseFloat(
+              statusIcon ? getComputedStyle(statusIcon).getPropertyValue('--icon-size-status') : ''
+            );
+            const statusIconWidth = statusIcon ? statusIcon.getBoundingClientRect().width : 0;
+            check(
+              testCase,
+              '800px status-bar icon renders at its --icon-size-status twemoji size',
+              Number.isFinite(statusIconToken) &&
+                Math.abs(statusIconWidth - statusIconToken) <= 0.5,
+              `width=${statusIconWidth}; token=${statusIconToken}`,
+              `width equals --icon-size-status (not 24px)`
+            );
           }
         }
       );
@@ -3791,6 +3984,19 @@ export async function runBrowserAppSmoke(results) {
             `glass=${mode.enabled}; reduced=false; performance=false`
           );
 
+          let toastsEmptySince = 0;
+          await waitFor(
+            () => {
+              if (document.querySelector('#toast-container .toast')) {
+                toastsEmptySince = 0;
+                return false;
+              }
+              if (!toastsEmptySince) toastsEmptySince = Date.now();
+              return Date.now() - toastsEmptySince >= 3600;
+            },
+            `${mode.label}: queued settings toasts did not drain before the pointer checks.`,
+            45000
+          );
           await requestPointer(12, 12);
           await openAt(795, 495);
           const menuRect = menu.getBoundingClientRect();
@@ -3953,6 +4159,57 @@ export async function runBrowserAppSmoke(results) {
             pointerActionReached,
             `invocations=${fixture.calls.filter((call) => call.command === 'open_file_with_app').length - pointerActionCallsBefore}; first=${fixture.calls.find((call) => call.command === 'open_file_with_app')?.args.appId || 'none'}`,
             'first fixture app action invoked once'
+          );
+
+          await openAt(12, 12);
+          const siblingParentRect = parent.getBoundingClientRect();
+          const siblingParentY = siblingParentRect.top + siblingParentRect.height / 2;
+          await requestPointer(
+            siblingParentRect.left + Math.min(siblingParentRect.width / 2, 36),
+            siblingParentY
+          );
+          await waitFor(
+            () => getComputedStyle(panel).display !== 'none',
+            `${mode.label}: pointer hover did not reopen the Open With submenu for the sibling check.`,
+            1200
+          );
+          const siblingDistance = (item) => {
+            const rect = item.getBoundingClientRect();
+            return Math.abs(rect.top + rect.height / 2 - siblingParentY);
+          };
+          const siblingCandidates = Array.from(menu.querySelectorAll('.context-menu-item')).filter(
+            (item) =>
+              item !== parent &&
+              !item.closest('.context-submenu') &&
+              item.style.display !== 'none' &&
+              !item.classList.contains('is-disabled') &&
+              item.getClientRects().length > 0
+          );
+          const sibling = siblingCandidates.reduce(
+            (best, item) => (!best || siblingDistance(item) > siblingDistance(best) ? item : best),
+            null
+          );
+          if (!sibling) throw new Error('The file context menu has no sibling action to hover.');
+          const siblingRect = sibling.getBoundingClientRect();
+          await requestPointer(
+            siblingRect.left + siblingRect.width / 2,
+            siblingRect.top + siblingRect.height / 2
+          );
+          const siblingMoveStarted = Date.now();
+          const siblingClosedPromptly = await waitFor(
+            () => getComputedStyle(panel).display === 'none',
+            'The sibling hover did not close the Open With submenu.',
+            500
+          ).then(
+            () => true,
+            () => false
+          );
+          check(
+            testCase,
+            `${mode.label}: straight pointer move onto a sibling action closes the Open With submenu promptly`,
+            siblingClosedPromptly,
+            `panel=${getComputedStyle(panel).display}; elapsed=${Date.now() - siblingMoveStarted}ms; sibling=${sibling.textContent.trim().slice(0, 40)}`,
+            'submenu closed within 500 ms of hovering a sibling action'
           );
 
           row = await findStableRow(

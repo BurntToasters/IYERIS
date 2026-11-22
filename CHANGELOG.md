@@ -28,7 +28,7 @@
 - **Interface:** Settings use compact, aligned rows and a collapsed Quick Toggles disclosure. Dialogs, Quick Look, customization previews, menus and operation feedback use quieter surfaces, with actions kept reachable in smaller windows. Built-in themes, custom palettes and saved settings continue to apply; reduced transparency takes precedence over Liquid Glass.
 - **Hover card:** The file hover card and floating panels (zoom popup, progress panel, search filters, archive panel) are now fully opaque, so icons no longer show through them. Liquid Glass keeps its translucent look.
 - **Properties:** Redesigned with General, Details and Security tabs and OK, Cancel and Apply buttons. General shows Opens with, Size on disk and attributes. Details shows the full path, extension, MIME type, symlink and shortcut targets, and checksums. Security shows owner and group names, a Unix permission grid that stays in sync with the octal value, and Windows attribute rows. Apply stays disabled until something changes.
-- **Properties:** Signed files and macOS bundles get a Digital Signatures tab after General. It lists each signer with its digest algorithm and timestamp, shows the certificate details for the selected signer, and warns when the signature is untrusted, expired, revoked or invalid.
+- **Properties:** Signed files and macOS bundles get a Digital Signatures tab after General. It lists each signer with its digest algorithm and timestamp, shows the certificate details for the selected signer, and warns when the signature is untrusted, expired or invalid.
 - **Dialogs:** Properties, Compress and Extract now dim the window without blur. Other dialogs use a lighter 8px blur, down from 18px.
 - **Themes:** Modal panels are fully opaque outside Liquid Glass, so grid icons no longer show through dialogs. Liquid Glass keeps its translucent look.
 - **Dialogs:** Modal footers are right-aligned with auto-width buttons. The folder icon dialog has a secondary Cancel button.
@@ -40,6 +40,14 @@
 - **Home:** Drive cards now show readable names and usage details across window sizes.
 - **Dual Pane:** Copying or moving files between panes no longer clears a new selection made immediately afterward or disables the next copy/move command.
 - **Context menus:** Prevented horizontal overflow and kept submenus anchored and usable with Liquid Glass and keyboard navigation.
+- **Context menus:** Moving the pointer diagonally toward an open submenu no longer closes it when the path crosses a neighboring item. Hovering a neighboring item directly still closes the submenu right away.
+- **Toolbar:** When the view buttons move into the More menu in narrow windows, ArrowUp, ArrowDown, Home and End now move between menu items instead of switching the view. ArrowLeft and ArrowRight still switch the view.
+- **Properties:** Applying permission changes keeps setuid, setgid and sticky bits. Previously, editing one permission on a `2775` folder wrote `0775`.
+- **Properties:** Keyboard focus stays on Calculate Size or its Cancel button while a size or checksum run starts and finishes, instead of falling back to the window.
+- **Properties:** Sizes of 1 PB and above show PB or EB instead of "undefined".
+- **Status bar:** Item counts, selection and disk space stay on one line in narrow windows with large text. Long values are shortened with an ellipsis.
+- **Search:** A single result reads "1 result". The result-limit banner has its background and rounded corners again.
+- **Testing:** The browser smoke test loads the app's icon stylesheet and waits for dialog animations to finish, so its screenshots match the shipped app.
 
 ## Click below for the full `v3` Changelog
 
