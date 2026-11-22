@@ -75,6 +75,33 @@ export function updatePlistStringValue(plist, key, value) {
   return plist.replace(pattern, `$1${value}$2`);
 }
 
+const BETA_NOTE_LINES = ['> [!NOTE]', '> 🅱️ This is a Beta build.'];
+const BETA_NOTE_AT_START_RE =
+  /^(<!--\s*)?>+\s*\[!NOTE\]\r?\n>\s*🅱️ This is a Beta build\.(\s*-->)?/u;
+
+/**
+ * Show the "this is a beta build" note at the top of the CHANGELOG for
+ * prerelease versions and comment it out (so GitHub renders nothing) for
+ * stable versions. Only the note at the very start of the file is rewritten;
+ * if it is in neither form the sync throws rather than guess.
+ */
+export function syncBetaNote(changelog, version) {
+  const match = changelog.match(BETA_NOTE_AT_START_RE);
+  if (!match || Boolean(match[1]) !== Boolean(match[2])) {
+    throw new Error('CHANGELOG.md beta note not found at the top of the file');
+  }
+  const rest = changelog.slice(match[0].length);
+  if (!/^(\r?\n|$)/.test(rest)) {
+    throw new Error('CHANGELOG.md beta note is followed by unexpected text');
+  }
+  const eol = changelog.includes('\r\n') ? '\r\n' : '\n';
+  const [first, second] = BETA_NOTE_LINES;
+  const next = version.includes('-')
+    ? `${first}${eol}${second}`
+    : `<!-- ${first}${eol}${second} -->`;
+  return next + rest;
+}
+
 /** Align the download table and release heading with package.json. */
 export function syncChangelogForVersion(changelog, version) {
   const tag = `v${version}`;
