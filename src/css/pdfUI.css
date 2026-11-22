@@ -39,20 +39,22 @@
 .pdfjs-canvas {
   display: block;
   border-radius: var(--radius-small);
-  box-shadow: var(--shadow-md, 0 2px 12px rgba(0, 0, 0, 0.25));
+  box-shadow: none;
   max-width: 100%;
   height: auto;
 }
 
 .pdfjs-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
-  margin-top: 10px;
-  padding: 6px 14px;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 4px 8px;
   border-radius: var(--radius-small);
-  background: var(--hover-color, rgba(255, 255, 255, 0.06));
-  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.08));
+  background: var(--surface-1);
+  border: 1px solid var(--native-divider);
 }
 
 .pdfjs-nav-btn {
@@ -61,6 +63,7 @@
   justify-content: center;
   width: 28px;
   height: 28px;
+  flex: 0 0 28px;
   border: none;
   border-radius: var(--radius-small);
   background: var(--hover-color, rgba(255, 255, 255, 0.08));
@@ -79,6 +82,13 @@
 .pdfjs-nav-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.pdfjs-nav-btn:focus-visible,
+.pdfjs-zoom-btn:focus-visible,
+.preview-pdf-open-btn:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
 }
 
 .pdfjs-page-indicator {
@@ -131,7 +141,7 @@
 }
 
 .preview-pdf-container.quicklook-pdf {
-  min-height: 300px;
+  min-height: min(300px, 42vh);
 }
 
 .preview-pdf-container.quicklook-pdf .pdfjs-viewer {
@@ -139,7 +149,7 @@
 }
 
 .preview-pdf-container.quicklook-pdf .pdfjs-page-viewport {
-  max-height: 65vh;
+  max-height: min(65vh, calc(100dvh - 180px));
 }
 
 .preview-pdf-actions {
@@ -156,7 +166,7 @@
   padding: 7px 16px;
   border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.12));
   border-radius: var(--radius-small);
-  background: var(--hover-color, rgba(255, 255, 255, 0.06));
+  background: var(--surface-1);
   color: var(--text-primary);
   font-size: 12px;
   font-family: inherit;
@@ -167,8 +177,8 @@
 }
 
 .preview-pdf-open-btn:hover {
-  background: var(--active-color, rgba(255, 255, 255, 0.1));
-  border-color: var(--surface-border-strong, rgba(255, 255, 255, 0.2));
+  background: var(--interactive-hover);
+  border-color: var(--panel-border-strong);
 }
 
 .preview-pdf-open-btn:active {

@@ -14,6 +14,36 @@ export function escapeHtml(text: unknown): string {
   return str.replace(ESCAPE_RE, escapeReplacer);
 }
 
+// Characters after which a line break is allowed, plus lower-to-upper camelCase boundaries.
+const WORD_BREAK_AFTER_RE = /[_\-.()[\]]/;
+const LOWER_CASE_RE = /[a-z]/;
+const UPPER_CASE_RE = /[A-Z]/;
+
+/**
+ * Escapes text like escapeHtml, and inserts <wbr> line-break opportunities after
+ * `_ - . ( ) [ ]` and at lower-to-upper camelCase boundaries. Every segment is
+ * escaped before it is joined, so only the literal <wbr> tags are markup.
+ */
+export function escapeHtmlWithBreaks(text: unknown): string {
+  if (text === null || text === undefined) return '';
+  const str = String(text);
+  let html = '';
+  let segment = '';
+  for (let i = 0; i < str.length; i++) {
+    const ch = str.charAt(i);
+    const next = str.charAt(i + 1);
+    segment += ch;
+    if (
+      next !== '' &&
+      (WORD_BREAK_AFTER_RE.test(ch) || (LOWER_CASE_RE.test(ch) && UPPER_CASE_RE.test(next)))
+    ) {
+      html += escapeHtml(segment) + '<wbr>';
+      segment = '';
+    }
+  }
+  return html + escapeHtml(segment);
+}
+
 export function getErrorMessage(error: unknown): string {
   if (error instanceof Error) {
     return error.message;

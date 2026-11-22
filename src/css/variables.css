@@ -7,7 +7,7 @@
 :root {
   --glass-bg: rgba(28, 28, 28, 0.96);
   --glass-border: rgba(255, 255, 255, 0.16);
-  --glass-shadow: 0 10px 30px rgba(0, 0, 0, 0.18), 0 1px 0 rgba(255, 255, 255, 0.05);
+  --glass-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
   --text-primary: rgba(255, 255, 255, 0.96);
   --text-secondary: rgba(255, 255, 255, 0.62);
   --text-tertiary: rgba(255, 255, 255, 0.56); /* WCAG AA on dark bg */
@@ -16,7 +16,7 @@
   --accent-rgb: 10, 132, 255;
   --accent-hover: #3794ff;
   --accent-active: #006edb;
-  --accent-gradient: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-hover) 100%);
+  --accent-gradient: linear-gradient(135deg, var(--accent-color) 0%, var(--accent-color) 100%);
   --hover-color: rgba(255, 255, 255, 0.08);
   --active-color: rgba(255, 255, 255, 0.13);
   --danger-color: #ff453a;
@@ -37,30 +37,31 @@
   --accent-medium: rgba(var(--accent-rgb), 0.26);
   --accent-strong: rgba(var(--accent-rgb), 0.42);
 
-  --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.18);
-  --shadow-lg: 0 18px 44px rgba(0, 0, 0, 0.26);
-  --shadow-xl: 0 26px 68px rgba(0, 0, 0, 0.34);
-  --native-elevation-1: 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 22px rgba(0, 0, 0, 0.16);
-  --native-elevation-2: 0 1px 0 rgba(255, 255, 255, 0.06), 0 18px 42px rgba(0, 0, 0, 0.24);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.12);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.18);
+  --shadow-xl: 0 18px 42px rgba(0, 0, 0, 0.24);
+  --native-elevation-1: 0 1px 2px rgba(0, 0, 0, 0.1);
+  --native-elevation-2: 0 4px 14px rgba(0, 0, 0, 0.16);
   --native-divider: color-mix(in srgb, var(--text-primary) 12%, transparent);
 
   --focus-ring: 0 0 0 3px rgba(var(--accent-rgb), 0.32);
   --focus-ring-strong: 0 0 0 4px rgba(var(--accent-rgb), 0.42);
-  --glass-modal-bg: rgba(28, 28, 28, 0.98);
+  --glass-modal-bg: #1c1c1c;
   --glass-modal-border: rgba(255, 255, 255, 0.14);
   --bg-primary: #181818;
   --bg-primary-rgb: 24, 24, 24;
   --bg-secondary: #252525;
-  --dropdown-bg: rgba(38, 38, 38, 0.98);
+  --dropdown-bg: #262626;
   --separator: rgba(255, 255, 255, 0.1);
   --surface-border: color-mix(in srgb, var(--text-primary) 12%, transparent);
   --surface-border-strong: color-mix(in srgb, var(--text-primary) 18%, transparent);
   --surface-0: var(--bg-primary);
   --surface-1: var(--bg-secondary);
-  --surface-2: color-mix(in srgb, var(--surface-1) 88%, var(--text-primary) 3%);
+  --surface-2: color-mix(in srgb, var(--surface-1) 92%, var(--surface-0) 8%);
   --surface-overlay: var(--glass-bg);
-  --chrome-surface: color-mix(in srgb, var(--surface-1) 84%, transparent);
-  --chrome-surface-raised: color-mix(in srgb, var(--surface-1) 92%, var(--text-primary) 3%);
+  --chrome-surface: color-mix(in srgb, var(--surface-1) 96%, transparent);
+  --chrome-surface-opaque: var(--surface-1);
+  --chrome-surface-raised: color-mix(in srgb, var(--surface-1) 92%, var(--surface-0) 8%);
   --panel-border: var(--surface-border);
   --panel-border-strong: var(--surface-border-strong);
   --interactive-hover: var(--hover-color);
@@ -108,15 +109,13 @@
   --titlebar-height: 34px;
   --tab-bar-height: 32px;
 
-  --radius-small: 7px;
-  --radius-medium: 10px;
-  --radius-large: 14px;
+  --radius-small: 5px;
+  --radius-medium: 8px;
+  --radius-large: 12px;
 
-  --font-family:
-    -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'SF Pro Display', 'Segoe UI Variable',
-    'Segoe UI', system-ui, ui-sans-serif, Helvetica, Arial, sans-serif;
+  --font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono:
-    'SF Mono', ui-monospace, 'Cascadia Code', 'Fira Code', Consolas, Monaco, 'Courier New',
+    ui-monospace, 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, Monaco, 'Courier New',
     monospace;
 
   --system-accent-color: var(--accent-color);
@@ -138,8 +137,8 @@
   --scrollbar-thumb-bg: rgba(255, 255, 255, 0.18);
   --scrollbar-thumb-hover-bg: rgba(255, 255, 255, 0.32);
 
-  --font-size-base: 12px;
-  --font-size-file-name: 12px;
+  --font-size-base: 13px;
+  --font-size-file-name: 13px;
   --font-size-nav: 12px;
   --font-size-section-title: 11px;
   --font-size-status: 11px;
@@ -155,10 +154,15 @@
   --icon-size-status: 12px;
   --icon-size-settings-tab: 18px;
 
-  --toolbar-height: 42px;
-  --toolbar-padding-v: 6px;
+  --toolbar-height: 40px;
+  --toolbar-padding-v: 5px;
   --toolbar-padding-h: 8px;
   --toolbar-group-height: 30px;
+  --segmented-track-bg: color-mix(in srgb, var(--surface-1) 64%, transparent);
+  --segmented-active-bg: color-mix(in srgb, var(--surface-1) 88%, #ffffff 12%);
+  --segmented-active-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.26), 0 0 0 0.5px rgba(0, 0, 0, 0.16),
+    inset 0 0.5px 0 rgba(255, 255, 255, 0.16);
   --control-height-sm: 24px;
   --control-height-md: 24px;
   --control-height-lg: 30px;
@@ -187,6 +191,8 @@
   --nav-item-padding-v: 5px;
   --nav-item-padding-h: 9px;
   --nav-item-gap: 8px;
+  --sidebar-row-height: 28px;
+  --sidebar-row-radius: 6px;
   --sidebar-section-gap: 14px;
   --sidebar-padding-v: 10px;
   --sidebar-padding-h: 8px;
@@ -205,6 +211,7 @@
   --breadcrumb-padding-v: 4px;
   --breadcrumb-padding-h: 8px;
   --status-bar-padding-h: 10px;
+  --status-separator-height: 10px;
   --modal-max-width: 600px;
   --settings-modal-width: 980px;
   --settings-modal-height: 680px;
@@ -244,9 +251,7 @@ body.platform-darwin {
   --animation-easing: cubic-bezier(0.22, 1, 0.36, 1);
   --scrollbar-width: 8px;
   --scrollbar-thumb-radius: 999px;
-  --radius-small: 6px;
-  --radius-medium: 10px;
-  --titlebar-height: 32px;
+  --titlebar-height: 30px;
 }
 
 body.platform-darwin.tabs-enabled {
@@ -258,8 +263,6 @@ body.platform-win32 {
   --animation-easing: cubic-bezier(0.4, 0, 0.2, 1);
   --scrollbar-width: 12px;
   --scrollbar-thumb-radius: 0px;
-  --radius-small: 6px;
-  --radius-medium: 8px;
   --titlebar-height: 36px;
 }
 
@@ -268,8 +271,6 @@ body.platform-linux {
   --animation-easing: cubic-bezier(0.25, 0.1, 0.25, 1);
   --scrollbar-width: 10px;
   --scrollbar-thumb-radius: 5px;
-  --radius-small: 6px;
-  --radius-medium: 8px;
   --titlebar-height: 36px;
 }
 
@@ -328,12 +329,12 @@ body.compact-ui {
 }
 
 body.large-ui {
-  --font-size-base: 13px;
-  --font-size-file-name: 11.5px;
-  --font-size-nav: 12px;
+  --font-size-base: 14px;
+  --font-size-file-name: 14px;
+  --font-size-nav: 13px;
   --font-size-section-title: 11px;
   --font-size-status: 11.5px;
-  --font-size-breadcrumb: 12px;
+  --font-size-breadcrumb: 13px;
 
   --icon-size-grid: 44px;
   --icon-size-list: 18px;

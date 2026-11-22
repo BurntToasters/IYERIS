@@ -55,7 +55,7 @@ function getDefaultSteps(isMac: boolean): TourStep[] {
       target: '.address-bar',
       title: 'Smart Address Bar',
       description:
-        'Click breadcrumbs to jump to parent folders, or type a path directly to navigate anywhere instantly.',
+        'Follow the visible breadcrumbs or enter a full path directly to move between folders.',
       prefer: 'bottom',
     },
     {
@@ -68,7 +68,7 @@ function getDefaultSteps(isMac: boolean): TourStep[] {
       target: '#search-scope-toggle',
       title: 'Search Scope',
       description:
-        'Switch between the current folder and global search, then save useful searches so you can run them again later.',
+        'Choose Local or Global search from the visible scope control. Advanced filters, regular expressions, and saved searches live in the filter panel.',
       prefer: 'bottom',
     },
     {
@@ -78,17 +78,17 @@ function getDefaultSteps(isMac: boolean): TourStep[] {
       prefer: 'bottom',
     },
     {
-      target: '#view-options',
-      title: 'View Modes',
+      target: '#more-actions-btn',
+      title: 'Views and compact actions',
       description:
-        'Switch between Grid, List, and Column views to browse your files the way you prefer.',
+        'Choose Grid, List, or Column view here when toolbar space is tight. Up, New Folder, Preview, and Settings move into More as the window narrows.',
       prefer: 'bottom',
     },
     {
       target: '#more-actions-btn',
       title: 'File Workflows',
       description:
-        'Use More Actions for archive tools, batch rename, duplicate finder, properties, and other power actions on selected files.',
+        'More keeps Refresh, New File, Sort, selection commands, and other file workflows reachable without crowding navigation.',
       prefer: 'bottom',
     },
     {

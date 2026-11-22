@@ -26,7 +26,6 @@ export default defineConfig({
             return 'tauri-plugins';
           }
           if (
-            id.includes('node_modules/pdfjs-dist') ||
             id.includes('node_modules/marked') ||
             id.includes('node_modules/dompurify') ||
             id.includes('node_modules/@highlightjs/cdn-assets')

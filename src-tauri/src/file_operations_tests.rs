@@ -39,6 +39,7 @@ fn cancelled_copy_fingerprint_never_publishes_destination() {
 
 #[test]
 fn copy_fingerprint_window_releases_mutation_lock() {
+    let _guard = undo::TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let mut lock = Some(mutation_lock().unwrap());
     let temp = tempfile::tempdir().unwrap();
     let source = temp.path().join("source");
@@ -87,6 +88,7 @@ fn later_copy_failure_keeps_and_reports_replaced_published_entry() {
 
 #[test]
 fn queued_mutation_wait_cancels_without_entering_the_global_lock() {
+    let _guard = undo::TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     use std::sync::atomic::AtomicBool;
     use std::sync::mpsc;
     use std::thread;
@@ -450,6 +452,7 @@ fn cleanup_dir(dir: &Path) {
 
 #[test]
 fn rename_item_refuses_to_replace_an_existing_file() {
+    let _guard = undo::TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let dir = make_test_temp_dir("rename-no-replace-file");
     let source = dir.join("source.txt");
     let dest = dir.join("dest.txt");
@@ -470,6 +473,7 @@ fn rename_item_refuses_to_replace_an_existing_file() {
 
 #[test]
 fn rename_item_refuses_to_replace_an_existing_directory() {
+    let _guard = undo::TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let dir = make_test_temp_dir("rename-no-replace-dir");
     let source = dir.join("source-dir");
     let dest = dir.join("dest-dir");
@@ -494,6 +498,7 @@ fn rename_item_refuses_to_replace_an_existing_directory() {
 
 #[test]
 fn rename_item_allows_case_only_rename() {
+    let _guard = undo::TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let dir = make_test_temp_dir("rename-case-only");
     let source = dir.join("RenameMe.txt");
     fs::write(&source, "payload").unwrap();
@@ -513,6 +518,7 @@ fn rename_item_allows_case_only_rename() {
 #[cfg(unix)]
 #[test]
 fn rename_item_renames_a_symlink_without_following_or_replacing() {
+    let _guard = undo::TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     use std::os::unix::fs::symlink;
 
     let dir = make_test_temp_dir("rename-symlink");
@@ -548,6 +554,7 @@ fn rename_item_renames_a_symlink_without_following_or_replacing() {
 
 #[test]
 fn batch_rename_rejects_duplicate_targets_without_clobbering() {
+    let _guard = undo::TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let dir = make_test_temp_dir("batch-rename-dup-target");
     let a = dir.join("a.txt");
     let b = dir.join("b.txt");
@@ -572,6 +579,7 @@ fn batch_rename_rejects_duplicate_targets_without_clobbering() {
 
 #[test]
 fn batch_rename_does_not_overwrite_a_preexisting_hidden_staging_name() {
+    let _guard = undo::TEST_LOCK.lock().unwrap_or_else(|p| p.into_inner());
     let dir = make_test_temp_dir("batch-rename-staging");
     let a = dir.join("a.txt");
     let b = dir.join("b.txt");

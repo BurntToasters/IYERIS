@@ -33,6 +33,13 @@
   word-break: break-all;
 }
 
+.property-value.property-date {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
 .property-value.property-checksum {
   display: flex;
   align-items: center;
@@ -139,47 +146,6 @@
   gap: 6px;
 }
 
-.folder-stats-content {
-  display: flex;
-  flex-direction: column;
-  gap: 0px;
-  max-height: 180px;
-  overflow-y: auto;
-  padding: 2px 0;
-}
-
-.file-type-stat {
-  display: grid;
-  grid-template-columns: 65px 55px 1fr;
-  align-items: center;
-  gap: 8px;
-  padding: 1px 0;
-  position: relative;
-  font-size: 11px;
-}
-
-.file-type-ext {
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-  font-weight: 600;
-  font-size: 11px;
-}
-
-.file-type-count {
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.file-type-size {
-  color: var(--text-primary);
-  text-align: right;
-  font-size: 11px;
-}
-
-.file-type-bar {
-  display: none;
-}
-
 .footer-left {
   display: flex;
   align-items: center;
@@ -237,7 +203,7 @@
 }
 
 .property-attrs-edit input[type='checkbox'] {
-  accent-color: var(--accent);
+  accent-color: var(--accent-color);
 }
 
 .property-system-badge {
@@ -268,13 +234,8 @@
 }
 
 .property-perm-input:focus {
-  border-color: var(--accent);
+  border-color: var(--accent-color);
   outline: none;
-}
-
-.property-btn-sm {
-  font-size: 11px;
-  padding: 2px 8px;
 }
 
 .property-tag {
@@ -288,12 +249,330 @@
   margin-right: 4px;
 }
 
-#properties-modal {
-  backdrop-filter: blur(4px) saturate(110%);
-  -webkit-backdrop-filter: blur(4px) saturate(110%);
+/* Dialog shell: compact tab strip and one scrollable content area. */
+#properties-modal .modal {
+  width: min(520px, calc(100vw - 32px));
+  min-width: min(320px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
 }
 
-body.reduce-transparency #properties-modal {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+#properties-modal .modal-footer {
+  gap: 6px;
+  padding: 10px 16px;
+}
+
+#properties-modal #properties-cancel {
+  order: 1;
+}
+
+#properties-modal #properties-apply {
+  order: 2;
+}
+
+#properties-modal #properties-ok {
+  order: 3;
+}
+
+#properties-modal .properties-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--native-divider);
+}
+
+#properties-modal .properties-tab {
+  position: relative;
+  background: transparent;
+  border: none;
+  border-radius: 6px 6px 0 0;
+  padding: 10px 12px 9px;
+  font-family: var(--font-family);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background var(--animation-duration) var(--animation-easing);
+}
+
+#properties-modal .properties-tab:hover {
+  background: var(--interactive-hover);
+  color: var(--text-primary);
+}
+
+#properties-modal .properties-tab[aria-selected='true'] {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+#properties-modal .properties-tab[aria-selected='true']::after {
+  content: '';
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent-color);
+}
+
+#properties-modal .properties-tab:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+#properties-modal .properties-content {
+  padding: 0;
+}
+
+#properties-modal .properties-panel {
+  box-sizing: border-box;
+  min-height: clamp(220px, 42vh, 380px);
+  padding: 14px 18px;
+}
+
+#properties-modal .properties-panel[hidden],
+#properties-modal .property-row[hidden] {
+  display: none;
+}
+
+#properties-modal .properties-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-bottom: 14px;
+}
+
+#properties-modal .properties-icon {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#properties-modal .properties-icon .twemoji {
+  width: 40px;
+  height: 40px;
+}
+
+#properties-modal .properties-icon img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+#properties-modal .properties-name {
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+#properties-modal .property-label {
+  min-width: 108px;
+}
+
+#properties-modal .property-separator {
+  opacity: 1;
+  margin: 10px 0;
+  background: var(--native-divider);
+}
+
+#properties-modal .property-inline,
+#properties-modal .property-path-row,
+#properties-modal .property-checksum-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+#properties-modal .property-path-row {
+  align-items: flex-start;
+}
+
+#properties-modal .property-path-row .property-path {
+  flex: 1;
+  min-width: 0;
+}
+
+#properties-modal .property-muted {
+  color: var(--text-secondary);
+}
+
+#properties-modal .property-note {
+  margin: 12px 0 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+#properties-modal .property-perm-grid {
+  display: grid;
+  grid-template-columns: 64px repeat(3, 52px);
+  gap: 6px 8px;
+  align-items: center;
+  font-size: 12px;
+}
+
+#properties-modal .property-perm-head {
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+#properties-modal .property-perm-who {
+  color: var(--text-secondary);
+}
+
+#properties-modal .property-perm-grid input[type='checkbox'] {
+  justify-self: center;
+  margin: 0;
+  accent-color: var(--accent-color);
+  cursor: pointer;
+}
+
+#properties-modal .property-perms-edit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#properties-modal .properties-tab[hidden] {
+  display: none;
+}
+
+@media (max-width: 520px) {
+  #properties-modal .properties-tabs {
+    flex-wrap: wrap;
+    gap: 2px;
+    padding: 0 8px;
+  }
+
+  #properties-modal .properties-tab {
+    padding: 8px 9px;
+  }
+
+  #properties-modal .properties-panel {
+    padding: 12px;
+  }
+
+  #properties-modal .property-label {
+    min-width: 88px;
+  }
+}
+
+#properties-modal .signature-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-small);
+  background: var(--surface-2);
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+#properties-modal .signature-status-icon {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+#properties-modal .signature-status[data-tone='ok'] .signature-status-icon {
+  color: var(--success-color);
+}
+
+#properties-modal .signature-status[data-tone='warn'] .signature-status-icon {
+  color: var(--warning-color);
+}
+
+#properties-modal .signature-status[data-tone='error'] .signature-status-icon {
+  color: var(--danger-color);
+}
+
+#properties-modal .signature-status-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-wrap: anywhere;
+}
+
+#properties-modal .signature-status-message {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+#properties-modal .signature-table-wrap {
+  margin-top: 12px;
+  max-height: 132px;
+  overflow: auto;
+  border: 1px solid var(--native-divider);
+  border-radius: var(--radius-small);
+}
+
+#properties-modal .signature-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+/* Digest and timestamp keep their width, so only the name column gives up space. */
+#properties-modal .signature-col-digest {
+  width: 124px;
+}
+
+#properties-modal .signature-col-time {
+  width: 158px;
+}
+
+#properties-modal .signature-table th,
+#properties-modal .signature-table td {
+  padding: 4px 8px;
+  white-space: nowrap;
+  text-align: left;
+}
+
+#properties-modal .signature-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--native-divider);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+#properties-modal .signature-table td {
+  color: var(--text-primary);
+}
+
+#properties-modal .signature-table td.signature-col-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* One row-level highlight, no per-cell borders. */
+#properties-modal .signature-table tr[aria-selected='false']:hover > td {
+  background: var(--interactive-hover);
+}
+
+#properties-modal .signature-table tr[aria-selected='true'] > td {
+  background: var(--file-selection-bg);
+}
+
+/* One focus ring around the whole row. */
+#properties-modal .signature-table tr:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: -2px;
+}
+
+#properties-modal .signature-details {
+  margin-top: 10px;
 }

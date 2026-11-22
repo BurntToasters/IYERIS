@@ -136,6 +136,6 @@
 
 # Build from source
 
-**_MOST_** of IYERIS's deps are handled by NodeJS 22-24 by running `npm i`.<br>
+**_MOST_** of IYERIS's deps are handled by NodeJS 24 or 26 by running `npm i`.<br>
 **_HOWEVER_**, Tauri V2 uses rust and is required for a user to manually install if they want to build IYERIS from source. Checkout how to install rust [here](https://rust-lang.org/tools/install/).
 Please check out [build-setup.md](https://github.com/BurntToasters/IYERIS/blob/main/build-setup.md) in this repo for more info about each operating system's requirements to build IYERIS.

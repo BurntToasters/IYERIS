@@ -1,4 +1,5 @@
 import { devLog } from './shared.js';
+import pdfjsWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 interface PdfjsViewport {
   width: number;
@@ -7,11 +8,12 @@ interface PdfjsViewport {
 
 interface PdfjsTextContent {
   items: Array<{ str: string }>;
+  styles?: Record<string, unknown>;
 }
 
 interface PdfjsTextLayerConstructor {
   new (params: {
-    textContentSource: Promise<PdfjsTextContent>;
+    textContentSource: PdfjsTextContent;
     container: HTMLElement;
     viewport: PdfjsViewport;
   }): { render: () => Promise<void> };
@@ -38,7 +40,7 @@ export interface PdfjsLib {
 interface PdfjsDocument {
   numPages: number;
   getPage: (pageNum: number) => Promise<PdfjsPage>;
-  destroy: () => void;
+  destroy?: () => void | Promise<void>;
 }
 
 interface PdfjsPage {
@@ -93,10 +95,9 @@ export async function loadPdfJs(): Promise<PdfjsLib | null> {
 
   pdfjsLoading = (async () => {
     try {
-      const modulePath = '/vendor/pdfjs/pdf.min.mjs';
-      const mod = await import(/* @vite-ignore */ modulePath);
-      mod.GlobalWorkerOptions.workerSrc = '/vendor/pdfjs/pdf.worker.min.mjs';
-      pdfjsLib = mod as PdfjsLib;
+      const mod = await import('pdfjs-dist');
+      mod.GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
+      pdfjsLib = mod as unknown as PdfjsLib;
       return pdfjsLib;
     } catch {
       devLog('PDF', 'Failed to load pdf.js');
@@ -169,7 +170,7 @@ async function renderPage(
 
     try {
       const tl = new lib.TextLayer({
-        textContentSource: withTimeout(
+        textContentSource: await withTimeout(
           page.getTextContent(),
           PDF_RENDER_TIMEOUT_MS,
           'PDF text layer load timed out'
@@ -252,6 +253,7 @@ export async function createPdfViewerWithLibrary(
   let doc: PdfjsDocument | null = null;
   let loadingTask: PdfjsLoadingTask | null = null;
   let loadingTaskDestroyCalled = false;
+  let loadingTaskDestroyPromise: Promise<void> | null = null;
   let currentPage = 1;
   let requestedPage = 1;
   let committedPage = 1;
@@ -272,15 +274,35 @@ export async function createPdfViewerWithLibrary(
   let zoomInBtn: HTMLButtonElement | null = null;
   let zoomIndicator: HTMLElement | null = null;
 
-  function destroyLoadingTask(task: PdfjsLoadingTask): void {
-    if (loadingTaskDestroyCalled) return;
+  function destroyLoadingTask(task: PdfjsLoadingTask): Promise<void> {
+    if (loadingTaskDestroyPromise) return loadingTaskDestroyPromise;
     loadingTaskDestroyCalled = true;
     try {
-      void Promise.resolve(task.destroy()).catch((error) => {
+      loadingTaskDestroyPromise = Promise.resolve(task.destroy()).catch((error) => {
         devLog('PDF', 'Failed to cancel PDF load', error);
       });
     } catch (error) {
       devLog('PDF', 'Failed to cancel PDF load', error);
+      loadingTaskDestroyPromise = Promise.resolve();
+    }
+    return loadingTaskDestroyPromise;
+  }
+
+  function destroyDocument(): boolean {
+    const activeDoc = doc;
+    if (!activeDoc) return false;
+    doc = null;
+    if (!activeDoc.destroy) return false;
+    const activeLoadingTask = loadingTask;
+    try {
+      void Promise.resolve(activeDoc.destroy()).catch((error) => {
+        devLog('PDF', 'Failed to destroy PDF document', error);
+        if (activeLoadingTask) void destroyLoadingTask(activeLoadingTask);
+      });
+      return true;
+    } catch (error) {
+      devLog('PDF', 'Failed to destroy PDF document', error);
+      return false;
     }
   }
 
@@ -513,12 +535,9 @@ export async function createPdfViewerWithLibrary(
     pendingRender = null;
     container.removeEventListener('keydown', handleKeydown);
     pageViewport.removeEventListener('wheel', handleWheel);
-    if (doc) {
-      doc.destroy();
-      doc = null;
-    }
+    const documentDestroyed = destroyDocument();
     if (loadingTask) {
-      destroyLoadingTask(loadingTask);
+      if (!documentDestroyed) void destroyLoadingTask(loadingTask);
       loadingTask = null;
     }
   }
@@ -536,6 +555,7 @@ export async function createPdfViewerWithLibrary(
       enableXfa: false,
     });
     loadingTaskDestroyCalled = false;
+    loadingTaskDestroyPromise = null;
     const activeLoadingTask = loadingTask;
     let loadTimer: ReturnType<typeof setTimeout> | undefined;
     try {
@@ -543,7 +563,7 @@ export async function createPdfViewerWithLibrary(
         withAbort(activeLoadingTask.promise, signal),
         new Promise<PdfjsDocument>((_, reject) => {
           loadTimer = setTimeout(() => {
-            destroyLoadingTask(activeLoadingTask);
+            void destroyLoadingTask(activeLoadingTask);
             reject(new Error('PDF load timed out'));
           }, PDF_LOAD_TIMEOUT_MS);
         }),
@@ -551,13 +571,13 @@ export async function createPdfViewerWithLibrary(
     } finally {
       if (loadTimer) clearTimeout(loadTimer);
     }
-    loadingTask = null;
     if (!doc) throw new Error('PDF failed to load');
     totalPages = doc.numPages;
 
     if (destroyed) {
-      doc.destroy();
-      doc = null;
+      const documentDestroyed = destroyDocument();
+      loadingTask = null;
+      if (!documentDestroyed) await destroyLoadingTask(activeLoadingTask);
       throw new Error('Viewer destroyed during load');
     }
 
@@ -589,12 +609,13 @@ export async function createPdfViewerWithLibrary(
     signal?.removeEventListener('abort', destroy);
     container.removeEventListener('keydown', handleKeydown);
     pageViewport.removeEventListener('wheel', handleWheel);
-    doc?.destroy();
-    doc = null;
-    if (loadingTask && !loadingTaskDestroyCalled) {
-      destroyLoadingTask(loadingTask);
+    const documentDestroyed = destroyDocument();
+    if (loadingTask && !documentDestroyed && !loadingTaskDestroyCalled) {
+      await destroyLoadingTask(loadingTask);
       loadingTask = null;
     }
+    if (loadingTask && documentDestroyed) loadingTask = null;
+    if (loadingTaskDestroyPromise) await loadingTaskDestroyPromise;
     const msg = err instanceof Error ? err.message : 'Failed to load PDF';
     devLog('PDF', 'Load error', msg);
     onError?.(msg);
@@ -630,31 +651,32 @@ export async function generatePdfThumbnailPdfJs(
   });
 
   let loadTimer: ReturnType<typeof setTimeout> | undefined;
-  let loadingTaskDestroyCalled = false;
-  let doc!: PdfjsDocument;
-  const destroyLoadingTask = (): void => {
-    if (loadingTaskDestroyCalled) return;
-    loadingTaskDestroyCalled = true;
+  let loadingTaskDestroyPromise: Promise<void> | null = null;
+  let doc: PdfjsDocument;
+  const destroyLoadingTask = (): Promise<void> => {
+    if (loadingTaskDestroyPromise) return loadingTaskDestroyPromise;
     try {
-      void Promise.resolve(loadingTask.destroy()).catch((error) => {
+      loadingTaskDestroyPromise = Promise.resolve(loadingTask.destroy()).catch((error) => {
         devLog('PDF', 'Failed to cancel PDF thumbnail load', error);
       });
     } catch (error) {
       devLog('PDF', 'Failed to cancel PDF thumbnail load', error);
+      loadingTaskDestroyPromise = Promise.resolve();
     }
+    return loadingTaskDestroyPromise;
   };
   try {
     doc = await Promise.race([
       loadingTask.promise,
       new Promise<PdfjsDocument>((_, reject) => {
         loadTimer = setTimeout(() => {
-          destroyLoadingTask();
+          void destroyLoadingTask();
           reject(new Error('PDF thumbnail load timed out'));
         }, PDF_LOAD_TIMEOUT_MS);
       }),
     ]);
   } catch (error) {
-    destroyLoadingTask();
+    await destroyLoadingTask();
     throw error;
   } finally {
     if (loadTimer) clearTimeout(loadTimer);
@@ -698,6 +720,16 @@ export async function generatePdfThumbnailPdfJs(
     const q = quality === 'low' ? 0.5 : quality === 'high' ? 0.9 : 0.7;
     return canvas.toDataURL('image/jpeg', q);
   } finally {
-    doc.destroy();
+    const activeDoc = doc;
+    let documentDestroyed = false;
+    if (activeDoc?.destroy) {
+      try {
+        await activeDoc.destroy();
+        documentDestroyed = true;
+      } catch (error) {
+        devLog('PDF', 'Failed to destroy PDF thumbnail document', error);
+      }
+    }
+    if (!documentDestroyed) await destroyLoadingTask();
   }
 }

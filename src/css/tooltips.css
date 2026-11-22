@@ -2,22 +2,17 @@
   position: fixed;
   z-index: var(--z-tooltip);
   pointer-events: none;
-  max-width: 240px;
-  padding: 4px 8px;
+  max-width: min(260px, calc(100vw - 24px));
+  padding: 5px 8px;
   background: var(--dropdown-bg);
   border: 1px solid var(--native-divider);
-  border-radius: 6px;
-  box-shadow:
-    0 4px 12px rgba(0, 0, 0, 0.22),
-    0 1px 0 rgba(255, 255, 255, 0.04);
+  border-radius: var(--radius-small);
+  box-shadow: var(--native-elevation-1);
   font-size: 11px;
   line-height: 1.35;
   color: var(--text-primary);
   opacity: 0;
-  transform: translateY(3px);
-  transition:
-    opacity 0.12s var(--animation-easing),
-    transform 0.12s var(--animation-easing);
+  transition: opacity var(--animation-duration) var(--animation-easing);
 }
 
 body.platform-darwin .ui-tooltip-arrow {
@@ -26,7 +21,6 @@ body.platform-darwin .ui-tooltip-arrow {
 
 .ui-tooltip.visible {
   opacity: 1;
-  transform: translateY(0);
 }
 
 .ui-tooltip-content {
@@ -39,7 +33,7 @@ body.platform-darwin .ui-tooltip-arrow {
   width: 8px;
   height: 8px;
   background: var(--dropdown-bg);
-  border: 1px solid var(--glass-border);
+  border: 1px solid var(--native-divider);
   transform: rotate(45deg);
   z-index: 0;
 }
@@ -80,8 +74,8 @@ body.platform-darwin .ui-tooltip-arrow {
   font-family: var(--font-mono, SFMono-Regular, Consolas, Menlo, monospace);
   font-size: 9px;
   color: var(--text-tertiary);
-  background: color-mix(in srgb, var(--surface-3) 40%, rgba(0, 0, 0, 0.2));
-  border: 1px solid var(--panel-border);
+  background: var(--surface-2);
+  border: 1px solid var(--native-divider);
   border-radius: 4px;
   padding: 1px 4px;
   margin-left: 6px;

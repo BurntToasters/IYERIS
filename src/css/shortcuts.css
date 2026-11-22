@@ -21,52 +21,58 @@
 }
 
 .shortcuts-modal-content {
-  width: 90%;
-  max-width: 800px;
-  max-height: 85vh;
+  width: min(800px, calc(100vw - 32px));
+  max-width: calc(100vw - 32px);
+  max-height: calc(100dvh - 24px);
   background: var(--glass-modal-bg);
   border: 1px solid var(--glass-modal-border);
   border-radius: var(--radius-medium);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
 }
 
 .shortcuts-modal-body {
-  max-height: calc(85vh - 180px);
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: min(72vh, calc(100dvh - 120px));
   overflow-y: auto;
-  padding: 24px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
 .shortcuts-modal-sections {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
 }
 
 .shortcuts-section {
-  background: color-mix(in srgb, var(--text-primary) 2%, transparent);
-  padding: 20px;
-  border-radius: var(--radius-small);
-  border: 1px solid color-mix(in srgb, var(--text-primary) 5%, transparent);
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
 }
 
 .shortcuts-section h3 {
-  margin: 0 0 16px 0;
-  font-size: 16px;
+  margin: 0 0 6px;
+  font-size: 13px;
   font-weight: 600;
-  color: var(--accent-color);
-  border-bottom: 1px solid var(--active-color);
-  padding-bottom: 8px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--native-divider);
+  padding-bottom: 6px;
 }
 
 .shortcut-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
-  border-bottom: 1px solid color-mix(in srgb, var(--text-primary) 3%, transparent);
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--native-divider);
 }
 
 .shortcut-item:last-child {
@@ -75,7 +81,7 @@
 
 .shortcut-description {
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .shortcut-info {
@@ -117,22 +123,23 @@
 
 .shortcut-keys kbd {
   display: inline-block;
-  padding: 4px 10px;
-  background: color-mix(in srgb, var(--text-primary) 5%, transparent);
-  border: 1px solid var(--active-color);
+  min-height: 24px;
+  padding: 3px 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--native-divider);
   border-radius: var(--radius-small);
-  font-family: 'Segoe UI', 'Roboto', sans-serif;
+  font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 500;
   color: var(--text-primary);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  box-shadow: none;
   min-width: 24px;
   text-align: center;
 }
 
 .shortcut-item.is-recording .shortcut-keys kbd {
   border-color: var(--accent-color);
-  box-shadow: 0 0 0 1px rgba(var(--accent-rgb), 0.35);
+  box-shadow: var(--focus-ring);
 }
 
 .shortcut-item.is-recording .shortcut-controls .modal-button {
@@ -140,10 +147,10 @@
 }
 
 .shortcuts-note {
-  background: rgba(var(--accent-rgb), 0.1);
-  padding: 16px;
+  background: var(--surface-2);
+  padding: 10px 12px;
   border-radius: var(--radius-small);
-  border-left: 3px solid var(--accent-color);
+  border: 1px solid var(--native-divider);
 }
 
 .shortcuts-note p {
@@ -162,10 +169,4 @@
   font-size: 11px;
   font-weight: 500;
   margin: 0 2px;
-}
-
-body.theme-light .shortcuts-modal-content {
-  background: var(--glass-modal-bg);
-  border: 1px solid var(--glass-modal-border);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
 }

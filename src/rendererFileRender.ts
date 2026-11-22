@@ -1,6 +1,6 @@
 import type { FileItem, ContentSearchResult, Settings } from './types';
 import type { ToastType } from './rendererToasts.js';
-import { escapeHtml } from './shared.js';
+import { escapeHtml, escapeHtmlWithBreaks } from './shared.js';
 import {
   IMAGE_EXTENSIONS,
   RAW_EXTENSIONS,
@@ -509,13 +509,13 @@ export function createFileRenderController(config: FileRenderConfig) {
       ? '<span class="symlink-badge" role="img" aria-label="Symbolic link">⤳</span>'
       : '';
 
-    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml(); icons/numerics are safe
+    // eslint-disable-next-line no-restricted-syntax -- user data via escapeHtml()/escapeHtmlWithBreaks(); icons/numerics are safe
     fileItem.innerHTML = `
     <div class="file-main">
       <div class="file-checkbox"><span class="checkbox-mark">✓</span></div>
       <div class="file-icon">${symlinkBadge}</div>
       <div class="file-text">
-        <div class="file-name">${escapeHtml(displayName)}</div>
+        <div class="file-name">${escapeHtmlWithBreaks(displayName)}</div>
         ${matchContextHtml}
       </div>
     </div>

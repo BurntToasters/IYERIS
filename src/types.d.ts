@@ -122,6 +122,7 @@ export interface Settings {
   nativeMenuEnabled?: boolean;
   operationPanelCollapsed?: boolean;
   utilityDrawerCollapsed?: boolean;
+  showUtilityDashboard?: boolean;
   enableAutoChecksum?: boolean;
   defaultChecksumAlgorithm?: 'sha256' | 'md5' | 'blake3' | 'sha512' | 'crc32';
 
@@ -250,6 +251,16 @@ export interface ItemProperties {
   isHiddenAttr?: boolean;
   isSystemAttr?: boolean;
   macTags?: string[];
+  extension?: string;
+  sizeOnDisk?: number;
+  mimeType?: string;
+  opensWith?: string;
+  ownerName?: string;
+  groupName?: string;
+  isArchiveAttr?: boolean;
+  isCompressedAttr?: boolean;
+  isEncryptedAttr?: boolean;
+  isIndexedAttr?: boolean;
 }
 
 export interface FolderSizeProgress {
@@ -305,6 +316,39 @@ export type ApiResponse<T = void> = T extends void ? IpcResult : IpcResult<{ dat
 export type DirectoryResponse = IpcResult<{ contents: FileItem[] }>;
 
 export type PropertiesResponse = IpcResult<{ properties: ItemProperties }>;
+
+export interface CodeSigner {
+  name: string; // signer subject common name
+  issuer?: string; // issuer common name
+  digestAlgorithm?: string; // e.g. "sha256"
+  timestamp?: number; // signing time, ms since epoch (countersignature / secure timestamp)
+  serialNumber?: string; // hex
+  thumbprint?: string; // SHA-1 hex of the cert, uppercase
+  validFrom?: number; // ms
+  validTo?: number; // ms
+}
+
+export interface CodeSignatureInfo {
+  supported: boolean; // false on Linux or for file types the platform can't sign
+  signed: boolean;
+  status:
+    | 'valid'
+    | 'invalid'
+    | 'untrusted'
+    | 'expired'
+    | 'revoked'
+    | 'unsigned'
+    | 'unsupported'
+    | 'error';
+  statusMessage?: string; // human-readable detail
+  signers: CodeSigner[]; // Windows: one per embedded signature, primary first
+  identifier?: string; // macOS bundle/code identifier
+  teamId?: string; // macOS
+  hardenedRuntime?: boolean; // macOS
+  gatekeeperAccepted?: boolean; // macOS SecAssessment verdict, if implemented
+}
+
+export type CodeSignatureResponse = IpcResult<{ signature: CodeSignatureInfo }>;
 
 export type SettingsResponse = IpcResult<{ settings: Settings }>;
 
@@ -608,6 +652,7 @@ export interface TauriAPI {
   openTrash: () => Promise<IpcResult>;
   renameItem: (oldPath: string, newName: string) => Promise<PathResponse>;
   getItemProperties: (itemPath: string) => Promise<PropertiesResponse>;
+  getCodeSignature: (itemPath: string) => Promise<CodeSignatureResponse>;
   setPermissions: (itemPath: string, mode: number) => Promise<IpcResult>;
   setAttributes: (
     itemPath: string,

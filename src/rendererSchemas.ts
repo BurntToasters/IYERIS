@@ -60,9 +60,51 @@ export const RawItemPropertiesSchema = z.object({
   modified: z.number(),
   accessed: z.number(),
   extension: z.string(),
-  permissions: z.number(),
+  // Null on Windows, where POSIX mode bits do not apply.
+  permissions: z.number().nullable().optional(),
+  sizeOnDisk: z.number().nullable().optional(),
+  mimeType: z.string().nullable().optional(),
+  opensWith: z.string().nullable().optional(),
+  ownerName: z.string().nullable().optional(),
+  groupName: z.string().nullable().optional(),
+  isArchiveAttr: z.boolean().nullable().optional(),
+  isCompressedAttr: z.boolean().nullable().optional(),
+  isEncryptedAttr: z.boolean().nullable().optional(),
+  isIndexedAttr: z.boolean().nullable().optional(),
 });
 export type RawItemProperties = z.infer<typeof RawItemPropertiesSchema>;
+
+const RawCodeSignerSchema = z.object({
+  name: z.string(),
+  issuer: z.string().optional(),
+  digestAlgorithm: z.string().optional(),
+  timestamp: z.number().optional(),
+  serialNumber: z.string().optional(),
+  thumbprint: z.string().optional(),
+  validFrom: z.number().optional(),
+  validTo: z.number().optional(),
+});
+
+export const RawCodeSignatureSchema = z.object({
+  supported: z.boolean(),
+  signed: z.boolean(),
+  status: z.enum([
+    'valid',
+    'invalid',
+    'untrusted',
+    'expired',
+    'revoked',
+    'unsigned',
+    'unsupported',
+    'error',
+  ]),
+  statusMessage: z.string().optional(),
+  signers: z.array(RawCodeSignerSchema),
+  identifier: z.string().optional(),
+  teamId: z.string().optional(),
+  hardenedRuntime: z.boolean().optional(),
+});
+export type RawCodeSignature = z.infer<typeof RawCodeSignatureSchema>;
 
 export const RawSearchResultSchema = z.object({
   name: z.string(),

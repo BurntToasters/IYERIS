@@ -1,8 +1,4 @@
 use super::*;
-use std::sync::LazyLock;
-use std::sync::Mutex;
-
-static TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
 fn clear_stacks() {
     UNDO_STACK

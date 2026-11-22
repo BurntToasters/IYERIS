@@ -2,6 +2,7 @@
 
 mod archive;
 mod cancellation;
+mod code_signature;
 mod copy_metadata;
 mod directory;
 mod elevated;
@@ -1029,6 +1030,7 @@ fn main() {
             recovery::list_transfer_recovery,
             recovery::acknowledge_transfer_recovery,
             file_operations::get_item_properties,
+            code_signature::get_code_signature,
             file_operations::set_permissions,
             file_operations::set_attributes,
             file_operations::read_file_content,

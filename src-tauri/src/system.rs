@@ -1013,6 +1013,7 @@ fn diagnostics_settings_allowlist(raw: &serde_json::Value) -> serde_json::Value 
         "gitIncludeUntracked",
         "showFileHoverCard",
         "showFileCheckboxes",
+        "showUtilityDashboard",
         "reduceMotion",
         "highContrast",
         "largeText",

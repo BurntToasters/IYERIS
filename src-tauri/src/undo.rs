@@ -11,6 +11,10 @@ const CREATED_TIME_TOLERANCE_MS: f64 = 2000.0;
 static UNDO_STACK: LazyLock<Mutex<Vec<UndoAction>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 static REDO_STACK: LazyLock<Mutex<Vec<UndoAction>>> = LazyLock::new(|| Mutex::new(Vec::new()));
 
+#[cfg(test)]
+// File-operation tests share undo history and the mutation lock with these tests.
+pub(crate) static TEST_LOCK: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CopyEntry {

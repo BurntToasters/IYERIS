@@ -187,6 +187,13 @@ export function createSettingsModalController(deps: SettingsModalDeps) {
       showFileCheckboxesToggle.checked = settings.showFileCheckboxes === true;
     }
 
+    const showUtilityDashboardToggle = document.getElementById(
+      'show-utility-dashboard-toggle'
+    ) as HTMLInputElement | null;
+    if (showUtilityDashboardToggle) {
+      showUtilityDashboardToggle.checked = settings.showUtilityDashboard === true;
+    }
+
     deps.updateCustomThemeUI();
 
     if (sortBySelect) {

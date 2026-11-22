@@ -6,6 +6,7 @@ import { fileURLToPath } from 'url';
 import {
   macBundleVersionFromSemver,
   macMarketingVersionFromSemver,
+  syncBetaNote,
   syncChangelogForVersion,
   syncNpmLockfileVersion,
   updateCargoLockPackageVersion,
@@ -127,14 +128,14 @@ const changelogPath = path.join(root, 'CHANGELOG.md');
 const changelog = fs.readFileSync(changelogPath, 'utf8');
 let syncedChangelog;
 try {
-  syncedChangelog = syncChangelogForVersion(changelog, version);
+  syncedChangelog = syncBetaNote(syncChangelogForVersion(changelog, version), version);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(1);
 }
 if (syncedChangelog !== changelog) {
   writeFileAtomic(changelogPath, syncedChangelog);
-  console.log(`CHANGELOG.md    → ${version} (download URLs + section)`);
+  console.log(`CHANGELOG.md    → ${version} (download URLs + section + beta note)`);
 }
 
 const npmLockPath = path.join(root, 'package-lock.json');

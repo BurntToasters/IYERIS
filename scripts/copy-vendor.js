@@ -36,15 +36,30 @@ copyIfExists(
   path.join(root, 'public', 'vendor', 'highlight.css')
 );
 
-const pdfjsBase = path.join(root, 'node_modules', 'pdfjs-dist', 'build');
-copyIfExists(
-  path.join(pdfjsBase, 'pdf.min.mjs'),
-  path.join(root, 'public', 'vendor', 'pdfjs', 'pdf.min.mjs')
-);
-copyIfExists(
-  path.join(pdfjsBase, 'pdf.worker.min.mjs'),
-  path.join(root, 'public', 'vendor', 'pdfjs', 'pdf.worker.min.mjs')
-);
+const vendorDirectory = path.resolve(root, 'public', 'vendor');
+const obsoletePdfjsDirectory = path.resolve(vendorDirectory, 'pdfjs');
+if (fs.existsSync(obsoletePdfjsDirectory)) {
+  const resolvedRoot = fs.realpathSync(root);
+  const resolvedVendorDirectory = fs.realpathSync(vendorDirectory);
+  const resolvedPdfjsDirectory = fs.realpathSync(obsoletePdfjsDirectory);
+  const rootRelativePath = path.relative(resolvedRoot, resolvedPdfjsDirectory);
+  const vendorRelativePath = path.relative(resolvedVendorDirectory, resolvedPdfjsDirectory);
+  if (
+    !rootRelativePath ||
+    rootRelativePath === '..' ||
+    rootRelativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(rootRelativePath) ||
+    !vendorRelativePath ||
+    vendorRelativePath === '..' ||
+    vendorRelativePath.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(vendorRelativePath)
+  ) {
+    throw new Error(
+      `Refusing to remove PDF.js vendor assets outside public/vendor: ${resolvedPdfjsDirectory}`
+    );
+  }
+  fs.rmSync(obsoletePdfjsDirectory, { recursive: true, force: true });
+}
 
 for (const img of ['folder.png', 'folder-beta.png', 'icon.png']) {
   copyIfExists(path.join(root, 'assets', img), path.join(root, 'public', img));

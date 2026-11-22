@@ -30,7 +30,6 @@ export interface DualPaneDeps {
   updateStatusBar: () => void;
   debouncedSaveSettings: (delay?: number) => void;
   showToast: (message: string, title: string, type: ToastType) => void;
-  refresh: (reason?: string) => void;
   navigateTo: (pathValue: string) => void;
   observeThumbnailItem: (row: HTMLElement, scope: string) => void;
   showContextMenu: (x: number, y: number, item: FileItem) => void;
@@ -332,12 +331,9 @@ export function createDualPaneController(deps: DualPaneDeps) {
     if (!destinationPath) return;
     const ok = await deps.copySelectedToDestination(destinationPath);
     if (ok) {
+      // The transfer already awaited the primary pane's navigation. A second,
+      // debounced refresh can erase a selection made in the secondary pane.
       if (secondaryPanePath) void loadSecondaryPane(secondaryPanePath);
-      if (settings.activePane === 'right') {
-        deps.refresh('dual-pane-copy-from-secondary');
-      } else {
-        deps.refresh('dual-pane-copy-from-primary');
-      }
     }
   }
 
@@ -352,11 +348,6 @@ export function createDualPaneController(deps: DualPaneDeps) {
     const ok = await deps.moveSelectedToDestination(destinationPath);
     if (ok) {
       if (secondaryPanePath) void loadSecondaryPane(secondaryPanePath);
-      if (settings.activePane === 'right') {
-        deps.refresh('dual-pane-move-from-secondary');
-      } else {
-        deps.refresh('dual-pane-move-from-primary');
-      }
     }
   }
 

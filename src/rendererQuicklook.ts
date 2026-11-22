@@ -7,7 +7,7 @@ import {
   getFileDataUrlWithCache,
   twemojiImg,
 } from './rendererUtils.js';
-import { createPdfViewer, type PdfViewerHandle } from './rendererPdfViewer.js';
+import type { PdfViewerHandle } from './rendererPdfViewer.js';
 import { loadHighlightJs, getLanguageForExt } from './rendererHighlight.js';
 import {
   IMAGE_EXTENSIONS,
@@ -280,11 +280,20 @@ export function createQuicklookController(deps: QuicklookDeps) {
       }
 
       let fileUrl = encodeFileUrl(file.path);
+      const pdfSignal = pdfAbortController?.signal;
       quicklookContent.innerHTML = '';
 
       try {
+        const { createPdfViewer } = await import('./rendererPdfViewer.js');
+        if (
+          requestId !== quicklookRequestId ||
+          currentQuicklookFile?.path !== file.path ||
+          pdfSignal?.aborted
+        ) {
+          return;
+        }
         const viewer = await createPdfViewer(fileUrl, {
-          signal: pdfAbortController?.signal,
+          signal: pdfSignal,
           maxWidth: 900,
           containerClass: 'quicklook-pdf',
           showPageControls: true,
@@ -303,7 +312,13 @@ export function createQuicklookController(deps: QuicklookDeps) {
         container.appendChild(viewer.element);
         quicklookContent.appendChild(container);
       } catch {
-        if (requestId !== quicklookRequestId || currentQuicklookFile?.path !== file.path) return;
+        if (
+          requestId !== quicklookRequestId ||
+          currentQuicklookFile?.path !== file.path ||
+          pdfSignal?.aborted
+        ) {
+          return;
+        }
         const fallbackDataUrl = await getFileDataUrlWithCache(
           file.path,
           createPreviewDataUrlRequest(file, maxPreviewBytes)
@@ -312,12 +327,21 @@ export function createQuicklookController(deps: QuicklookDeps) {
           fallbackDataUrl &&
           fallbackDataUrl !== fileUrl &&
           requestId === quicklookRequestId &&
-          currentQuicklookFile?.path === file.path
+          currentQuicklookFile?.path === file.path &&
+          !pdfSignal?.aborted
         ) {
           try {
             fileUrl = fallbackDataUrl;
+            const { createPdfViewer } = await import('./rendererPdfViewer.js');
+            if (
+              requestId !== quicklookRequestId ||
+              currentQuicklookFile?.path !== file.path ||
+              pdfSignal?.aborted
+            ) {
+              return;
+            }
             const viewer = await createPdfViewer(fileUrl, {
-              signal: pdfAbortController?.signal,
+              signal: pdfSignal,
               maxWidth: 900,
               containerClass: 'quicklook-pdf',
               showPageControls: true,

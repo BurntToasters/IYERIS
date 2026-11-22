@@ -17,31 +17,13 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { readPinnedRustToolchain } from './rust-toolchain.mjs';
 
-export const MINIMUM_NPM_VERSION = '12.0.1';
-export const SUPPORTED_NODE_VERSIONS = '^22.22.2 || ^24.15.0 || >=26.0.0';
+export { readPinnedRustToolchain };
+
+export const MINIMUM_NPM_VERSION = '12.2.1';
+export const SUPPORTED_NODE_VERSIONS = '^24.22.1 || >=26.13.0';
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-
-export function readPinnedRustToolchain(root) {
-  const filePath = path.join(root, 'rust-toolchain.toml');
-  let contents;
-  try {
-    contents = readFileSync(filePath, 'utf8');
-  } catch (error) {
-    if (error?.code === 'ENOENT') {
-      throw new Error(`Rust toolchain pin is missing: ${filePath}`, { cause: error });
-    }
-    throw error;
-  }
-
-  const channel = contents.match(/^\s*channel\s*=\s*"([^"]+)"\s*$/mu)?.[1];
-  if (!channel || !/^\d+\.\d+\.\d+$/u.test(channel)) {
-    throw new Error(
-      `rust-toolchain.toml must pin an exact Rust version; found ${channel || 'no channel'}`
-    );
-  }
-  return channel;
-}
 
 export function parseVersion(value) {
   const match = String(value)
@@ -63,9 +45,9 @@ export function isVersionAtLeast(value, minimum) {
 
 export function isSupportedNodeVersion(value) {
   const [major] = parseVersion(value);
-  if (major === 22) return isVersionAtLeast(value, '22.22.2');
-  if (major === 24) return isVersionAtLeast(value, '24.15.0');
-  return major >= 26;
+  if (major === 24) return isVersionAtLeast(value, '24.22.1');
+  if (major === 26) return isVersionAtLeast(value, '26.13.0');
+  return major > 26;
 }
 
 export function hasRustToolchain(output, toolchain) {

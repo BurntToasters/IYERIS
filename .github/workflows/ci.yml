@@ -13,9 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '24.16.0'
-  NPM_VERSION: '12.0.2'
-  RUST_VERSION: '1.98.1'
+  NODE_VERSION: '26.13.0'
+  NPM_VERSION: '12.2.1'
   CARGO_AUDIT_VERSION: '0.22.2'
 
 jobs:
@@ -25,7 +24,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, windows-latest, macos-latest]
+        os: [ubuntu-24.04, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -37,13 +36,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install npm 12.0.2
+      - name: Install npm 12.2.1
         run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts --min-release-age=3
+
+      - name: Read pinned Rust toolchain
+        id: rust-pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node scripts/rust-toolchain.mjs)"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
-          toolchain: ${{ env.RUST_VERSION }}
+          toolchain: ${{ steps.rust-pin.outputs.version }}
           components: clippy, rustfmt
 
       - name: Cache Rust dependencies
@@ -91,7 +98,7 @@ jobs:
 
   security:
     name: Security Audit
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -103,13 +110,21 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      - name: Install npm 12.0.2
+      - name: Install npm 12.2.1
         run: npm install --global npm@${{ env.NPM_VERSION }} --ignore-scripts --min-release-age=3
+
+      - name: Read pinned Rust toolchain
+        id: rust-pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(node scripts/rust-toolchain.mjs)"
+          printf 'version=%s\n' "$version" >> "$GITHUB_OUTPUT"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30
         with:
-          toolchain: ${{ env.RUST_VERSION }}
+          toolchain: ${{ steps.rust-pin.outputs.version }}
 
       - name: Cache Rust dependencies
         uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
