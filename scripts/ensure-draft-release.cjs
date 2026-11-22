@@ -81,11 +81,21 @@ async function syncReleaseNotesBody(release, body) {
     throw new Error(`Release ${TAG_NAME} is already published; refusing to mutate it.`);
   }
   assertReleaseCommit(release);
+  // Always resend tag_name + target_commitish. Editing a draft whose git tag does
+  // not exist yet with only {name, body} makes GitHub rewrite its tag_name to
+  // "untagged-<hash>"; gpg-sign then could not find it and created a second draft.
   const updated = await githubRequestWithRetry(
     'PATCH',
     '/repos/' + REPO_OWNER + '/' + REPO_NAME + '/releases/' + release.id,
-    { name: VERSION, body }
+    { tag_name: TAG_NAME, target_commitish: RELEASE_COMMIT, name: VERSION, body }
   );
+  if (!updated || updated.tag_name !== TAG_NAME || !updated.draft) {
+    throw new Error(
+      `GitHub returned release ${release.id} as tag "${updated?.tag_name || '<missing>'}" ` +
+        `(draft=${updated?.draft}) after the notes sync; expected draft ${TAG_NAME}. ` +
+        'Fix the tag on GitHub before building, or the next upload step cannot find it.'
+    );
+  }
   console.log(
     '   Synced CHANGELOG.md into release notes (' +
       body.length +
@@ -153,7 +163,23 @@ async function githubRequestWithRetry(method, endpoint, body) {
   }
 }
 
-async function findExistingRelease() {
+// A draft of this version that GitHub has untagged ("untagged-<hash>"); see
+// syncReleaseNotesBody. Name covers both this script and old gpg-sign drafts.
+function isOrphanedDraft(release) {
+  return (
+    release?.draft === true &&
+    typeof release.tag_name === 'string' &&
+    release.tag_name.startsWith('untagged-') &&
+    release.target_commitish === RELEASE_COMMIT &&
+    (release.name === VERSION || release.name === 'IYERIS ' + VERSION)
+  );
+}
+
+function describeRelease(release) {
+  return `id ${release.id} "${release.name}" tag ${release.tag_name}, ${release.assets ? release.assets.length : 0} assets`;
+}
+
+async function findExistingRelease({ adoptOrphan = false } = {}) {
   // Draft releases are not returned by the "get release by tag" endpoint
   // (no git tag exists yet), so we list and match on tag_name.
   const releases = await githubRequestWithRetry(
@@ -165,22 +191,43 @@ async function findExistingRelease() {
     throw new Error('Unexpected releases payload type');
   }
 
-  const matching = releases.filter((r) => r.tag_name === TAG_NAME);
-  if (matching.length === 0) {
-    return null;
-  }
+  const published = releases.find((r) => r.tag_name === TAG_NAME && !r.draft);
+  if (published) return published;
 
-  // Prefer a draft (electron-builder publishes into drafts); fall back to any.
-  const draft = matching.find((r) => r.draft);
-  return draft || matching[0];
+  const drafts = releases.filter((r) => r.draft && r.tag_name === TAG_NAME);
+  const orphans = releases.filter(isOrphanedDraft);
+  const candidates = adoptOrphan ? [...drafts, ...orphans] : drafts;
+
+  // Never pick one of several drafts: uploads address the release by tag, so
+  // GitHub would choose for us and split assets across drafts.
+  if (candidates.length > 1 || (!adoptOrphan && drafts.length === 1 && orphans.length > 0)) {
+    throw new Error(
+      `Found ${drafts.length + orphans.length} draft releases for ${TAG_NAME}:\n  - ` +
+        [...drafts, ...orphans].map(describeRelease).join('\n  - ') +
+        '\nDelete the extras on GitHub so exactly one remains, then rerun "npm run release:draft" on Windows.'
+    );
+  }
+  if (!adoptOrphan && orphans.length > 0) {
+    console.log(
+      '   Found an untagged draft for this version (' +
+        describeRelease(orphans[0]) +
+        '). "npm run release:draft" on Windows will re-tag it.'
+    );
+  }
+  return candidates[0] || null;
 }
 
 async function ensureDraftRelease() {
   console.log('Ensuring draft release exists for ' + TAG_NAME + '...');
   const body = readChangelogReleaseBody();
 
-  const existing = await findExistingRelease();
+  const existing = await findExistingRelease({ adoptOrphan: true });
   if (existing) {
+    if (existing.draft && existing.tag_name !== TAG_NAME) {
+      console.log(
+        '   Re-tagging untagged draft ' + describeRelease(existing) + ' as ' + TAG_NAME + '.'
+      );
+    }
     if (!existing.draft) {
       throw new Error(`Release ${TAG_NAME} is already published; refusing to reuse it.`);
     }
@@ -226,7 +273,7 @@ async function ensureDraftRelease() {
     if (error.statusCode === 422) {
       console.log('   Create returned 422; re-checking for existing draft...');
       await sleep(2000);
-      const afterRetry = await findExistingRelease();
+      const afterRetry = await findExistingRelease({ adoptOrphan: true });
       if (afterRetry) {
         if (!afterRetry.draft) {
           throw new Error(`Release ${TAG_NAME} is already published; refusing to reuse it.`, {
