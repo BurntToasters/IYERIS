@@ -1,0 +1,19 @@
+[package]
+name = "iyeris-app"
+description = "IYERIS 4 Rune UI spike: 100k-entry list and grid, headless snapshots."
+version.workspace = true
+edition = "2024"
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[[bin]]
+name = "iyeris-app"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+rune = { git = "https://github.com/anomalyco/rune", rev = "935d040ab509e16fa4d4396385ead51eb2d33d3d" }

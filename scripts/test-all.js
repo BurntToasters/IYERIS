@@ -223,6 +223,13 @@ function createStepPlan({
       args: ['run', '--locked', '-p', 'iyeris-e2e'],
       timeout: rustTimeout,
     },
+    {
+      name: 'workspaceAppHeadless',
+      label: 'Workspace App Headless',
+      command: 'node',
+      args: ['scripts/check-app-headless.mjs'],
+      timeout: rustTimeout,
+    },
   ];
   if (includeAudits) {
     const releaseAssetsIndex = plan.findIndex((step) => step.name === 'releaseAssets');

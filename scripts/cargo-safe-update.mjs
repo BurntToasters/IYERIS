@@ -166,6 +166,22 @@ function cargoMetadata(cargoArgs, cwd, env) {
   return JSON.parse(result.stdout);
 }
 
+// A manifest that gained a dependency cannot satisfy `--locked` against the old lock.
+// Only that case falls back to the original Cargo.lock entries as the baseline. Newly
+// selected packages are still validated downstream, so the fallback never trusts them.
+function baselineFromMetadataOrLock(cargoArgs, cwd, env, lockBytes) {
+  try {
+    const metadata = cargoMetadata(cargoArgs, cwd, env);
+    return { metadata, packages: selectedPackages(metadata) };
+  } catch (error) {
+    if (!isLockUpdateRequiredMessage(error.message)) throw error;
+    console.log(
+      'Manifest changed since Cargo.lock was written; using Cargo.lock entries as the baseline.'
+    );
+    return { metadata: null, packages: parseLockPackages(lockBytes.toString('utf8')) };
+  }
+}
+
 function manifestArguments(cargoArgs) {
   for (let index = 0; index < cargoArgs.length; index += 1) {
     const argument = cargoArgs[index];
@@ -197,6 +213,221 @@ export function selectedPackages(metadata) {
   if (nodes.length === 0) return packages;
   const selected = new Set(nodes.map((node) => node.id));
   return packages.filter((pkg) => selected.has(pkg.id));
+}
+
+// Cargo's wording for "--locked forbids rewriting Cargo.lock". Older and newer Cargo
+// releases word it differently, so both forms are accepted.
+const LOCK_UPDATE_REQUIRED_PATTERNS = [
+  /the lock file .+ needs to be updated but --locked was passed/u,
+  /cannot update the lock file .+ because --locked was passed/u,
+];
+
+/*
+ * True only for the "lock file needs an update under --locked" failure. This is the
+ * single condition that allows the Cargo.lock baseline fallback. Every other
+ * metadata failure must stay fatal.
+ */
+export function isLockUpdateRequiredMessage(message) {
+  return (
+    typeof message === 'string' &&
+    LOCK_UPDATE_REQUIRED_PATTERNS.some((pattern) => pattern.test(message))
+  );
+}
+
+const LOCK_PACKAGE_KEYS = new Set(['name', 'version', 'source']);
+const BARE_KEY_PATTERN = /[A-Za-z0-9_-]+/y;
+const SCALAR_PATTERN = /[^\s#]+/y;
+const BASIC_STRING_ESCAPES = new Map([
+  ['"', '"'],
+  ['\\', '\\'],
+  ['b', '\b'],
+  ['f', '\f'],
+  ['n', '\n'],
+  ['r', '\r'],
+  ['t', '\t'],
+]);
+
+/*
+ * Parses the subset of Cargo.lock (TOML) needed for a baseline: the `name`, `version`
+ * and `source` string keys of every `[[package]]` entry, in file order. Other keys
+ * and tables (`version = 4`, `[metadata]`, `[[patch.unused]]`, multi-line arrays)
+ * are checked for syntax and then ignored. `source` is omitted for path packages.
+ *
+ * Throws an Error that names the Cargo.lock line for: unterminated strings or
+ * arrays, malformed key/value syntax, non-string name/version/source values, and
+ * a `[[package]]` entry without `name` or `version`.
+ */
+export function parseLockPackages(text) {
+  const packages = [];
+  let entry = null;
+  let position = 0;
+
+  const peek = (offset = 0) => text[position + offset];
+  const fail = (message, offset = position) => {
+    throw new Error(`Cargo.lock line ${text.slice(0, offset).split('\n').length}: ${message}`);
+  };
+  const skipInlineSpace = () => {
+    while (peek() === ' ' || peek() === '\t') position += 1;
+  };
+  const skipToLineEnd = () => {
+    while (position < text.length && peek() !== '\n') position += 1;
+  };
+  const skipBlankSpace = () => {
+    while (position < text.length) {
+      const char = peek();
+      if (char === ' ' || char === '\t' || char === '\r' || char === '\n') position += 1;
+      else if (char === '#') skipToLineEnd();
+      else break;
+    }
+  };
+  const expectLineEnd = () => {
+    skipInlineSpace();
+    if (peek() === '#') skipToLineEnd();
+    if (position < text.length && peek() !== '\n' && peek() !== '\r') {
+      fail('unexpected text after value');
+    }
+  };
+  const readBasicString = () => {
+    const start = position;
+    if (text.startsWith('"""', position)) fail('multi-line strings are not supported', start);
+    position += 1;
+    let value = '';
+    while (true) {
+      const char = peek();
+      if (char === undefined || char === '\n' || char === '\r') {
+        fail('unterminated string', start);
+      }
+      position += 1;
+      if (char === '"') return value;
+      if (char !== '\\') {
+        value += char;
+        continue;
+      }
+      const escape = peek();
+      if (!BASIC_STRING_ESCAPES.has(escape)) fail('unsupported string escape', position - 1);
+      value += BASIC_STRING_ESCAPES.get(escape);
+      position += 1;
+    }
+  };
+  const readLiteralString = () => {
+    const start = position;
+    const end = text.indexOf("'", position + 1);
+    const newline = text.indexOf('\n', position + 1);
+    if (end === -1 || (newline !== -1 && newline < end)) fail('unterminated string', start);
+    const value = text.slice(position + 1, end);
+    position = end + 1;
+    return value;
+  };
+  // Skips an array or inline table, including nested ones, strings and comments.
+  const skipBalanced = () => {
+    const start = position;
+    let depth = 0;
+    while (position < text.length) {
+      const char = peek();
+      if (char === '"') {
+        readBasicString();
+      } else if (char === "'") {
+        readLiteralString();
+      } else if (char === '#') {
+        skipToLineEnd();
+      } else {
+        position += 1;
+        if (char === '[' || char === '{') depth += 1;
+        if (char === ']' || char === '}') {
+          depth -= 1;
+          if (depth === 0) return;
+        }
+      }
+    }
+    fail(`unterminated ${text[start] === '[' ? 'array' : 'inline table'}`, start);
+  };
+  // Returns the string value, or null for any non-string value (after skipping it).
+  const readValue = () => {
+    const char = peek();
+    if (char === '"') return readBasicString();
+    if (char === "'") return readLiteralString();
+    if (char === '[' || char === '{') {
+      skipBalanced();
+      return null;
+    }
+    SCALAR_PATTERN.lastIndex = position;
+    const match = SCALAR_PATTERN.exec(text);
+    if (!match) fail('expected a value');
+    position += match[0].length;
+    return null;
+  };
+  const readKey = () => {
+    const parts = [];
+    let dotted = true;
+    while (dotted) {
+      skipInlineSpace();
+      if (peek() === '"') {
+        parts.push(readBasicString());
+      } else if (peek() === "'") {
+        parts.push(readLiteralString());
+      } else {
+        BARE_KEY_PATTERN.lastIndex = position;
+        const match = BARE_KEY_PATTERN.exec(text);
+        if (!match) fail('expected a key');
+        parts.push(match[0]);
+        position += match[0].length;
+      }
+      skipInlineSpace();
+      dotted = peek() === '.';
+      if (dotted) position += 1;
+    }
+    return parts.join('.');
+  };
+  const closeEntry = () => {
+    if (!entry) return;
+    if (entry.fields.name === undefined) fail('[[package]] entry is missing name', entry.offset);
+    if (entry.fields.version === undefined) {
+      fail('[[package]] entry is missing version', entry.offset);
+    }
+    const pkg = { name: entry.fields.name, version: entry.fields.version };
+    if (entry.fields.source !== undefined) pkg.source = entry.fields.source;
+    packages.push(pkg);
+    entry = null;
+  };
+
+  while (true) {
+    skipBlankSpace();
+    if (position >= text.length) break;
+
+    if (peek() === '[') {
+      closeEntry();
+      const start = position;
+      const isArrayTable = peek(1) === '[';
+      const closing = isArrayTable ? ']]' : ']';
+      position += isArrayTable ? 2 : 1;
+      const end = text.indexOf(closing, position);
+      const newline = text.indexOf('\n', position);
+      if (end === -1 || (newline !== -1 && newline < end)) {
+        fail('unterminated table header', start);
+      }
+      const name = text.slice(position, end).trim();
+      position = end + closing.length;
+      expectLineEnd();
+      if (isArrayTable && name === 'package') entry = { offset: start, fields: {} };
+      continue;
+    }
+
+    const key = readKey();
+    skipInlineSpace();
+    if (peek() !== '=') fail("expected '=' after key");
+    position += 1;
+    skipInlineSpace();
+    const valueOffset = position;
+    const value = readValue();
+    expectLineEnd();
+    if (entry && LOCK_PACKAGE_KEYS.has(key)) {
+      if (value === null) fail(`${key} must be a string`, valueOffset);
+      entry.fields[key] = value;
+    }
+  }
+
+  closeEntry();
+  return packages;
 }
 
 function packageKey(pkg) {
@@ -802,10 +1033,11 @@ async function main() {
       existed: existsSync(destinationLock),
       bytes: existsSync(destinationLock) ? readFileSync(destinationLock) : null,
     };
-    const baselineMetadata = originalLock.existed
-      ? cargoMetadata(parsed.cargoArgs, cwd, cargoEnv)
+    const baselineSource = originalLock.existed
+      ? baselineFromMetadataOrLock(parsed.cargoArgs, cwd, cargoEnv, originalLock.bytes)
       : null;
-    const baseline = baselineMetadata ? selectedPackages(baselineMetadata) : [];
+    const baselineMetadata = baselineSource?.metadata ?? null;
+    const baseline = baselineSource?.packages ?? [];
 
     const candidate = prepareCandidate({
       cargoArgs: parsed.cargoArgs,

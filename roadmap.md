@@ -10,7 +10,7 @@ Status legend: `[ ]` not started, `[~]` in progress, `[x]` done, `[!]` blocked.
 
 | Decision           | Choice                                                                                                           |
 | ------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| UI framework       | Rune + `rune-kit`, pinned to one exact `dev` revision through a mirror fork                                      |
+| UI framework       | Rune + `rune-kit`, pinned to one exact upstream `dev` revision                                                   |
 | Fallback framework | GPUI + gpui-kit, used only if a Phase 0 gate fails with no workaround                                            |
 | Scope of 4.0       | Full parity with 3.x before 4.0 stable, including native PDF, video and audio preview                            |
 | Upgrade from 3.2.x | Direct update. 4.x publishes the manifest names 3.x already reads, signed with the same key. 3.x is not changed. |
@@ -32,14 +32,23 @@ src/, src-tauri/      3.x code, kept as reference until Phase 6
 
 - Pin: one 40-character `rev` of Rune's `dev` branch for `rune` and for every entry of Rune's
   `[patch.crates-io]` table. The patches live in this repo's root `Cargo.toml`, because Cargo does
-  not inherit patches from a dependency. Current entries: winit, sctk-adwaita, parley_engine,
-  wgpu-hal, naga, accesskit_windows, accesskit_macos, accesskit_atspi_common.
+  not inherit patches from a dependency. Entries at the pinned rev: wgpu-hal, winit, sctk-adwaita,
+  parley_engine, accesskit_windows, accesskit_macos. (Upstream `dev` later added naga and
+  accesskit_atspi_common; add them when bumping past them.)
 - Bump: read the patch table from Rune's root `Cargo.toml` at the new rev; it can change. winit and
   sctk-adwaita always come from the same rev. Check Rune's `CHANGELOG.md` for output changes. A bump
   must pass the headless golden suite (PNG and element-tree diffs).
-- Pinned rev: not chosen yet (Milestone B).
+- Pinned rev: `935d040ab509e16fa4d4396385ead51eb2d33d3d` (`dev`, 2026-11-21), depended on from
+  upstream directly. Chosen as the newest `dev` commit at least 72 hours old, matching the crate
+  age rule. Added through `scripts/cargo-safe-update.mjs --manifest-path Cargo.toml --workspace`
+  with one `--allow-git <package>@<rev>` per Rune git package (18) and the reason "Rune UI
+  framework for IYERIS 4 (pre-release, no crates.io releases); pinned to one dev rev per Rune
+  README". No crates.io package needed an age override.
+- Bump command: same tool and flags with the new rev; the tool now accepts a manifest that gained
+  dependencies (it falls back to the existing `Cargo.lock` as the baseline).
 - Toolchain: Rune pins Rust 1.99.1, edition 2024, resolver 3. This repo pins 1.99.1 as well.
-- Docs to read at the pinned rev: `examples/hello`, `examples/README.md`, `crates/rune/README.md`,
+- Docs to read at the pinned rev (in `~/.cargo/git/checkouts/rune-*`): `examples/hello`,
+  `crates/rune/README.md` (`examples/README.md` does not exist at this rev),
   `crates/rune-kit/README.md`, `AGENTS.md`.
 - Nearest examples: `drop-files`, `drag-out`, `video-player`, `launcher` (multiple windows),
   `frosted-bar` (blur over a long list), `kit-gallery` (rune-kit Table and Tree).
@@ -73,11 +82,18 @@ Known issues carried over from 3.x:
       including the copy's record that undo still references. Repro: copy, move, undo move, undo copy.
       The E2E harness currently undoes the copy before the move to stay green. Fix in 3.2.x and here.
 
-Milestone B (new dependency code; first compiled in CI per `docs/DEPENDENCY_UPDATES.md`):
+Milestone B (Rune spike; CI runs only on `main` and `beta`, so the first build was local):
 
-- [ ] Mirror fork of Rune under the project account
-- [ ] Pinned rev recorded as the approved git revision, with a written reason
-- [ ] `iyeris-app` spike: 100k-entry list and grid, headless script, CI artifacts on all three OSes
+- [x] Pinned rev recorded as the approved git revision, with a written reason (see above)
+- [x] `scripts/cargo-safe-update.mjs` accepts newly added dependencies
+- [x] `iyeris-app` spike: 100k synthetic entries in virtualized list and grid, selection, arrow
+      keys, view toggle; scenes `list`, `grid`, `list-scrolled`, `grid-selected`
+- [x] Headless check `scripts/check-app-headless.mjs` (PNG and element tree per scene) writes
+      `target/e2e/app-artifact.json`; part of `test:all`
+- [ ] Headless input scripts (`--script`) for click, arrow keys and the view toggle
+- [ ] Release-build frame timing at 100k entries (G1 evidence)
+- [ ] Windows and Linux runs of the spike (first CI run on `beta`)
+- [ ] Mirror fork or `cargo vendor` snapshot of Rune before the first public 4.0 pre-release
 
 Gates (each must pass on Windows, macOS and Linux and leave an artifact):
 

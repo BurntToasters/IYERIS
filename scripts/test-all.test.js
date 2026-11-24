@@ -479,6 +479,33 @@ test('the root workspace cargo audit is handled like the src-tauri audit', () =>
   );
 });
 
+test('the headless Rune app check runs from the repo root right after the workspace E2E', () => {
+  const plan = createStepPlan({ npm: 'npm' });
+  const names = plan.map((step) => step.name);
+  const step = plan.find((entry) => entry.name === 'workspaceAppHeadless');
+  assert.ok(step, 'workspaceAppHeadless must be part of the quality-gate step plan');
+  assert.equal(step.label, 'Workspace App Headless');
+  assert.equal(step.command, 'node');
+  assert.deepEqual(step.args, ['scripts/check-app-headless.mjs']);
+  assert.equal(step.cwd, undefined, 'workspaceAppHeadless must run from the repo root');
+  assert.equal(step.timeout, process.platform === 'win32' ? 1_200_000 : 600_000);
+  assert.equal(
+    names.indexOf('workspaceAppHeadless'),
+    names.indexOf('workspaceE2e') + 1,
+    'workspaceAppHeadless must run immediately after workspaceE2e'
+  );
+});
+
+test('main does not record the proof when the headless Rune app check fails', () => {
+  const { calls, exitCode } = runGate({ failing: ['workspaceAppHeadless'] });
+  assert.ok(calls.includes('run:workspaceAppHeadless'), 'the headless app step must run');
+  assert.ok(
+    !calls.includes('recordProof'),
+    'a failing headless app check must never leave a valid proof behind'
+  );
+  assert.equal(exitCode, 1);
+});
+
 test('main does not record the proof when a root workspace step fails', () => {
   for (const failing of ['workspaceRustClippy', 'workspaceE2e']) {
     const { calls, exitCode } = runGate({ failing: [failing] });

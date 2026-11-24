@@ -18,3 +18,11 @@ panic = "abort"
 codegen-units = 16
 lto = "thin"
 strip = true
+
+[patch.crates-io]
+wgpu-hal = { git = "https://github.com/anomalyco/rune", rev = "935d040ab509e16fa4d4396385ead51eb2d33d3d" }
+winit = { git = "https://github.com/anomalyco/rune", rev = "935d040ab509e16fa4d4396385ead51eb2d33d3d" }
+sctk-adwaita = { git = "https://github.com/anomalyco/rune", rev = "935d040ab509e16fa4d4396385ead51eb2d33d3d" }
+parley_engine = { git = "https://github.com/anomalyco/rune", rev = "935d040ab509e16fa4d4396385ead51eb2d33d3d" }
+accesskit_windows = { git = "https://github.com/anomalyco/rune", rev = "935d040ab509e16fa4d4396385ead51eb2d33d3d" }
+accesskit_macos = { git = "https://github.com/anomalyco/rune", rev = "935d040ab509e16fa4d4396385ead51eb2d33d3d" }

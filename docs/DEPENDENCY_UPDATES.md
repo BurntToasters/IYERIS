@@ -14,8 +14,8 @@ Both updaters serialize their own runs. npm rollback and final Cargo lock instal
 
 The Rust version is single-sourced from `rust-toolchain.toml`. The `rust:*` npm scripts, `setup:deb`, CI, and the Flatpak manifest all derive the channel from it; to bump Rust, edit only `rust-toolchain.toml`. Do not add a second pin.
 
-Review both lockfile diffs before committing. Push the update branch and let GitHub-hosted CI perform code-executing validation. CI installs npm packages with lifecycle scripts disabled, verifies registry signatures, and only then runs dependency code. CI is intentionally the first environment that installs or executes newly selected dependency code.
+Review both lockfile diffs before committing. CI runs only on `main` and `beta` (CI minutes are limited), so it is not guaranteed to be the first environment that executes newly selected dependency code. When an update reaches `main` or `beta`, CI installs npm packages with lifecycle scripts disabled, verifies registry signatures, and only then runs dependency code.
 
-Do not run `npm run workspace:prepare`, `npm run test:all`, Cargo checks, builds, or tests on a workstation immediately after updating locks. Those commands execute dependency code. If local validation is necessary, use a disposable VM with no credentials, mounted home directory, SSH agent, signing keys, cloud metadata access, or persistent package caches.
+It is recommended, not required, to avoid running `npm run workspace:prepare`, `npm run test:all`, Cargo checks, builds, or tests on a workstation immediately after updating locks, because those commands execute dependency code. Where practical, do the first validation in a disposable VM with no credentials, mounted home directory, SSH agent, signing keys, cloud metadata access, or persistent package caches.
 
 The three-day delay reduces exposure to newly published supply-chain attacks; it cannot prove that an older package is benign. Emergency young-crate and Git overrides must name one exact version or revision and include a written reason.
