@@ -1,14 +1,3 @@
-// Failure modes:
-// 1. The build fails, or a scene fails to render: `cargo build`, or a `--snap` or `--tree`
-//    run exits non-zero or does not finish within the per-run timeout.
-// 2. An empty or missing PNG: the file is absent, has zero bytes, or lacks the PNG signature.
-//    Stale output from an earlier run is removed first, so it cannot pass.
-// 3. A tree missing expected entries: folder-000000, file-000001.txt, folder-050000 or tile-0/7.
-// 4. Rows duplicated at a scroll offset: two mounted row or tile keys are equal.
-// 5. The wrong entry selected: the selected keys are not exactly the scene's expected key.
-// 6. The grid shows zero or one column at 960 px: no tile shares a row with tile-0.
-// 7. No virtualization: a scene mounts 200 or more rows or tiles of the 100,000 entries.
-// 8. The app needs a display or GPU: the failing run's stderr names a display or adapter.
 import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -17,6 +6,22 @@ import { fileURLToPath } from 'node:url';
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outDir = path.join(root, 'target', 'e2e', 'app');
 const artifactPath = path.join(root, 'target', 'e2e', 'app-artifact.json');
+
+// Written before the code, per AGENTS.md. Each entry is one way the check can fail.
+const FAILURE_MODES = [
+  '1. Build or render fails: cargo build, or a --snap or --tree run exits non-zero or times out.',
+  '2. Empty or missing PNG: absent, zero bytes, or no PNG signature. Stale output is removed first.',
+  '3. Tree missing expected entries: folder-000000, file-000001.txt, folder-050000 or tile-0/7.',
+  '4. Rows duplicated at a scroll offset: two mounted row or tile keys are equal.',
+  '5. Wrong entry selected: selected keys are not exactly the scene expected key.',
+  '6. Grid shows zero or one column at 960 px: no tile shares a row with tile-0.',
+  '7. No virtualization: a scene mounts 200 or more of the 100,000 entries.',
+  '8. App needs a display or GPU: the failing run stderr names a display or adapter.',
+  '9. Input not delivered: a click, arrow press or toggle tap leaves the starting selection or view.',
+  '10. Wrong entry after a click or arrow: not file-000003.txt (click-row) or file-000002.txt (arrow-down).',
+  '11. Toggle not switching views: mode-grid is not checked, list rows remain, or under two tiles mount.',
+  '12. Script rejected: missing or invalid JSON, Rune refuses an event, or the run does not finish.',
+];
 const runTimeoutMs = 120_000;
 const buildTimeoutMs = process.platform === 'win32' ? 1_200_000 : 600_000;
 const maxMountedItems = 200;
@@ -41,6 +46,32 @@ const scenes = [
   { name: 'grid', present: ['tile-0'], absent: [], gridRow: true },
   { name: 'grid-selected', present: ['tile-7'], absent: [], selected: ['tile-7'] },
 ];
+
+// Each script runs from the `list` scene. Its `end` mark sits at 0.5 s and the tree is taken
+// at mark:end+0.5, so every input has landed before the snapshot.
+const interactions = [
+  {
+    name: 'click-row',
+    script: 'click-row.json',
+    selected: ['file-000003.txt'],
+    view: 'list',
+  },
+  {
+    name: 'arrow-down',
+    script: 'arrow-down.json',
+    selected: ['file-000002.txt'],
+    view: 'list',
+  },
+  {
+    name: 'toggle-grid',
+    script: 'toggle-grid.json',
+    selected: ['tile-0'],
+    view: 'grid',
+  },
+];
+const interactionScriptDir = path.join(root, 'crates', 'iyeris-app', 'scripts');
+const viewButtons = { 'mode-list': 'list', 'mode-grid': 'grid' };
+const viewItemRoles = { list: 'row', grid: 'grid-cell' };
 
 function runCargo(args, timeout) {
   return spawnSync('cargo', args, {
@@ -184,6 +215,103 @@ function runScene(scene, failures) {
   };
 }
 
+function collectButtons(node, buttons = []) {
+  if (node.role === 'button' && typeof node.key === 'string') buttons.push(node);
+  for (const child of node.children ?? []) collectButtons(child, buttons);
+  return buttons;
+}
+
+// Applies one input script from the `list` scene and reads the selection and view from the
+// tree taken after it. Every interaction is reported, even when its run fails.
+function runInteraction(interaction, failures) {
+  const scriptPath = path.join(interactionScriptDir, interaction.script);
+  const treePath = path.join(outDir, `interaction-${interaction.name}.json`);
+  const interactionFailures = [];
+  const report = (message) => interactionFailures.push(`${interaction.name}: ${message}`);
+  fs.rmSync(treePath, { force: true });
+
+  let scriptOk = false;
+  try {
+    JSON.parse(fs.readFileSync(scriptPath, 'utf8'));
+    scriptOk = true;
+  } catch (error) {
+    report(`script file is missing or not JSON: ${error.message}`);
+  }
+
+  let treeRead = false;
+  let items = [];
+  let buttons = [];
+  if (scriptOk) {
+    const runError = describeRunFailure(
+      runApp([
+        '--scene',
+        'list',
+        '--script',
+        scriptPath,
+        '--tree',
+        treePath,
+        '--at',
+        'mark:end+0.5',
+      ]),
+      `${interaction.name} run`
+    );
+    if (runError) {
+      report(runError);
+    } else {
+      try {
+        const json = JSON.parse(fs.readFileSync(treePath, 'utf8'));
+        if (json.accessibility) {
+          treeRead = true;
+          items = collectItems(json.accessibility);
+          buttons = collectButtons(json.accessibility);
+        } else {
+          report('tree JSON has no accessibility root');
+        }
+      } catch (error) {
+        report(`tree JSON is unreadable: ${error.message}`);
+      }
+    }
+  }
+
+  const selected = items
+    .filter((item) => (item.states ?? []).includes('selected'))
+    .map((item) => item.key)
+    .sort();
+  const checked = buttons
+    .filter((button) => (button.states ?? []).includes('checked') && button.key in viewButtons)
+    .map((button) => viewButtons[button.key]);
+  const view = checked.length === 1 ? checked[0] : null;
+
+  if (treeRead) {
+    if (JSON.stringify(selected) !== JSON.stringify(interaction.selected)) {
+      report(
+        `selected ${JSON.stringify(selected)}, expected ${JSON.stringify(interaction.selected)}`
+      );
+    }
+    if (view !== interaction.view) {
+      report(`view is ${view ?? 'none'}, expected ${interaction.view}`);
+    }
+    const itemRole = viewItemRoles[interaction.view];
+    const mounted = items.filter((item) => item.role === itemRole).length;
+    if (mounted < 2) {
+      report(`the ${interaction.view} view mounts ${mounted} item(s); expected at least two`);
+    }
+    const stale = items.filter((item) => item.role !== itemRole).length;
+    if (stale > 0) report(`${stale} item(s) of the previous view are still mounted`);
+    if (items.length >= maxMountedItems) {
+      report(`mounts ${items.length} rows or tiles; the limit is fewer than ${maxMountedItems}`);
+    }
+  }
+
+  failures.push(...interactionFailures);
+  return {
+    name: interaction.name,
+    ok: interactionFailures.length === 0,
+    selected: treeRead ? selected : [],
+    view: treeRead ? view : null,
+  };
+}
+
 function failedScene(scene) {
   return {
     name: scene.name,
@@ -222,9 +350,27 @@ function main() {
     }
   });
 
+  const interactionEntries = interactions.map((interaction) => {
+    if (buildError) {
+      return { name: interaction.name, ok: false, selected: [], view: null };
+    }
+    try {
+      return runInteraction(interaction, failures);
+    } catch (error) {
+      failures.push(`${interaction.name}: ${error.message}`);
+      return { name: interaction.name, ok: false, selected: [], view: null };
+    }
+  });
+
   // The artifact is written before the exit code, so a failing run still leaves evidence.
   fs.mkdirSync(path.dirname(artifactPath), { recursive: true });
-  const artifact = { schema: 1, rev, scenes: sceneEntries };
+  const artifact = {
+    schema: 1,
+    rev,
+    failureModes: FAILURE_MODES,
+    scenes: sceneEntries,
+    interactions: interactionEntries,
+  };
   fs.writeFileSync(artifactPath, `${JSON.stringify(artifact, null, 2)}\n`);
 
   if (failures.length > 0) {
@@ -232,7 +378,9 @@ function main() {
     for (const failure of failures) console.error(`- ${failure}`);
     return 1;
   }
-  console.log(`App headless check passed (${scenes.length} scenes).`);
+  console.log(
+    `App headless check passed (${scenes.length} scenes, ${interactions.length} interactions).`
+  );
   return 0;
 }
 

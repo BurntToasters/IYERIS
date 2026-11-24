@@ -3,6 +3,7 @@
 //! This crate must not depend on Tauri or any webview. Host applications supply
 //! directories through [`PathProvider`] and receive events through [`EventSink`].
 
+pub mod archive;
 pub mod cancellation;
 // Windows and macOS signature inspection calls into FFI.
 #[allow(unsafe_code)]
@@ -11,12 +12,16 @@ pub mod code_signature;
 // only; the workspace lint still warns everywhere else.
 #[allow(unsafe_code)]
 pub mod copy_metadata;
+// Directory listing calls into FFI for volume and attribute queries.
+#[allow(unsafe_code)]
+pub mod directory;
 #[allow(unsafe_code)]
 pub mod elevated;
 pub mod error;
 #[allow(unsafe_code)]
 pub mod file_operations;
 pub mod fs_utils;
+pub mod indexer;
 pub mod launch;
 #[cfg(target_os = "macos")]
 #[allow(unsafe_code)]
@@ -28,8 +33,13 @@ pub mod paths;
 pub mod platform;
 pub mod recovery;
 pub mod seams;
+pub mod search;
+pub mod settings;
 pub mod state;
+pub mod system;
+pub mod thumbnails;
 pub mod undo;
+pub mod watcher;
 
 pub use error::CoreError;
 pub use paths::{

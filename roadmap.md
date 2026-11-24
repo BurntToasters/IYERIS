@@ -90,8 +90,13 @@ Milestone B (Rune spike; CI runs only on `main` and `beta`, so the first build w
       keys, view toggle; scenes `list`, `grid`, `list-scrolled`, `grid-selected`
 - [x] Headless check `scripts/check-app-headless.mjs` (PNG and element tree per scene) writes
       `target/e2e/app-artifact.json`; part of `test:all`
-- [ ] Headless input scripts (`--script`) for click, arrow keys and the view toggle
-- [ ] Release-build frame timing at 100k entries (G1 evidence)
+- [x] Headless input scripts (`crates/iyeris-app/scripts/*.json`) for click, arrow keys and the
+      view toggle, asserted in `check-app-headless.mjs`
+- [x] Release-build frame timing at 100k entries: `node scripts/measure-app-frames.mjs` writes
+      `target/perf/app-frames.json` (measurement, not part of `test:all`). macOS, Apple silicon,
+      headless CPU frame time while scrolling 40,000 pt: list p50 0.29 to 0.30 ms, p95 0.41 to 0.58 ms,
+      max 0.72 to 1.11 ms; grid p50 0.29 to 0.30 ms, p95 0.44 to 0.46 ms, max 0.58 to 0.65 ms
+      (two runs). Presented-frame timing in a window is still open.
 - [ ] Windows and Linux runs of the spike (first CI run on `beta`)
 - [ ] Mirror fork or `cargo vendor` snapshot of Rune before the first public 4.0 pre-release
 
@@ -99,7 +104,7 @@ Gates (each must pass on Windows, macOS and Linux and leave an artifact):
 
 | Gate             | Must show                                                                                                         | Status |
 | ---------------- | ----------------------------------------------------------------------------------------------------------------- | ------ |
-| G1 scale         | 100k-entry folder in grid and list, p95 frame under 8 ms                                                          | [ ]    |
+| G1 scale         | 100k-entry folder in grid and list, p95 frame under 8 ms                                                          | [~]    |
 | G2 text          | inline rename with Japanese and Chinese IME                                                                       | [ ]    |
 | G3 accessibility | Narrator or NVDA, VoiceOver and Orca read and activate list rows                                                  | [ ]    |
 | G4 drag and drop | OS file drop in and drag out (drag out unconfirmed off macOS)                                                     | [ ]    |
@@ -112,12 +117,20 @@ Gates (each must pass on Windows, macOS and Linux and leave an artifact):
 
 ## Phase 1: core
 
-- [~] All 19 backend modules ported to `iyeris-core` (done: cancellation, code_signature,
-  copy_metadata, elevated, file_operations, fs_utils, native_macos, native_windows, platform,
-  recovery, undo; left: archive, directory, indexer, search, settings, system, thumbnails, watcher)
+- [x] All 19 backend modules ported to `iyeris-core` (207 tests). Tauri-only glue left for the
+      app layer to rebuild on Rune: `open_new_window`, `set_zoom_level`/`get_zoom_level` (the
+      0.5 to 2.0 range check lives there), `minimize_window`/`maximize_window`/`close_window`,
+      `relaunch_app`, `has_other_visible_windows`, `set_autostart`/`get_autostart` (was
+      tauri-plugin-autostart), `setup_tray`, and the save dialog in `export_diagnostics` (its
+      content helpers are ported).
 - [ ] Release tooling (`scripts/release-session.js` fingerprint and allowed paths) covers the
       root `Cargo.toml` and `Cargo.lock`
-- [ ] `PathProvider` and `EventSink` replace `AppHandle` paths and `emit`
+- [x] `PathProvider` and `EventSink` replace `AppHandle` paths and `emit`
+- [ ] `EventSink` carries a target window: v3 sent directory listing, folder size, watcher and
+      archive progress events to the calling window only; the sink is app-wide today
+- [ ] `PathProvider` gains a log directory (v3 used Tauri's `app_log_dir`)
+- [ ] Linux and Windows cross-checks of `iyeris-core` (need C cross compilers for bzip2-sys,
+      lzma-sys, zstd-sys and blake3; or CI on `beta`)
 - [ ] Typed errors replace `Result<_, String>`
 - [ ] Typed settings with `schemaVersion` (spec: `src/rendererSchemas.ts`, `src/settings.ts`)
 - [ ] Importer for 3.x `settings.json` and `home-settings.json`

@@ -1,0 +1,6 @@
+{
+  "events": [
+    { "t": 0.1, "type": "tap", "key": "file-000003.txt" },
+    { "t": 0.5, "type": "mark", "name": "end" }
+  ]
+}

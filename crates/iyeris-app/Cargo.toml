@@ -17,3 +17,7 @@ workspace = true
 
 [dependencies]
 rune = { git = "https://github.com/anomalyco/rune", rev = "935d040ab509e16fa4d4396385ead51eb2d33d3d" }
+
+[features]
+# Rune's agent tooling (`--script`, `--tree`, `--trace`, `--snap`) in release builds. Off by default.
+tooling = ["rune/tooling"]

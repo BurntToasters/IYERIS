@@ -1,0 +1,7 @@
+{
+  "events": [
+    { "t": 0.1, "type": "key", "name": "Down" },
+    { "t": 0.2, "type": "key", "name": "Down" },
+    { "t": 0.5, "type": "mark", "name": "end" }
+  ]
+}

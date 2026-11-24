@@ -1,0 +1,8 @@
+{
+  "events": [
+    { "t": 0.2, "type": "scroll", "key": "grid-viewport", "dy": -20000, "dur": 1.5, "fling": true },
+    { "t": 2.5, "type": "scroll", "key": "grid-viewport", "dy": -20000, "dur": 1.5, "fling": true },
+    { "t": 4.8, "type": "scroll", "key": "grid-viewport", "dy": 40000, "dur": 1.5, "fling": true },
+    { "t": 7.0, "type": "mark", "name": "end" }
+  ]
+}
