@@ -1,7 +1,9 @@
 name: CI
 
 on:
+  # CI minutes are limited: run only for main and beta, never for other branches.
   push:
+    branches: [main, beta]
   pull_request:
     branches: [main, beta]
 
