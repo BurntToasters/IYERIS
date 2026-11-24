@@ -194,6 +194,35 @@ function createStepPlan({
       args: ['test', '--locked', '--manifest-path', cargoManifest, '--all-targets'],
       timeout: rustTimeout,
     },
+    // The root Cargo workspace (crates/*) runs from the repo root, without a cwd.
+    {
+      name: 'workspaceRustFormat',
+      label: 'Workspace Rust Format',
+      command: 'cargo',
+      args: ['fmt', '--all', '--check'],
+      timeout: rustTimeout,
+    },
+    {
+      name: 'workspaceRustClippy',
+      label: 'Workspace Rust Clippy',
+      command: 'cargo',
+      args: ['clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings'],
+      timeout: rustTimeout,
+    },
+    {
+      name: 'workspaceRustTest',
+      label: 'Workspace Rust Test',
+      command: 'cargo',
+      args: ['test', '--locked', '--workspace'],
+      timeout: rustTimeout,
+    },
+    {
+      name: 'workspaceE2e',
+      label: 'Workspace E2E',
+      command: 'cargo',
+      args: ['run', '--locked', '-p', 'iyeris-e2e'],
+      timeout: rustTimeout,
+    },
   ];
   if (includeAudits) {
     const releaseAssetsIndex = plan.findIndex((step) => step.name === 'releaseAssets');
@@ -207,6 +236,13 @@ function createStepPlan({
         command: 'cargo',
         args: ['audit'],
         cwd: 'src-tauri',
+        timeout: rustTimeout,
+      },
+      {
+        name: 'workspaceCargoAudit',
+        label: 'Workspace Cargo Audit',
+        command: 'cargo',
+        args: ['audit'],
         timeout: rustTimeout,
       }
     );

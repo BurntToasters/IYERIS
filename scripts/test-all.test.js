@@ -181,7 +181,14 @@ test('rust formatting is gated the same way the JS side is', () => {
 
 test('quality-gate rust steps stay locked; only u/u2 may resolve new crates', () => {
   const plan = createStepPlan({ npm: 'npm', cargoManifest: 'src-tauri/Cargo.toml' });
-  for (const name of ['rustCheck', 'rustClippy', 'rustTest']) {
+  for (const name of [
+    'rustCheck',
+    'rustClippy',
+    'rustTest',
+    'workspaceRustClippy',
+    'workspaceRustTest',
+    'workspaceE2e',
+  ]) {
     const step = plan.find((entry) => entry.name === name);
     assert.ok(step, `${name} must stay in the quality-gate plan`);
     assert.equal(
@@ -411,4 +418,75 @@ test('cargo-safe-update and cargo-update-policy are gated plan steps', () => {
     'failing cargoUpdatePolicy must not record proof'
   );
   assert.equal(policyExit, 1);
+});
+
+// Failure modes to rule out before changing the runner:
+// - the root workspace steps are missing from the plan, so the root crates go unchecked;
+// - a root step drops --locked or adds --manifest-path, so it no longer runs from the root;
+// - a root step gets a cwd of src-tauri, so it checks the v3 crate instead of the workspace;
+// - the root cargo audit is missing, or --skip-audits removes the root E2E run;
+// - a failing root step still leaves a valid quality-gate proof behind.
+test('the root Cargo workspace is checked from the repo root after src-tauri', () => {
+  const plan = createStepPlan({ npm: 'npm' });
+  const names = plan.map((step) => step.name);
+  const expectedRootSteps = [
+    { name: 'workspaceRustFormat', args: ['fmt', '--all', '--check'] },
+    {
+      name: 'workspaceRustClippy',
+      args: ['clippy', '--locked', '--workspace', '--all-targets', '--', '-D', 'warnings'],
+    },
+    { name: 'workspaceRustTest', args: ['test', '--locked', '--workspace'] },
+    { name: 'workspaceE2e', args: ['run', '--locked', '-p', 'iyeris-e2e'] },
+  ];
+  let previousIndex = names.indexOf('rustTest');
+  assert.ok(previousIndex >= 0, 'src-tauri rustTest must stay in the quality-gate step plan');
+  for (const expected of expectedRootSteps) {
+    const step = plan.find((entry) => entry.name === expected.name);
+    assert.ok(step, `${expected.name} must be part of the quality-gate step plan`);
+    assert.equal(step.command, 'cargo');
+    assert.deepEqual(step.args, expected.args);
+    assert.equal(step.cwd, undefined, `${expected.name} must run from the repo root`);
+    assert.equal(step.timeout, process.platform === 'win32' ? 1_200_000 : 600_000);
+    const index = names.indexOf(expected.name);
+    assert.ok(index > previousIndex, `${expected.name} must run after the previous Rust step`);
+    previousIndex = index;
+  }
+});
+
+test('the root workspace cargo audit is handled like the src-tauri audit', () => {
+  const plan = createStepPlan({ npm: 'npm' });
+  assert.deepEqual(
+    plan.find((step) => step.name === 'workspaceCargoAudit'),
+    {
+      name: 'workspaceCargoAudit',
+      label: 'Workspace Cargo Audit',
+      command: 'cargo',
+      args: ['audit'],
+      timeout: process.platform === 'win32' ? 1_200_000 : 600_000,
+    }
+  );
+
+  const skipped = createStepPlan({ npm: 'npm', includeAudits: false });
+  assert.equal(
+    skipped.some((step) => step.name === 'workspaceCargoAudit'),
+    false,
+    'the root cargo audit is a network audit and must follow --skip-audits'
+  );
+  assert.equal(
+    skipped.some((step) => step.name === 'workspaceE2e'),
+    true,
+    'the root E2E run is not an audit and must still run with --skip-audits'
+  );
+});
+
+test('main does not record the proof when a root workspace step fails', () => {
+  for (const failing of ['workspaceRustClippy', 'workspaceE2e']) {
+    const { calls, exitCode } = runGate({ failing: [failing] });
+    assert.ok(calls.includes(`run:${failing}`), `${failing} must actually run`);
+    assert.ok(
+      !calls.includes('recordProof'),
+      `a failing ${failing} step must never leave a valid proof behind`
+    );
+    assert.equal(exitCode, 1);
+  }
 });

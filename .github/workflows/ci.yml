@@ -58,9 +58,10 @@ jobs:
         with:
           workspaces: |
             src-tauri -> target
+            . -> target
           cache-targets: false
           prefix-key: v2-${{ matrix.os }}
-          key: ${{ hashFiles('src-tauri/Cargo.lock') }}
+          key: ${{ hashFiles('src-tauri/Cargo.lock', 'Cargo.lock') }}
 
       - name: Install Linux dependencies
         if: runner.os == 'Linux'
@@ -83,6 +84,15 @@ jobs:
 
       - name: Run full quality gate (audits run once in security job)
         run: npm run test:all -- --skip-audits
+
+      - name: Upload root workspace E2E artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: iyeris-e2e-${{ runner.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_id }}
+          path: target/e2e/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload browser and test evidence
         if: always()
@@ -131,6 +141,7 @@ jobs:
         with:
           workspaces: |
             src-tauri -> target
+            . -> target
           cache-targets: false
           prefix-key: v2-audit
 
@@ -149,3 +160,6 @@ jobs:
       - name: cargo audit
         run: cargo audit
         working-directory: src-tauri
+
+      - name: cargo audit (root workspace)
+        run: cargo audit

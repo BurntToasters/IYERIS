@@ -85,3 +85,4 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 # Reference app
 .temp_S3-Sidekick/
 public/licenses-cargo.json
+/target/

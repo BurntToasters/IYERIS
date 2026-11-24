@@ -1,14 +1,16 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { extname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = resolve(fileURLToPath(new URL('..', import.meta.url)));
-const rustRoot = join(root, 'src-tauri', 'src');
+// crates/ is the IYERIS 4 root Cargo workspace and may not exist yet.
+const rustRoots = [join(root, 'src-tauri', 'src'), join(root, 'crates')];
 
 function rustFiles(directory) {
+  if (!existsSync(directory)) return [];
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     const path = join(directory, entry.name);
-    if (entry.isDirectory()) return rustFiles(path);
+    if (entry.isDirectory()) return entry.name === 'target' ? [] : rustFiles(path);
     return extname(entry.name) === '.rs' ? [path] : [];
   });
 }
@@ -32,7 +34,7 @@ const forbiddenRuntimeFragments = [
 ];
 
 const violations = [];
-for (const file of rustFiles(rustRoot)) {
+for (const file of rustRoots.flatMap((rustRoot) => rustFiles(rustRoot))) {
   const source = readFileSync(file, 'utf8');
   for (const fragment of forbiddenRuntimeFragments) {
     if (source.includes(fragment)) {

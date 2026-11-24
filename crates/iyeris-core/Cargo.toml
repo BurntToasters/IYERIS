@@ -1,0 +1,70 @@
+[package]
+name = "iyeris-core"
+description = "Framework-free core logic for IYERIS."
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros", "process", "io-util", "fs"] }
+walkdir = "2"
+sha2 = "0.10"
+md-5 = "0.10"
+blake3 = "1"
+crc32fast = "1"
+hex = "0.4"
+infer = "0.19"
+tempfile = "3"
+trash = "5"
+directories = "6"
+log = "0.4"
+
+[target.'cfg(not(any(target_os = "windows", target_os = "macos")))'.dependencies]
+open = "5"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3", features = ["block2", "NSPasteboard", "NSRunningApplication", "NSWorkspace"] }
+objc2-foundation = { version = "0.3", features = ["NSArray", "NSProcessInfo", "NSString", "NSURL", "NSUserDefaults"] }
+core-foundation = "0.9"
+security-framework-sys = "2.17"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+winreg = "0.55"
+windows = { version = "0.58", features = [
+    "Win32_Foundation",
+    "Win32_Security",
+    "Win32_Security_Authorization",
+    "Win32_Security_Cryptography",
+    "Win32_Security_WinTrust",
+    "Win32_Graphics_Gdi",
+    "Win32_Storage_FileSystem",
+    "Win32_System_Console",
+    "Win32_System_Threading",
+    "Win32_System_Com",
+    "Win32_System_Com_StructuredStorage",
+    "Win32_System_DataExchange",
+    "Win32_System_LibraryLoader",
+    "Win32_System_Memory",
+    "Win32_System_Ole",
+    "Win32_System_Registry",
+    "Win32_System_SystemInformation",
+    "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_Shell",
+    "Win32_UI_Shell_Common",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { version = "0.29", features = ["fs", "user"] }

@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = ["crates/*"]
+exclude = ["src-tauri"]
+
+[workspace.package]
+version = "4.0.0-alpha.0"
+edition = "2021"
+license = "MPL-2.0"
+authors = ["BurntToasters <code@rosie.run>"]
+repository = "https://github.com/BurntToasters/IYERIS"
+
+[workspace.lints.rust]
+unsafe_code = "warn"
+
+[profile.release]
+panic = "abort"
+codegen-units = 16
+lto = "thin"
+strip = true
